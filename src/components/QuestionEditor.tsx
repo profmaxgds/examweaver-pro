@@ -213,7 +213,7 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
                 <div className="space-y-1.5">
                   <Label htmlFor="content">Enunciado *</Label>
                   <Editor
-                    apiKey='uwgjycc6i3kemsq5bgve56b7dxubc6ld9flqm0x94vatnegn' // Sua chave de API
+                    apiKey='aaaaaaaaa' // Sua chave de API
                     value={question.content}
                     onEditorChange={(content) => setQuestion(prev => ({ ...prev, content }))}
                     init={{
