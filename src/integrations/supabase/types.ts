@@ -14,7 +14,212 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      corrections: {
+        Row: {
+          answers: Json
+          created_at: string
+          exam_id: string
+          id: string
+          image_url: string | null
+          score: number
+          status: Database["public"]["Enums"]["correction_status"] | null
+          student_id: string | null
+          student_name: string
+          updated_at: string
+          version: number | null
+        }
+        Insert: {
+          answers: Json
+          created_at?: string
+          exam_id: string
+          id?: string
+          image_url?: string | null
+          score?: number
+          status?: Database["public"]["Enums"]["correction_status"] | null
+          student_id?: string | null
+          student_name: string
+          updated_at?: string
+          version?: number | null
+        }
+        Update: {
+          answers?: Json
+          created_at?: string
+          exam_id?: string
+          id?: string
+          image_url?: string | null
+          score?: number
+          status?: Database["public"]["Enums"]["correction_status"] | null
+          student_id?: string | null
+          student_name?: string
+          updated_at?: string
+          version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "corrections_exam_id_fkey"
+            columns: ["exam_id"]
+            isOneToOne: false
+            referencedRelation: "exams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exams: {
+        Row: {
+          answer_sheet: Json | null
+          author_id: string
+          created_at: string
+          exam_date: string | null
+          header: Json | null
+          id: string
+          institution: string | null
+          layout: string | null
+          qr_code_data: string | null
+          question_ids: string[]
+          shuffle_options: boolean | null
+          shuffle_questions: boolean | null
+          students: Json | null
+          subject: string
+          title: string
+          total_points: number
+          updated_at: string
+          versions: number | null
+        }
+        Insert: {
+          answer_sheet?: Json | null
+          author_id: string
+          created_at?: string
+          exam_date?: string | null
+          header?: Json | null
+          id?: string
+          institution?: string | null
+          layout?: string | null
+          qr_code_data?: string | null
+          question_ids: string[]
+          shuffle_options?: boolean | null
+          shuffle_questions?: boolean | null
+          students?: Json | null
+          subject: string
+          title: string
+          total_points?: number
+          updated_at?: string
+          versions?: number | null
+        }
+        Update: {
+          answer_sheet?: Json | null
+          author_id?: string
+          created_at?: string
+          exam_date?: string | null
+          header?: Json | null
+          id?: string
+          institution?: string | null
+          layout?: string | null
+          qr_code_data?: string | null
+          question_ids?: string[]
+          shuffle_options?: boolean | null
+          shuffle_questions?: boolean | null
+          students?: Json | null
+          subject?: string
+          title?: string
+          total_points?: number
+          updated_at?: string
+          versions?: number | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          id: string
+          institution: string | null
+          name: string
+          subjects: string[] | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          institution?: string | null
+          name: string
+          subjects?: string[] | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          institution?: string | null
+          name?: string
+          subjects?: string[] | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      questions: {
+        Row: {
+          audio_urls: string[] | null
+          author_id: string
+          category: string | null
+          content: Json
+          correct_answer: Json
+          created_at: string
+          difficulty: Database["public"]["Enums"]["difficulty_level"]
+          id: string
+          image_urls: string[] | null
+          institution: string | null
+          language: string | null
+          options: Json | null
+          points: number
+          subject: string
+          tags: string[] | null
+          title: string
+          type: Database["public"]["Enums"]["question_type"]
+          updated_at: string
+        }
+        Insert: {
+          audio_urls?: string[] | null
+          author_id: string
+          category?: string | null
+          content: Json
+          correct_answer: Json
+          created_at?: string
+          difficulty?: Database["public"]["Enums"]["difficulty_level"]
+          id?: string
+          image_urls?: string[] | null
+          institution?: string | null
+          language?: string | null
+          options?: Json | null
+          points?: number
+          subject: string
+          tags?: string[] | null
+          title: string
+          type?: Database["public"]["Enums"]["question_type"]
+          updated_at?: string
+        }
+        Update: {
+          audio_urls?: string[] | null
+          author_id?: string
+          category?: string | null
+          content?: Json
+          correct_answer?: Json
+          created_at?: string
+          difficulty?: Database["public"]["Enums"]["difficulty_level"]
+          id?: string
+          image_urls?: string[] | null
+          institution?: string | null
+          language?: string | null
+          options?: Json | null
+          points?: number
+          subject?: string
+          tags?: string[] | null
+          title?: string
+          type?: Database["public"]["Enums"]["question_type"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +228,9 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      correction_status: "pending" | "completed" | "pending_review"
+      difficulty_level: "easy" | "medium" | "hard" | "custom"
+      question_type: "multiple_choice" | "true_false" | "essay" | "fill_blanks"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +357,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      correction_status: ["pending", "completed", "pending_review"],
+      difficulty_level: ["easy", "medium", "hard", "custom"],
+      question_type: ["multiple_choice", "true_false", "essay", "fill_blanks"],
+    },
   },
 } as const
