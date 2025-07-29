@@ -166,24 +166,24 @@ export default function QuestionsPage() {
                 />
               </div>
               
-              <Select value={filterSubject} onValueChange={setFilterSubject}>
+              <Select value={filterSubject} onValueChange={(value) => setFilterSubject(value === 'all' ? '' : value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todas as matérias" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todas as matérias</SelectItem>
+                  <SelectItem value="all">Todas as matérias</SelectItem>
                   {subjects.map(subject => (
                     <SelectItem key={subject} value={subject}>{subject}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
 
-              <Select value={filterDifficulty} onValueChange={setFilterDifficulty}>
+              <Select value={filterDifficulty} onValueChange={(value) => setFilterDifficulty(value === 'all' ? '' : value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todas as dificuldades" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todas as dificuldades</SelectItem>
+                  <SelectItem value="all">Todas as dificuldades</SelectItem>
                   {difficulties.map(difficulty => (
                     <SelectItem key={difficulty} value={difficulty}>
                       {getDifficultyLabel(difficulty)}
@@ -192,12 +192,12 @@ export default function QuestionsPage() {
                 </SelectContent>
               </Select>
 
-              <Select value={filterType} onValueChange={setFilterType}>
+              <Select value={filterType} onValueChange={(value) => setFilterType(value === 'all' ? '' : value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todos os tipos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos os tipos</SelectItem>
+                  <SelectItem value="all">Todos os tipos</SelectItem>
                   {types.map(type => (
                     <SelectItem key={type} value={type}>
                       {getTypeLabel(type)}

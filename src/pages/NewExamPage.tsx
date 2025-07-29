@@ -361,12 +361,12 @@ export default function NewExamPage() {
                       className="pl-10"
                     />
                   </div>
-                  <Select value={filterSubject} onValueChange={setFilterSubject}>
+                  <Select value={filterSubject} onValueChange={(value) => setFilterSubject(value === 'all' ? '' : value)}>
                     <SelectTrigger className="w-48">
                       <SelectValue placeholder="Filtrar por matéria" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Todas as matérias</SelectItem>
+                      <SelectItem value="all">Todas as matérias</SelectItem>
                       {subjects.map(subject => (
                         <SelectItem key={subject} value={subject}>{subject}</SelectItem>
                       ))}

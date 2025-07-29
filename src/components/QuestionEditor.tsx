@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,9 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, Upload, Eye } from 'lucide-react';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
+import { Plus, Trash2, Eye } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Editor } from '@tinymce/tinymce-react';
+import { supabase } from '@/integrations/supabase/client'; // Importar o cliente Supabase
+import { useToast } from '@/hooks/use-toast'; // Importar o useToast
 
 interface Option {
   id: string;
@@ -20,7 +22,7 @@ interface Option {
 interface QuestionData {
   title: string;
   content: string;
-  type: 'multiple_choice' | 'true_false' | 'essay' | 'fill_blanks';
+  type: 'multiple_choice' | 'true_false' | 'essay';
   options: Option[];
   correctAnswer: any;
   category: string;
@@ -50,7 +52,7 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
       { id: '3', text: '', isCorrect: false },
       { id: '4', text: '', isCorrect: false },
     ],
-    correctAnswer: initialData?.correctAnswer || null,
+    correctAnswer: initialData?.correctAnswer ?? null,
     category: initialData?.category || '',
     subject: initialData?.subject || '',
     institution: initialData?.institution || '',
@@ -61,7 +63,19 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
   });
 
   const [newTag, setNewTag] = useState('');
+  const { toast } = useToast();
 
+  useEffect(() => {
+    if (initialData) {
+      setQuestion(prev => ({
+        ...prev,
+        ...initialData,
+        options: initialData.options || prev.options,
+        correctAnswer: initialData.correctAnswer ?? null,
+      }));
+    }
+  }, [initialData]);
+  
   const addOption = () => {
     const newId = (question.options.length + 1).toString();
     setQuestion(prev => ({
@@ -81,7 +95,7 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
   const updateOption = (id: string, text: string) => {
     setQuestion(prev => ({
       ...prev,
-      options: prev.options.map(opt => 
+      options: prev.options.map(opt =>
         opt.id === id ? { ...opt, text } : opt
       )
     }));
@@ -90,66 +104,76 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
   const toggleCorrectOption = (id: string) => {
     setQuestion(prev => ({
       ...prev,
-      options: prev.options.map(opt => 
-        opt.id === id 
-          ? { ...opt, isCorrect: !opt.isCorrect }
-          : { ...opt, isCorrect: false } // Apenas uma resposta correta para múltipla escolha
+      options: prev.options.map(opt =>
+        opt.id === id
+          ? { ...opt, isCorrect: true }
+          : { ...opt, isCorrect: false }
       )
     }));
+  };
+  
+  const handleCorrectAnswerChange = (value: any) => {
+    setQuestion(prev => ({ ...prev, correctAnswer: value }));
   };
 
   const addTag = () => {
     if (newTag.trim() && !question.tags.includes(newTag.trim())) {
-      setQuestion(prev => ({
-        ...prev,
-        tags: [...prev.tags, newTag.trim()]
-      }));
+      setQuestion(prev => ({ ...prev, tags: [...prev.tags, newTag.trim()] }));
       setNewTag('');
     }
   };
 
   const removeTag = (tag: string) => {
-    setQuestion(prev => ({
-      ...prev,
-      tags: prev.tags.filter(t => t !== tag)
-    }));
+    setQuestion(prev => ({ ...prev, tags: prev.tags.filter(t => t !== tag) }));
   };
 
   const handleSave = () => {
-    // Validação básica
     if (!question.title.trim() || !question.content.trim() || !question.subject.trim()) {
-      alert('Por favor, preencha os campos obrigatórios: título, conteúdo e matéria.');
+      alert('Por favor, preencha os campos obrigatórios: título, enunciado e matéria.');
       return;
     }
-
-    if (question.type === 'multiple_choice') {
-      const hasCorrectAnswer = question.options.some(opt => opt.isCorrect);
-      const allOptionsFilled = question.options.every(opt => opt.text.trim());
-      
-      if (!hasCorrectAnswer) {
-        alert('Por favor, marque a alternativa correta.');
-        return;
-      }
-      
-      if (!allOptionsFilled) {
-        alert('Por favor, preencha todas as alternativas.');
-        return;
-      }
+    if (question.type === 'multiple_choice' && !question.options.some(opt => opt.isCorrect)) {
+      alert('Por favor, marque a alternativa correta.');
+      return;
     }
-
+    if (question.type === 'true_false' && question.correctAnswer === null) {
+      alert('Por favor, selecione se a resposta é Verdadeiro ou Falso.');
+      return;
+    }
     onSave(question);
   };
 
-  const modules = {
-    toolbar: [
-      [{ 'header': [1, 2, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      [{ 'color': [] }, { 'background': [] }],
-      ['link', 'image'],
-      ['formula'],
-      ['clean']
-    ],
+  const handleImageUpload = async (blobInfo: any): Promise<string> => {
+    const file = blobInfo.blob();
+    const fileName = `${Date.now()}-${blobInfo.filename()}`;
+    
+    try {
+      const { data, error } = await supabase.storage
+        .from('question-images')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('question-images')
+        .getPublicUrl(fileName);
+
+      toast({ title: "Sucesso!", description: "Imagem enviada com sucesso." });
+      return publicUrl;
+    } catch (error) {
+      console.error('Erro no upload da imagem:', error);
+      toast({
+        title: "Erro de Upload",
+        description: "Não foi possível enviar a imagem.",
+        variant: "destructive",
+      });
+      throw new Error("Falha no upload da imagem");
+    }
   };
 
   return (
@@ -170,7 +194,6 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
         </div>
 
         <TabsContent value="editor" className="grid gap-6 lg:grid-cols-3">
-          {/* Editor Principal */}
           <div className="lg:col-span-2 space-y-6">
             <Card>
               <CardHeader>
@@ -178,7 +201,7 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <Label htmlFor="title">Título *</Label>
+                  <Label htmlFor="title">Título (Tópico para organização) *</Label>
                   <Input
                     id="title"
                     value={question.title}
@@ -187,14 +210,38 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
                   />
                 </div>
 
-                <div>
+                <div className="space-y-1.5">
                   <Label htmlFor="content">Enunciado *</Label>
-                  <ReactQuill
+                  <Editor
+                    apiKey='uwgjycc6i3kemsq5bgve56b7dxubc6ld9flqm0x94vatnegn' // Sua chave de API
                     value={question.content}
-                    onChange={(content) => setQuestion(prev => ({ ...prev, content }))}
-                    modules={modules}
-                    placeholder="Digite o enunciado da questão..."
-                    style={{ height: '200px' }}
+                    onEditorChange={(content) => setQuestion(prev => ({ ...prev, content }))}
+                    init={{
+                      height: 400,
+                      menubar: false,
+                      language: 'pt_BR',
+                      language_url: '/langs/pt_BR.js',
+                      statusbar: false,
+                      branding: false,
+                      plugins: [
+                        'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+                        'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+                        'insertdatetime', 'media', 'table', 'code', 'help', 'wordcount', 
+                        'tiny_mce_wiris', 'paste'
+                      ],
+                      toolbar: [
+                        'undo redo | cut copy paste | blocks fontfamily fontsize | bold italic underline forecolor backcolor',
+                        'alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | image table tiny_mce_wiris_formulaEditor | fullscreen preview removeformat'
+                      ],
+                      font_family_formats: "Andale Mono=andale mono,times; Arial=arial,helvetica,sans-serif; Arial Black=arial black,avant garde; Book Antiqua=book antiqua,palatino; Comic Sans MS=comic sans ms,sans-serif; Courier New=courier new,courier; Georgia=georgia,palatino; Helvetica=helvetica; Impact=impact,chicago; Symbol=symbol; Tahoma=tahoma,arial,helvetica,sans-serif; Terminal=terminal,monaco; Times New Roman=times new roman,times; Trebuchet MS=trebuchet ms,geneva; Verdana=verdana,geneva; Webdings=webdings; Wingdings=wingdings,zapf dingbats",
+                      font_size_formats: "8pt 10pt 12pt 14pt 18pt 24pt 36pt",
+                      content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
+                      image_advtab: true,
+                      image_caption: true,
+                      automatic_uploads: true,
+                      file_picker_types: 'image',
+                      images_upload_handler: handleImageUpload,
+                    }}
                   />
                 </div>
               </CardContent>
@@ -232,7 +279,7 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
                       </Button>
                       {question.options.length > 2 && (
                         <Button
-                          variant="outline"
+                          variant="destructive"
                           size="sm"
                           onClick={() => removeOption(option.id)}
                         >
@@ -244,66 +291,75 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
                 </CardContent>
               </Card>
             )}
+
+            {question.type === 'true_false' && (
+              <Card>
+                <CardHeader><CardTitle>Resposta Correta</CardTitle></CardHeader>
+                <CardContent>
+                  <RadioGroup
+                    onValueChange={(value) => handleCorrectAnswerChange(value === 'true')}
+                    value={question.correctAnswer === null ? '' : String(question.correctAnswer)}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="true" id="true" />
+                      <Label htmlFor="true">Verdadeiro</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="false" id="false" />
+                      <Label htmlFor="false">Falso</Label>
+                    </div>
+                  </RadioGroup>
+                </CardContent>
+              </Card>
+            )}
+
+            {question.type === 'essay' && (
+               <Card>
+                <CardHeader><CardTitle>Resposta Esperada / Critérios de Correção</CardTitle></CardHeader>
+                <CardContent>
+                  <Textarea
+                    placeholder="Descreva a resposta ideal ou os critérios para a correção..."
+                    value={question.correctAnswer || ''}
+                    onChange={(e) => handleCorrectAnswerChange(e.target.value)}
+                    rows={5}
+                  />
+                </CardContent>
+              </Card>
+            )}
+            
           </div>
 
-          {/* Sidebar de Metadados */}
           <div className="space-y-6">
             <Card>
-              <CardHeader>
-                <CardTitle>Configurações</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle>Configurações</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div>
                   <Label htmlFor="type">Tipo de Questão</Label>
-                  <Select value={question.type} onValueChange={(value: any) => setQuestion(prev => ({ ...prev, type: value }))}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                  <Select value={question.type} onValueChange={(value: any) => setQuestion(prev => ({ ...prev, type: value, correctAnswer: null, options: prev.options.map(o => ({ ...o, isCorrect: false })) }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="multiple_choice">Múltipla Escolha</SelectItem>
                       <SelectItem value="true_false">Verdadeiro/Falso</SelectItem>
                       <SelectItem value="essay">Dissertativa</SelectItem>
-                      <SelectItem value="fill_blanks">Preencher Lacunas</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div>
                   <Label htmlFor="subject">Matéria *</Label>
-                  <Input
-                    id="subject"
-                    value={question.subject}
-                    onChange={(e) => setQuestion(prev => ({ ...prev, subject: e.target.value }))}
-                    placeholder="Ex: Teoria Geral dos Sistemas"
-                  />
+                  <Input id="subject" value={question.subject} onChange={(e) => setQuestion(prev => ({ ...prev, subject: e.target.value }))} placeholder="Ex: Teoria Geral dos Sistemas" />
                 </div>
-
                 <div>
                   <Label htmlFor="category">Categoria</Label>
-                  <Input
-                    id="category"
-                    value={question.category}
-                    onChange={(e) => setQuestion(prev => ({ ...prev, category: e.target.value }))}
-                    placeholder="Ex: Sistemas Abertos"
-                  />
+                  <Input id="category" value={question.category} onChange={(e) => setQuestion(prev => ({ ...prev, category: e.target.value }))} placeholder="Ex: Sistemas Abertos" />
                 </div>
-
                 <div>
                   <Label htmlFor="institution">Instituição</Label>
-                  <Input
-                    id="institution"
-                    value={question.institution}
-                    onChange={(e) => setQuestion(prev => ({ ...prev, institution: e.target.value }))}
-                    placeholder="Ex: UNIUBE"
-                  />
+                  <Input id="institution" value={question.institution} onChange={(e) => setQuestion(prev => ({ ...prev, institution: e.target.value }))} placeholder="Ex: UNIUBE" />
                 </div>
-
                 <div>
                   <Label htmlFor="difficulty">Dificuldade</Label>
                   <Select value={question.difficulty} onValueChange={(value: any) => setQuestion(prev => ({ ...prev, difficulty: value }))}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="easy">Fácil</SelectItem>
                       <SelectItem value="medium">Médio</SelectItem>
@@ -312,36 +368,18 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div>
                   <Label htmlFor="points">Pontuação</Label>
-                  <Input
-                    id="points"
-                    type="number"
-                    step="0.25"
-                    min="0"
-                    value={question.points}
-                    onChange={(e) => setQuestion(prev => ({ ...prev, points: parseFloat(e.target.value) || 0 }))}
-                  />
+                  <Input id="points" type="number" step="0.25" min="0" value={question.points} onChange={(e) => setQuestion(prev => ({ ...prev, points: parseFloat(e.target.value) || 0 }))} />
                 </div>
               </CardContent>
             </Card>
-
             <Card>
-              <CardHeader>
-                <CardTitle>Tags</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle>Tags</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex space-x-2">
-                  <Input
-                    value={newTag}
-                    onChange={(e) => setNewTag(e.target.value)}
-                    placeholder="Nova tag"
-                    onKeyPress={(e) => e.key === 'Enter' && addTag()}
-                  />
-                  <Button variant="outline" size="sm" onClick={addTag}>
-                    <Plus className="w-4 h-4" />
-                  </Button>
+                  <Input value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="Nova tag" onKeyPress={(e) => e.key === 'Enter' && addTag()} />
+                  <Button variant="outline" size="sm" onClick={addTag}><Plus className="w-4 h-4" /></Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {question.tags.map(tag => (
@@ -361,37 +399,29 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
               <CardTitle>Pré-visualização da Questão</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold mb-2">{question.title}</h3>
-                <div 
-                  className="prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: question.content }}
-                />
-              </div>
-
-              {question.type === 'multiple_choice' && (
-                <div className="space-y-2">
-                  {question.options.map((option, index) => (
-                    <div key={option.id} className="flex items-center space-x-2">
-                      <span className="font-medium">
-                        {String.fromCharCode(97 + index)})
-                      </span>
-                      <span>{option.text}</span>
-                      {option.isCorrect && (
-                        <Badge variant="default" className="ml-2">Correta</Badge>
-                      )}
-                    </div>
+              <div 
+                className="prose prose-sm max-w-none"
+                dangerouslySetInnerHTML={{ __html: question.content }}
+              />
+               {question.type === 'multiple_choice' && (
+                <ol className="list-decimal list-inside space-y-2">
+                  {question.options.map((option) => (
+                    <li key={option.id} className={option.isCorrect ? 'font-bold text-green-700' : ''}>
+                      {option.text}
+                    </li>
                   ))}
-                </div>
+                </ol>
               )}
-
+               {question.type === 'true_false' && (
+                <p>Resposta: <Badge variant={question.correctAnswer ? 'default' : 'destructive'}>{question.correctAnswer ? 'Verdadeiro' : 'Falso'}</Badge></p>
+              )}
               <div className="flex flex-wrap gap-2 pt-4 border-t">
                 <Badge variant="outline">{question.difficulty}</Badge>
                 <Badge variant="outline">{question.points} pontos</Badge>
-                <Badge variant="outline">{question.subject}</Badge>
+                <Badge variant="secondary">{question.subject}</Badge>
                 {question.category && <Badge variant="outline">{question.category}</Badge>}
                 {question.tags.map(tag => (
-                  <Badge key={tag} variant="secondary">{tag}</Badge>
+                  <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
                 ))}
               </div>
             </CardContent>

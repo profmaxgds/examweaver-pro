@@ -9,6 +9,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import QuestionsPage from "./pages/QuestionsPage";
 import NewQuestionPage from "./pages/NewQuestionPage";
+import EditQuestionPage from "./pages/EditQuestionPage"; // 1. Importe a nova página
 import ExamsPage from "./pages/ExamsPage";
 import NewExamPage from "./pages/NewExamPage";
 import NotFound from "./pages/NotFound";
@@ -36,6 +37,8 @@ const App = () => (
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/questions" element={<ProtectedRoute><QuestionsPage /></ProtectedRoute>} />
             <Route path="/questions/new" element={<ProtectedRoute><NewQuestionPage /></ProtectedRoute>} />
+            {/* 2. Adicione a nova rota aqui */}
+            <Route path="/questions/:id/edit" element={<ProtectedRoute><EditQuestionPage /></ProtectedRoute>} />
             <Route path="/exams" element={<ProtectedRoute><ExamsPage /></ProtectedRoute>} />
             <Route path="/exams/new" element={<ProtectedRoute><NewExamPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
