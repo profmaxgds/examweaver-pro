@@ -10,8 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Eye } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Editor } from '@tinymce/tinymce-react';
-import { supabase } from '@/integrations/supabase/client'; // Importar o cliente Supabase
-import { useToast } from '@/hooks/use-toast'; // Importar o useToast
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface Option {
   id: string;
@@ -129,15 +129,27 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
 
   const handleSave = () => {
     if (!question.title.trim() || !question.content.trim() || !question.subject.trim()) {
-      alert('Por favor, preencha os campos obrigatórios: título, enunciado e matéria.');
+      toast({
+        title: "Campos Obrigatórios",
+        description: "Por favor, preencha o título, enunciado e matéria.",
+        variant: "destructive",
+      });
       return;
     }
     if (question.type === 'multiple_choice' && !question.options.some(opt => opt.isCorrect)) {
-      alert('Por favor, marque a alternativa correta.');
+       toast({
+        title: "Seleção Necessária",
+        description: "Por favor, marque a alternativa correta.",
+        variant: "destructive",
+      });
       return;
     }
     if (question.type === 'true_false' && question.correctAnswer === null) {
-      alert('Por favor, selecione se a resposta é Verdadeiro ou Falso.');
+       toast({
+        title: "Seleção Necessária",
+        description: "Por favor, selecione se a resposta é Verdadeiro ou Falso.",
+        variant: "destructive",
+      });
       return;
     }
     onSave(question);
@@ -213,7 +225,7 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
                 <div className="space-y-1.5">
                   <Label htmlFor="content">Enunciado *</Label>
                   <Editor
-                    apiKey='aaaaaaaaa' // Sua chave de API
+                    apiKey={import.meta.env.VITE_TINYMCE_API_KEY}
                     value={question.content}
                     onEditorChange={(content) => setQuestion(prev => ({ ...prev, content }))}
                     init={{
@@ -226,12 +238,11 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
                       plugins: [
                         'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
                         'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
-                        'insertdatetime', 'media', 'table', 'code', 'help', 'wordcount', 
-                        'tiny_mce_wiris', 'paste'
+                        'insertdatetime', 'media', 'table', 'help', 'wordcount'
                       ],
                       toolbar: [
                         'undo redo | cut copy paste | blocks fontfamily fontsize | bold italic underline forecolor backcolor',
-                        'alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | image table tiny_mce_wiris_formulaEditor | fullscreen preview removeformat'
+                        'alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | image table | fullscreen preview removeformat'
                       ],
                       font_family_formats: "Andale Mono=andale mono,times; Arial=arial,helvetica,sans-serif; Arial Black=arial black,avant garde; Book Antiqua=book antiqua,palatino; Comic Sans MS=comic sans ms,sans-serif; Courier New=courier new,courier; Georgia=georgia,palatino; Helvetica=helvetica; Impact=impact,chicago; Symbol=symbol; Tahoma=tahoma,arial,helvetica,sans-serif; Terminal=terminal,monaco; Times New Roman=times new roman,times; Trebuchet MS=trebuchet ms,geneva; Verdana=verdana,geneva; Webdings=webdings; Wingdings=wingdings,zapf dingbats",
                       font_size_formats: "8pt 10pt 12pt 14pt 18pt 24pt 36pt",

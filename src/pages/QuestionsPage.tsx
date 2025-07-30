@@ -89,10 +89,11 @@ export default function QuestionsPage() {
   };
 
   const filteredQuestions = questions.filter(question => {
-    const contentText = typeof question.content === 'string' ? question.content : '';
+    // A lógica de filtragem continua a mesma
+    const contentText = typeof question.content === 'string' ? question.content.replace(/<[^>]*>/g, '') : '';
     const matchesSearch = question.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          contentText.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         question.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
+                         (question.tags && question.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())));
     const matchesSubject = !filterSubject || question.subject === filterSubject;
     const matchesDifficulty = !filterDifficulty || question.difficulty === filterDifficulty;
     const matchesType = !filterType || question.type === filterType;
@@ -102,26 +103,40 @@ export default function QuestionsPage() {
 
   const subjects = [...new Set(questions.map(q => q.subject))].filter(Boolean);
   const difficulties = ['easy', 'medium', 'hard', 'custom'];
-  const types = ['multiple_choice', 'true_false', 'essay', 'fill_blanks'];
+  const types = ['multiple_choice', 'true_false', 'essay'];
 
   const getTypeLabel = (type: string) => {
-    const labels = {
+    const labels: { [key: string]: string } = {
       'multiple_choice': 'Múltipla Escolha',
       'true_false': 'Verdadeiro/Falso',
       'essay': 'Dissertativa',
-      'fill_blanks': 'Preencher Lacunas'
     };
-    return labels[type as keyof typeof labels] || type;
+    return labels[type] || type;
   };
 
   const getDifficultyLabel = (difficulty: string) => {
-    const labels = {
+    const labels: { [key: string]: string } = {
       'easy': 'Fácil',
       'medium': 'Médio',
       'hard': 'Difícil',
       'custom': 'Personalizado'
     };
-    return labels[difficulty as keyof typeof labels] || difficulty;
+    return labels[difficulty] || difficulty;
+  };
+
+  // ===== FUNÇÃO ADICIONADA PARA GERAR O PREVIEW DO TEXTO =====
+  const createPreview = (htmlContent: string | null) => {
+    if (!htmlContent) return 'Questão sem enunciado...';
+    
+    // Usa o parser do navegador para converter HTML em texto de forma segura
+    const doc = new DOMParser().parseFromString(htmlContent, 'text/html');
+    const text = doc.body.textContent || "";
+
+    // Limita o texto a 150 caracteres para o preview
+    if (text.length > 150) {
+      return text.substring(0, 150) + '...';
+    }
+    return text;
   };
 
   return (
@@ -251,11 +266,9 @@ export default function QuestionsPage() {
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex-1">
                       <h3 className="text-lg font-semibold mb-2">{question.title}</h3>
+                      {/* ===== CÓDIGO ALTERADO AQUI ===== */}
                       <div className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                        {typeof question.content === 'string' 
-                          ? question.content.replace(/<[^>]*>/g, '').substring(0, 150) + '...'
-                          : 'Conteúdo da questão...'
-                        }
+                        {createPreview(question.content)}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Badge variant="outline">{getTypeLabel(question.type)}</Badge>
@@ -265,7 +278,7 @@ export default function QuestionsPage() {
                         {question.category && (
                           <Badge variant="secondary">{question.category}</Badge>
                         )}
-                        {question.tags.map(tag => (
+                        {question.tags && question.tags.map(tag => (
                           <Badge key={tag} variant="outline" className="text-xs">
                             {tag}
                           </Badge>

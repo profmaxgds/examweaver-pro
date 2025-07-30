@@ -16,7 +16,6 @@ export default function NewQuestionPage() {
 
     setLoading(true);
     try {
-      // Preparar dados para inserção
       const insertData = {
         author_id: user.id,
         title: questionData.title,
@@ -33,15 +32,12 @@ export default function NewQuestionPage() {
         tags: questionData.tags,
         points: questionData.points,
         language: questionData.language,
-        image_urls: [], // TODO: Implementar upload de imagens
-        audio_urls: [], // TODO: Implementar upload de áudio
       };
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('questions')
         .insert([insertData])
-        .select()
-        .single();
+        .select();
 
       if (error) throw error;
 
@@ -51,11 +47,11 @@ export default function NewQuestionPage() {
       });
 
       navigate('/questions');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao salvar questão:', error);
       toast({
-        title: "Erro",
-        description: "Não foi possível salvar a questão. Tente novamente.",
+        title: "Erro ao Salvar",
+        description: `Não foi possível salvar a questão: ${error.message}`,
         variant: "destructive",
       });
     } finally {

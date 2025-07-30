@@ -5,7 +5,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { BookOpen, FileText, PlusCircle, Settings, BarChart3, Upload } from 'lucide-react';
+import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, Image as ImageIcon } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface DashboardStats {
   questions: number;
@@ -13,25 +14,29 @@ interface DashboardStats {
   corrections: number;
 }
 
+interface Exam {
+  id: string;
+  title: string;
+  subject: string;
+}
+
 export default function Dashboard() {
   const { user, signOut } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({ questions: 0, exams: 0, corrections: 0 });
+  const [lastExam, setLastExam] = useState<Exam | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchStats = async () => {
+    const fetchDashboardData = async () => {
       if (!user) return;
 
       try {
-        const [questionsRes, examsRes, correctionsRes] = await Promise.all([
-          supabase.from('questions').select('id', { count: 'exact' }).eq('author_id', user.id),
-          supabase.from('exams').select('id', { count: 'exact' }).eq('author_id', user.id),
-          supabase
-            .from('corrections')
-            .select('id', { count: 'exact' })
-            .in('exam_id', 
-              (await supabase.from('exams').select('id').eq('author_id', user.id)).data?.map(e => e.id) || []
-            )
+        const [questionsRes, examsRes, correctionsRes, lastExamRes] = await Promise.all([
+          supabase.from('questions').select('id', { count: 'exact', head: true }).eq('author_id', user.id),
+          supabase.from('exams').select('id', { count: 'exact', head: true }).eq('author_id', user.id),
+          supabase.from('corrections').select('id', { count: 'exact', head: true }),
+          // CORREÇÃO: Usar .maybeSingle() para não dar erro se não houver provas
+          supabase.from('exams').select('id, title, subject').eq('author_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
         ]);
 
         setStats({
@@ -39,14 +44,19 @@ export default function Dashboard() {
           exams: examsRes.count || 0,
           corrections: correctionsRes.count || 0,
         });
+
+        if (lastExamRes.data) {
+          setLastExam(lastExamRes.data);
+        }
+
       } catch (error) {
-        console.error('Erro ao buscar estatísticas:', error);
+        console.error('Erro ao buscar dados do dashboard:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchStats();
+    fetchDashboardData();
   }, [user]);
 
   return (
@@ -60,9 +70,7 @@ export default function Dashboard() {
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-muted-foreground">{user?.email}</span>
-              <Button variant="outline" onClick={signOut}>
-                Sair
-              </Button>
+              <Button variant="outline" onClick={signOut}><LogOut className="w-4 h-4 mr-2" />Sair</Button>
             </div>
           </div>
         </div>
@@ -70,137 +78,44 @@ export default function Dashboard() {
 
       <main className="container mx-auto px-4 py-8">
         <div className="grid gap-6">
-          {/* Estatísticas */}
+          {/* Estatísticas Navegáveis */}
           <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total de Questões</CardTitle>
-                <BookOpen className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{loading ? '...' : stats.questions}</div>
-                <p className="text-xs text-muted-foreground">
-                  No seu banco de questões
-                </p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Provas Criadas</CardTitle>
-                <FileText className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{loading ? '...' : stats.exams}</div>
-                <p className="text-xs text-muted-foreground">
-                  Provas disponíveis
-                </p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Correções Realizadas</CardTitle>
-                <BarChart3 className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{loading ? '...' : stats.corrections}</div>
-                <p className="text-xs text-muted-foreground">
-                  Provas corrigidas
-                </p>
-              </CardContent>
-            </Card>
+            <Link to="/questions">
+              <Card className="hover:border-primary transition-colors">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total de Questões</CardTitle><BookOpen className="h-4 w-4 text-muted-foreground" /></CardHeader>
+                <CardContent><div className="text-2xl font-bold">{loading ? <Skeleton className="h-8 w-12" /> : stats.questions}</div><p className="text-xs text-muted-foreground">No seu banco de questões</p></CardContent>
+              </Card>
+            </Link>
+            <Link to="/exams">
+              <Card className="hover:border-primary transition-colors">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Provas Criadas</CardTitle><FileText className="h-4 w-4 text-muted-foreground" /></CardHeader>
+                <CardContent><div className="text-2xl font-bold">{loading ? <Skeleton className="h-8 w-12" /> : stats.exams}</div><p className="text-xs text-muted-foreground">Provas disponíveis</p></CardContent>
+              </Card>
+            </Link>
+            <Link to="/reports">
+              <Card className="hover:border-primary transition-colors">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Correções Realizadas</CardTitle><BarChart3 className="h-4 w-4 text-muted-foreground" /></CardHeader>
+                <CardContent><div className="text-2xl font-bold">{loading ? <Skeleton className="h-8 w-12" /> : stats.corrections}</div><p className="text-xs text-muted-foreground">Total de provas corrigidas</p></CardContent>
+              </Card>
+            </Link>
           </div>
 
           {/* Ações Rápidas */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <Link to="/questions/new">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center space-x-2">
-                    <PlusCircle className="h-5 w-5 text-primary" />
-                    <CardTitle className="text-lg">Nova Questão</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription>
-                    Criar uma nova questão para o seu banco
-                  </CardDescription>
-                </CardContent>
-              </Link>
-            </Card>
-
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <Link to="/questions">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center space-x-2">
-                    <BookOpen className="h-5 w-5 text-primary" />
-                    <CardTitle className="text-lg">Banco de Questões</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription>
-                    Gerenciar suas questões existentes
-                  </CardDescription>
-                </CardContent>
-              </Link>
-            </Card>
-
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <Link to="/exams/new">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center space-x-2">
-                    <FileText className="h-5 w-5 text-primary" />
-                    <CardTitle className="text-lg">Nova Prova</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription>
-                    Criar uma nova prova com suas questões
-                  </CardDescription>
-                </CardContent>
-              </Link>
-            </Card>
-
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <Link to="/corrections">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center space-x-2">
-                    <Upload className="h-5 w-5 text-primary" />
-                    <CardTitle className="text-lg">Correção Automática</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription>
-                    Escanear e corrigir provas automaticamente
-                  </CardDescription>
-                </CardContent>
-              </Link>
-            </Card>
+            <Link to="/questions/new"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><PlusCircle /> Nova Questão</CardTitle></CardHeader><CardContent><CardDescription>Adicionar uma nova questão ao seu banco de dados.</CardDescription></CardContent></Card></Link>
+            <Link to="/exams/new"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><FileText /> Nova Prova</CardTitle></CardHeader><CardContent><CardDescription>Montar uma nova prova usando suas questões.</CardDescription></CardContent></Card></Link>
+            <Link to="/headers"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><ClipboardList /> Gerenciar Cabeçalhos</CardTitle></CardHeader><CardContent><CardDescription>Criar e editar cabeçalhos personalizados.</CardDescription></CardContent></Card></Link>
+            <Link to="/corrections"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><Upload /> Corrigir Provas</CardTitle></CardHeader><CardContent><CardDescription>Escanear e corrigir provas automaticamente.</CardDescription></CardContent></Card></Link>
           </div>
 
-          {/* Provas Recentes */}
+          {/* Pré-visualização da Última Prova */}
           <Card>
             <CardHeader>
-              <CardTitle>Atividade Recente</CardTitle>
-              <CardDescription>
-                Suas últimas provas e correções
-              </CardDescription>
+              <CardTitle>Pré-visualização da Última Prova Criada</CardTitle>
+              {loading ? <Skeleton className="h-4 w-1/2 mt-1" /> : (lastExam ? <CardDescription>{lastExam.title} - {lastExam.subject}</CardDescription> : <CardDescription>Nenhuma prova criada ainda.</CardDescription>)}
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div>
-                    <p className="font-medium">Nenhuma atividade recente</p>
-                    <p className="text-sm text-muted-foreground">
-                      Comece criando sua primeira questão ou prova
-                    </p>
-                  </div>
-                  <Link to="/questions/new">
-                    <Button>Começar</Button>
-                  </Link>
-                </div>
-              </div>
+            <CardContent className="flex items-center justify-center p-2 sm:p-4">
+              {loading ? <Skeleton className="w-full h-48" /> : lastExam ? <div className="border rounded-md p-2 bg-white w-full"><img src="http://googleusercontent.com/file_content/8" alt="Exemplo de Cabeçalho de Prova" className="w-full object-contain" /></div> : <div className="text-center py-8"><ImageIcon className="w-12 h-12 mx-auto mb-4 text-muted-foreground" /><p className="text-muted-foreground">Crie sua primeira prova para ver a pré-visualização aqui.</p></div>}
             </CardContent>
           </Card>
         </div>

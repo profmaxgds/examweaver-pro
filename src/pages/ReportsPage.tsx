@@ -47,34 +47,30 @@ export default function ReportsPage() {
   useEffect(() => {
     if (selectedExam) {
       fetchCorrections();
+    } else {
+      setReportData(null);
+      setCorrections([]);
     }
   }, [selectedExam]);
 
   const fetchExams = async () => {
     if (!user) return;
-
     try {
       const { data, error } = await supabase
         .from('exams')
         .select('id, title, subject, total_points')
         .eq('author_id', user.id)
         .order('created_at', { ascending: false });
-
       if (error) throw error;
       setExams(data || []);
     } catch (error) {
       console.error('Erro ao buscar provas:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar as provas.",
-        variant: "destructive",
-      });
+      toast({ title: "Erro", description: "Não foi possível carregar as provas.", variant: "destructive" });
     }
   };
 
   const fetchCorrections = async () => {
     if (!user || !selectedExam) return;
-
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -82,38 +78,33 @@ export default function ReportsPage() {
         .select('*')
         .eq('exam_id', selectedExam)
         .order('created_at', { ascending: false });
-
       if (error) throw error;
-      setCorrections(data || []);
-      generateReportData(data || []);
+      const correctionsData = data || [];
+      setCorrections(correctionsData);
+      generateReportData(correctionsData);
     } catch (error) {
       console.error('Erro ao buscar correções:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar as correções.",
-        variant: "destructive",
-      });
+      toast({ title: "Erro", description: "Não foi possível carregar as correções.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
-  const generateReportData = (corrections: Correction[]) => {
+  const generateReportData = (correctionsData: Correction[]) => {
     const exam = exams.find(e => e.id === selectedExam);
-    if (!exam || corrections.length === 0) {
+    if (!exam || correctionsData.length === 0) {
       setReportData(null);
       return;
     }
 
-    // Estatísticas gerais
-    const scores = corrections.map(c => c.score);
+    const scores = correctionsData.map(c => c.score);
     const averageScore = scores.reduce((a, b) => a + b, 0) / scores.length;
     const maxScore = Math.max(...scores);
     const minScore = Math.min(...scores);
     const passRate = scores.filter(s => s >= exam.total_points * 0.6).length / scores.length * 100;
 
     const examStats = {
-      totalStudents: corrections.length,
+      totalStudents: correctionsData.length,
       averageScore: averageScore.toFixed(2),
       maxScore,
       minScore,
@@ -121,7 +112,6 @@ export default function ReportsPage() {
       totalPoints: exam.total_points
     };
 
-    // Distribuição de notas
     const gradeRanges = [
       { name: '0-20%', min: 0, max: exam.total_points * 0.2, count: 0 },
       { name: '21-40%', min: exam.total_points * 0.2, max: exam.total_points * 0.4, count: 0 },
@@ -131,44 +121,36 @@ export default function ReportsPage() {
     ];
 
     scores.forEach(score => {
-      const range = gradeRanges.find(r => score >= r.min && score <= r.max);
-      if (range) range.count++;
+      for (const range of gradeRanges) {
+        if (score >= range.min && score <= range.max) {
+          range.count++;
+          break;
+        }
+      }
     });
 
     const gradeDistribution = gradeRanges.map(range => ({
       name: range.name,
-      value: range.count,
-      percentage: corrections.length > 0 ? ((range.count / corrections.length) * 100).toFixed(1) : '0'
+      value: range.count
     }));
 
-    // Análise temporal
-    const timeSeriesData = corrections
+    const timeSeriesData = correctionsData
       .map(c => ({
         date: new Date(c.created_at).toLocaleDateString('pt-BR'),
         score: c.score,
-        percentage: ((c.score / exam.total_points) * 100).toFixed(1)
       }))
       .reverse();
-
-    // Simulação de análise por questão (em implementação real, viria dos dados detalhados)
-    const questionAnalysis = Array.from({ length: 10 }, (_, i) => ({
-      question: i + 1,
-      correctAnswers: Math.floor(Math.random() * corrections.length),
-      incorrectAnswers: corrections.length - Math.floor(Math.random() * corrections.length),
-      difficulty: Math.random() > 0.5 ? 'Fácil' : Math.random() > 0.5 ? 'Médio' : 'Difícil'
-    }));
 
     setReportData({
       examStats,
       gradeDistribution,
-      questionAnalysis,
+      questionAnalysis: [], // Deixado para implementação futura com dados mais detalhados
       timeSeriesData
     });
   };
 
   const exportReport = async () => {
     if (!reportData || !selectedExam) return;
-
     try {
       const exam = exams.find(e => e.id === selectedExam);
       const reportDoc = {
@@ -184,7 +166,6 @@ export default function ReportsPage() {
         }))
       };
 
-      // Salvar relatório no banco
       const { error } = await supabase
         .from('reports')
         .insert({
@@ -193,34 +174,19 @@ export default function ReportsPage() {
           type: 'exam_statistics',
           data: reportDoc
         });
-
       if (error) throw error;
 
-      // Download como JSON (em implementação real, seria PDF)
-      const blob = new Blob([JSON.stringify(reportDoc, null, 2)], {
-        type: 'application/json'
-      });
-      
+      const blob = new Blob([JSON.stringify(reportDoc, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `relatorio-${exam?.title.replace(/\s+/g, '-')}-${Date.now()}.json`;
       a.click();
-      
       URL.revokeObjectURL(url);
-
-      toast({
-        title: "Sucesso!",
-        description: "Relatório exportado com sucesso.",
-      });
-
+      toast({ title: "Sucesso!", description: "Relatório exportado com sucesso." });
     } catch (error) {
       console.error('Erro ao exportar relatório:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível exportar o relatório.",
-        variant: "destructive",
-      });
+      toast({ title: "Erro", description: "Não foi possível exportar o relatório.", variant: "destructive" });
     }
   };
 
@@ -264,28 +230,19 @@ export default function ReportsPage() {
             </CardContent>
           </Card>
 
-          {loading && (
-            <Card>
-              <CardContent className="py-8 text-center">
-                <p>Carregando dados...</p>
-              </CardContent>
-            </Card>
-          )}
+          {loading && <Card><CardContent className="py-8 text-center"><p>Carregando dados...</p></CardContent></Card>}
 
           {reportData && !loading && (
             <>
-              {/* Estatísticas Gerais */}
+              {/* Cards de Estatísticas */}
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Total de Alunos</CardTitle>
                     <Users className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{reportData.examStats.totalStudents}</div>
-                  </CardContent>
+                  <CardContent><div className="text-2xl font-bold">{reportData.examStats.totalStudents}</div></CardContent>
                 </Card>
-
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Média Geral</CardTitle>
@@ -293,12 +250,9 @@ export default function ReportsPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{reportData.examStats.averageScore}</div>
-                    <p className="text-xs text-muted-foreground">
-                      de {reportData.examStats.totalPoints} pontos
-                    </p>
+                    <p className="text-xs text-muted-foreground">de {reportData.examStats.totalPoints} pontos</p>
                   </CardContent>
                 </Card>
-
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Taxa de Aprovação</CardTitle>
@@ -306,24 +260,17 @@ export default function ReportsPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{reportData.examStats.passRate}%</div>
-                    <p className="text-xs text-muted-foreground">
-                      (≥60% da nota total)
-                    </p>
+                    <p className="text-xs text-muted-foreground">(≥60% da nota total)</p>
                   </CardContent>
                 </Card>
-
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Amplitude</CardTitle>
                     <FileText className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
-                      {reportData.examStats.minScore} - {reportData.examStats.maxScore}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Menor e maior nota
-                    </p>
+                    <div className="text-2xl font-bold">{reportData.examStats.minScore} - {reportData.examStats.maxScore}</div>
+                    <p className="text-xs text-muted-foreground">Menor e maior nota</p>
                   </CardContent>
                 </Card>
               </div>
@@ -331,41 +278,22 @@ export default function ReportsPage() {
               {/* Gráficos */}
               <div className="grid gap-6 lg:grid-cols-2">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Distribuição de Notas</CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Distribuição de Notas</CardTitle></CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={reportData.gradeDistribution}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="name" />
-                        <YAxis />
-                        <Tooltip />
-                        <Bar dataKey="value" fill="#8884d8" />
+                        <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="value" fill="#8884d8" />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
                 </Card>
-
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Distribuição Percentual</CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Distribuição Percentual</CardTitle></CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={300}>
                       <PieChart>
-                        <Pie
-                          data={reportData.gradeDistribution}
-                          dataKey="value"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={80}
-                          fill="#8884d8"
-                        >
-                          {reportData.gradeDistribution.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
+                        <Pie data={reportData.gradeDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8">
+                          {reportData.gradeDistribution.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                         </Pie>
                         <Tooltip />
                       </PieChart>
@@ -376,17 +304,11 @@ export default function ReportsPage() {
 
               {reportData.timeSeriesData.length > 1 && (
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Evolução das Notas ao Longo do Tempo</CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Evolução das Notas</CardTitle></CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={300}>
                       <LineChart data={reportData.timeSeriesData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis />
-                        <Tooltip />
-                        <Line type="monotone" dataKey="score" stroke="#8884d8" />
+                        <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><Tooltip /><Line type="monotone" dataKey="score" stroke="#8884d8" />
                       </LineChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -395,45 +317,24 @@ export default function ReportsPage() {
 
               {/* Lista de Correções */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Correções Realizadas</CardTitle>
-                </CardHeader>
+                <CardHeader><CardTitle>Correções Realizadas</CardTitle></CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b">
-                          <th className="text-left p-2">Estudante</th>
-                          <th className="text-left p-2">Pontuação</th>
-                          <th className="text-left p-2">Percentual</th>
-                          <th className="text-left p-2">Status</th>
-                          <th className="text-left p-2">Data</th>
-                        </tr>
+                        <tr className="border-b"><th className="text-left p-2">Estudante</th><th className="text-left p-2">Pontuação</th><th className="text-left p-2">Percentual</th><th className="text-left p-2">Status</th><th className="text-left p-2">Data</th></tr>
                       </thead>
                       <tbody>
                         {corrections.map((correction) => {
                           const exam = exams.find(e => e.id === selectedExam);
                           const percentage = exam ? ((correction.score / exam.total_points) * 100).toFixed(1) : '0';
-                          
                           return (
                             <tr key={correction.id} className="border-b">
                               <td className="p-2">{correction.student_name}</td>
-                              <td className="p-2">
-                                {correction.score} / {exam?.total_points}
-                              </td>
+                              <td className="p-2">{correction.score} / {exam?.total_points}</td>
                               <td className="p-2">{percentage}%</td>
-                              <td className="p-2">
-                                <span className={`px-2 py-1 rounded-full text-xs ${
-                                  correction.status === 'completed' 
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-yellow-100 text-yellow-800'
-                                }`}>
-                                  {correction.status === 'completed' ? 'Concluída' : 'Pendente'}
-                                </span>
-                              </td>
-                              <td className="p-2">
-                                {new Date(correction.created_at).toLocaleDateString('pt-BR')}
-                              </td>
+                              <td className="p-2"><span className={`px-2 py-1 rounded-full text-xs ${correction.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{correction.status === 'completed' ? 'Concluída' : 'Pendente'}</span></td>
+                              <td className="p-2">{new Date(correction.created_at).toLocaleDateString('pt-BR')}</td>
                             </tr>
                           );
                         })}
@@ -449,9 +350,7 @@ export default function ReportsPage() {
             <Card>
               <CardContent className="py-8 text-center">
                 <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-muted-foreground">
-                  Nenhuma correção encontrada para esta prova.
-                </p>
+                <p className="text-muted-foreground">Nenhuma correção encontrada para esta prova.</p>
               </CardContent>
             </Card>
           )}
