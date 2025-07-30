@@ -103,7 +103,6 @@ function shuffleArray<T>(array: T[], seed: number): T[] {
 
 function generateExamHTML(exam: any, questions: any[], version: number, includeAnswers: boolean): string {
   const header = exam.exam_headers;
-  const qrData = exam.qr_code_data || `exam:${exam.id}:v${version}`;
   
   return `
 <!DOCTYPE html>
@@ -162,10 +161,10 @@ function generateExamHTML(exam: any, questions: any[], version: number, includeA
                 <div class="question-content">
                     ${typeof question.content === 'string' ? question.content : JSON.stringify(question.content)}
                 </div>
-                ${question.type === 'multiple_choice' && question.options ? `
+                ${question.type === 'multiple_choice' && Array.isArray(question.options) ? `
                     <ol type="A" class="options">
                         ${question.options.map((option: any) => `
-                            <li class="option ${includeAnswers && question.correct_answer.includes(option.id) ? 'correct-answer' : ''}">
+                            <li class="option ${includeAnswers && Array.isArray(question.correct_answer) && question.correct_answer.includes(option.id) ? 'correct-answer' : ''}">
                                 ${option.text}
                             </li>
                         `).join('')}
