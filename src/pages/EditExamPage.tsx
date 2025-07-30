@@ -9,11 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, X, FileText, Download } from 'lucide-react';
+import { ArrowLeft, Eye, Edit, Copy, Trash2, FileText, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 import { ExamHeaderEditor } from '@/components/ExamHeaderEditor';
 import { CorrectionScanner } from '@/components/CorrectionScanner';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import QuestionEditor from '@/components/QuestionEditor'; // Importando o componente QuestionEditor
 
 interface Question {
   id: string;
@@ -51,7 +53,8 @@ export default function EditExamPage() {
   const [loading, setLoading] = useState(false);
   const [examData, setExamData] = useState<ExamData | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [activeTab, setActiveTab] = useState<'edit' | 'corrections' | 'pdf'>('edit');
+  const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
+  const [editQuestion, setEditQuestion] = useState<Question | null>(null);
 
   useEffect(() => {
     if (id && user) {
@@ -75,7 +78,6 @@ export default function EditExamPage() {
         throw new Error('Prova não encontrada');
       }
 
-      // Buscar questões
       const { data: questionsData, error: questionsError } = await supabase
         .from('questions')
         .select('*')
@@ -99,7 +101,6 @@ export default function EditExamPage() {
         time_limit: exam.time_limit
       });
 
-      // Buscar todas as questões do usuário para seleção
       const { data: allQuestions, error: allQuestionsError } = await supabase
         .from('questions')
         .select('*')
@@ -190,7 +191,7 @@ export default function EditExamPage() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-pdf', {
+      const response = await supabase.functions.invoke('generate-exam-pdf', {
         body: {
           examId: examData.id,
           version,
@@ -198,22 +199,20 @@ export default function EditExamPage() {
         }
       });
 
-      if (error) throw error;
+      if (response.error) throw response.error;
 
-      // Criar e baixar o PDF
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(data.html);
-        printWindow.document.close();
-        
-        setTimeout(() => {
-          printWindow.print();
-        }, 500);
-      }
+      const { pdfBase64, filename } = response.data;
+      
+      const link = document.createElement('a');
+      link.href = `data:application/pdf;base64,${pdfBase64}`;
+      link.download = filename || `exam_v${version}${includeAnswers ? '_answerkey' : ''}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
       toast({
         title: "Sucesso!",
-        description: `PDF da versão ${version} gerado com sucesso.`,
+        description: `PDF da versão ${version} ${includeAnswers ? 'gabarito' : 'prova'} gerado com sucesso.`,
       });
 
     } catch (error) {
@@ -221,6 +220,71 @@ export default function EditExamPage() {
       toast({
         title: "Erro",
         description: "Não foi possível gerar o PDF da prova.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateAllPDFs = async () => {
+    if (!examData) return;
+
+    setLoading(true);
+    try {
+      for (let version = 1; version <= examData.versions; version++) {
+        await generatePDF(version, false);
+        await generatePDF(version, true);
+      }
+
+      toast({
+        title: "Sucesso!",
+        description: "Todos os PDFs foram gerados com sucesso.",
+      });
+    } catch (error) {
+      console.error('Erro ao gerar todos os PDFs:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível gerar todos os PDFs.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const previewExam = async (version: number = 1) => {
+    if (!examData) return;
+
+    setLoading(true);
+    try {
+      const response = await supabase.functions.invoke('generate-exam-pdf', {
+        body: {
+          examId: examData.id,
+          version,
+          includeAnswers: false,
+          preview: true
+        }
+      });
+
+      if (response.error) throw response.error;
+
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(response.data.html);
+        printWindow.document.close();
+      }
+
+      toast({
+        title: "Sucesso!",
+        description: `Visualização da versão ${version} gerada com sucesso.`,
+      });
+
+    } catch (error) {
+      console.error('Erro ao visualizar prova:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível gerar a visualização da prova.",
         variant: "destructive",
       });
     } finally {
@@ -254,6 +318,54 @@ export default function EditExamPage() {
         selectedQuestions: prev.selectedQuestions.filter(q => q.id !== questionId)
       };
     });
+  };
+
+  const handleUpdateQuestion = async (questionData: any) => {
+    if (!editQuestion) return;
+
+    setLoading(true);
+    try {
+      const updateData = {
+        title: questionData.title,
+        content: questionData.content,
+        type: questionData.type,
+        options: questionData.type === 'multiple_choice' ? questionData.options : null,
+        correct_answer: questionData.type === 'multiple_choice'
+          ? questionData.options.filter(opt => opt.isCorrect).map(opt => opt.id)
+          : questionData.correctAnswer,
+        category: questionData.category || null,
+        subject: questionData.subject,
+        institution: questionData.institution || null,
+        difficulty: questionData.difficulty,
+        tags: questionData.tags,
+        points: questionData.points,
+        language: questionData.language,
+      };
+
+      const { error } = await supabase
+        .from('questions')
+        .update(updateData)
+        .eq('id', editQuestion.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Sucesso!",
+        description: "Questão atualizada com sucesso.",
+      });
+
+      setEditQuestion(null);
+      fetchExam(); // Recarrega os dados da prova
+    } catch (error) {
+      console.error('Erro ao atualizar questão:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível atualizar a questão.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loading || !examData) {
@@ -317,9 +429,8 @@ export default function EditExamPage() {
 
       <main className="container mx-auto px-4 py-8">
         {activeTab === 'edit' && (
-          <div className="grid gap-6 lg:grid-cols-3">
-            {/* Configurações da Prova */}
-            <div className="lg:col-span-1 space-y-6">
+          <div className="grid gap-6">
+            <div className="grid lg:grid-cols-3 gap-6">
               <Card>
                 <CardHeader>
                   <CardTitle>Dados da Prova</CardTitle>
@@ -333,7 +444,6 @@ export default function EditExamPage() {
                       onChange={(e) => setExamData(prev => prev ? { ...prev, title: e.target.value } : prev)}
                     />
                   </div>
-
                   <div>
                     <Label htmlFor="subject">Matéria *</Label>
                     <Input
@@ -342,7 +452,6 @@ export default function EditExamPage() {
                       onChange={(e) => setExamData(prev => prev ? { ...prev, subject: e.target.value } : prev)}
                     />
                   </div>
-
                   <div>
                     <Label htmlFor="institution">Instituição</Label>
                     <Input
@@ -351,7 +460,6 @@ export default function EditExamPage() {
                       onChange={(e) => setExamData(prev => prev ? { ...prev, institution: e.target.value } : prev)}
                     />
                   </div>
-
                   <div>
                     <Label htmlFor="examDate">Data da Prova</Label>
                     <Input
@@ -361,7 +469,6 @@ export default function EditExamPage() {
                       onChange={(e) => setExamData(prev => prev ? { ...prev, examDate: e.target.value } : prev)}
                     />
                   </div>
-
                   <div>
                     <Label htmlFor="timeLimit">Tempo Limite (minutos)</Label>
                     <Input
@@ -398,7 +505,6 @@ export default function EditExamPage() {
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div>
                     <Label htmlFor="versions">Número de Versões</Label>
                     <Input
@@ -413,7 +519,6 @@ export default function EditExamPage() {
                       } : prev)}
                     />
                   </div>
-
                   <div className="space-y-3">
                     <div className="flex items-center space-x-2">
                       <Checkbox
@@ -426,7 +531,6 @@ export default function EditExamPage() {
                       />
                       <Label htmlFor="qrEnabled">QR Code Habilitado</Label>
                     </div>
-
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="shuffleQuestions"
@@ -438,7 +542,6 @@ export default function EditExamPage() {
                       />
                       <Label htmlFor="shuffleQuestions">Embaralhar Questões</Label>
                     </div>
-
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="shuffleOptions"
@@ -461,76 +564,110 @@ export default function EditExamPage() {
                   header_id: header.id 
                 } : prev)}
               />
+            </div>
 
-              {/* Questões Selecionadas */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>
-                    Questões Selecionadas ({examData.selectedQuestions.length})
-                  </CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    Total: {totalPoints.toFixed(2)} pontos
-                  </p>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {examData.selectedQuestions.map((question) => (
-                      <div key={question.id} className="flex items-center justify-between p-2 border rounded">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium truncate">{question.title}</p>
-                          <p className="text-xs text-muted-foreground">{question.points} pontos</p>
-                        </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  Questões Selecionadas ({examData.selectedQuestions.length})
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Total: {totalPoints.toFixed(2)} pontos
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {examData.selectedQuestions.map((question) => (
+                    <div key={question.id} className="flex items-center justify-between p-2 border rounded">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium truncate">{question.title}</p>
+                        <p className="text-xs text-muted-foreground">{question.points} pontos</p>
+                      </div>
+                      <div className="flex space-x-2">
                         <Button
-                          variant="ghost"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPreviewQuestion(question)}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setEditQuestion(question)}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
                           size="sm"
                           onClick={() => removeSelectedQuestion(question.id)}
                         >
-                          <X className="w-4 h-4" />
+                          <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
 
-            {/* Banco de Questões */}
-            <div className="lg:col-span-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Banco de Questões</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {questions.map((question) => {
-                      const isSelected = examData.selectedQuestions.some(q => q.id === question.id);
-                      return (
-                        <div
-                          key={question.id}
-                          className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                            isSelected ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
-                          }`}
-                          onClick={() => toggleQuestionSelection(question)}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <h4 className="font-medium mb-1">{question.title}</h4>
-                              <div className="flex flex-wrap gap-1 mb-2">
-                                <Badge variant="outline" className="text-xs">{question.type}</Badge>
-                                <Badge variant="outline" className="text-xs">{question.difficulty}</Badge>
-                                <Badge variant="outline" className="text-xs">{question.points} pts</Badge>
-                                <Badge variant="secondary" className="text-xs">{question.subject}</Badge>
-                              </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Banco de Questões</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3 max-h-60 overflow-y-auto">
+                  {questions.slice(0, 3).map((question) => {
+                    const isSelected = examData.selectedQuestions.some(q => q.id === question.id);
+                    return (
+                      <div
+                        key={question.id}
+                        className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                          isSelected ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
+                        }`}
+                        onClick={() => toggleQuestionSelection(question)}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-medium mb-1">{question.title}</h4>
+                            <div className="flex flex-wrap gap-1 mb-2">
+                              <Badge variant="outline" className="text-xs">{question.type}</Badge>
+                              <Badge variant="outline" className="text-xs">{question.difficulty}</Badge>
+                              <Badge variant="outline" className="text-xs">{question.points} pts</Badge>
+                              <Badge variant="secondary" className="text-xs">{question.subject}</Badge>
                             </div>
+                          </div>
+                          <div className="flex space-x-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewQuestion(question);
+                              }}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditQuestion(question);
+                              }}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
                             <Checkbox checked={isSelected} />
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -555,6 +692,13 @@ export default function EditExamPage() {
                 <CardTitle>Gerar PDF da Prova</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                <Button
+                  onClick={generateAllPDFs}
+                  disabled={loading}
+                  className="w-full"
+                >
+                  {loading ? 'Gerando...' : 'Gerar Todas as Versões e Gabaritos'}
+                </Button>
                 <div className="grid gap-4">
                   {Array.from({ length: examData.versions }, (_, i) => i + 1).map(version => (
                     <div key={version} className="flex items-center justify-between p-4 border rounded">
@@ -568,6 +712,16 @@ export default function EditExamPage() {
                       <div className="flex space-x-2">
                         <Button
                           variant="outline"
+                          size="sm"
+                          onClick={() => previewExam(version)}
+                          disabled={loading}
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          Visualizar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => generatePDF(version, false)}
                           disabled={loading}
                         >
@@ -576,6 +730,7 @@ export default function EditExamPage() {
                         </Button>
                         <Button
                           variant="outline"
+                          size="sm"
                           onClick={() => generatePDF(version, true)}
                           disabled={loading}
                         >
@@ -591,6 +746,61 @@ export default function EditExamPage() {
           </div>
         )}
       </main>
+
+      {/* Dialog para Pré-visualização da Questão */}
+      <Dialog open={!!previewQuestion} onOpenChange={() => setPreviewQuestion(null)}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          {previewQuestion && (
+            <div className="p-4">
+              <h4 className="font-medium mb-2">{previewQuestion.title}</h4>
+              <div className="prose" dangerouslySetInnerHTML={{ __html: previewQuestion.content }} />
+              <div className="mt-4 flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditQuestion(previewQuestion)}
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Editar Questão
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setPreviewQuestion(null)}>
+                  Fechar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para Edição da Questão */}
+      <Dialog open={!!editQuestion} onOpenChange={() => setEditQuestion(null)}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          {editQuestion && (
+            <QuestionEditor
+              initialData={{
+                title: editQuestion.title,
+                content: typeof editQuestion.content === 'string' ? editQuestion.content : JSON.stringify(editQuestion.content),
+                type: editQuestion.type as 'multiple_choice' | 'true_false' | 'essay',
+                options: editQuestion.type === 'multiple_choice' ? editQuestion.content.options.map((opt: any) => ({
+                  id: opt.id,
+                  text: opt.text,
+                  isCorrect: Array.isArray(editQuestion.correct_answer) ? editQuestion.correct_answer.includes(opt.id) : false,
+                })) : [],
+                correctAnswer: editQuestion.correct_answer,
+                category: editQuestion.category || '',
+                subject: editQuestion.subject,
+                institution: editQuestion.institution || '',
+                difficulty: editQuestion.difficulty,
+                tags: editQuestion.tags || [],
+                points: editQuestion.points,
+                language: 'pt',
+              }}
+              onSave={handleUpdateQuestion}
+              loading={loading}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
