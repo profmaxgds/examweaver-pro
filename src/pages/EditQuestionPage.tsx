@@ -16,7 +16,7 @@ interface Option {
 interface QuestionData {
   title: string;
   content: string;
-  type: 'multiple_choice' | 'true_false' | 'essay' | 'fill_blanks';
+  type: 'multiple_choice' | 'true_false' | 'essay';
   options: Option[];
   correctAnswer: any;
   category: string;
@@ -55,11 +55,21 @@ export default function EditQuestionPage() {
 
         // Transforma os dados do Supabase para o formato que o QuestionEditor espera
         const formattedData: QuestionData = {
-          ...data,
-          options: data.options ? (data.options as Option[]).map(opt => ({
-            ...opt,
-            isCorrect: data.correct_answer?.includes(opt.id)
-          })) : [],
+          title: data.title,
+          content: typeof data.content === 'string' ? data.content : JSON.stringify(data.content),
+          type: data.type as 'multiple_choice' | 'true_false' | 'essay',
+          category: data.category || '',
+          subject: data.subject,
+          institution: data.institution || '',
+          difficulty: data.difficulty,
+          tags: data.tags || [],
+          points: data.points,
+          language: data.language || 'pt',
+          options: data.options ? (Array.isArray(data.options) ? data.options.map((opt: any) => ({
+            id: opt.id,
+            text: opt.text,
+            isCorrect: Array.isArray(data.correct_answer) ? data.correct_answer.includes(opt.id) : false
+          })) : []) : [],
           correctAnswer: data.correct_answer,
         };
 
@@ -105,7 +115,7 @@ export default function EditQuestionPage() {
 
       const { error } = await supabase
         .from('questions')
-        .update(updateData)
+        .update(updateData as any)
         .eq('id', id);
 
       if (error) throw error;
@@ -145,5 +155,5 @@ export default function EditQuestionPage() {
     );
   }
 
-  return <QuestionEditor onSave={handleUpdate} initialData={initialData} loading={loading} />;
+  return <QuestionEditor onSave={handleUpdate} initialData={initialData as any} loading={loading} />;
 }
