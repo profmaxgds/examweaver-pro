@@ -17,10 +17,14 @@ export type Database = {
       corrections: {
         Row: {
           answers: Json
+          auto_corrected: boolean | null
+          confidence_score: number | null
           created_at: string
           exam_id: string
           id: string
           image_url: string | null
+          manual_review: boolean | null
+          ocr_data: Json | null
           score: number
           status: Database["public"]["Enums"]["correction_status"] | null
           student_id: string | null
@@ -30,10 +34,14 @@ export type Database = {
         }
         Insert: {
           answers: Json
+          auto_corrected?: boolean | null
+          confidence_score?: number | null
           created_at?: string
           exam_id: string
           id?: string
           image_url?: string | null
+          manual_review?: boolean | null
+          ocr_data?: Json | null
           score?: number
           status?: Database["public"]["Enums"]["correction_status"] | null
           student_id?: string | null
@@ -43,10 +51,14 @@ export type Database = {
         }
         Update: {
           answers?: Json
+          auto_corrected?: boolean | null
+          confidence_score?: number | null
           created_at?: string
           exam_id?: string
           id?: string
           image_url?: string | null
+          manual_review?: boolean | null
+          ocr_data?: Json | null
           score?: number
           status?: Database["public"]["Enums"]["correction_status"] | null
           student_id?: string | null
@@ -104,18 +116,23 @@ export type Database = {
         Row: {
           answer_sheet: Json | null
           author_id: string
+          correction_template: Json | null
           created_at: string
           exam_date: string | null
+          grade_scale: Json | null
           header: Json | null
+          header_id: string | null
           id: string
           institution: string | null
           layout: string | null
           qr_code_data: string | null
+          qr_enabled: boolean | null
           question_ids: string[]
           shuffle_options: boolean | null
           shuffle_questions: boolean | null
           students: Json | null
           subject: string
+          time_limit: number | null
           title: string
           total_points: number
           updated_at: string
@@ -124,18 +141,23 @@ export type Database = {
         Insert: {
           answer_sheet?: Json | null
           author_id: string
+          correction_template?: Json | null
           created_at?: string
           exam_date?: string | null
+          grade_scale?: Json | null
           header?: Json | null
+          header_id?: string | null
           id?: string
           institution?: string | null
           layout?: string | null
           qr_code_data?: string | null
+          qr_enabled?: boolean | null
           question_ids: string[]
           shuffle_options?: boolean | null
           shuffle_questions?: boolean | null
           students?: Json | null
           subject: string
+          time_limit?: number | null
           title: string
           total_points?: number
           updated_at?: string
@@ -144,18 +166,23 @@ export type Database = {
         Update: {
           answer_sheet?: Json | null
           author_id?: string
+          correction_template?: Json | null
           created_at?: string
           exam_date?: string | null
+          grade_scale?: Json | null
           header?: Json | null
+          header_id?: string | null
           id?: string
           institution?: string | null
           layout?: string | null
           qr_code_data?: string | null
+          qr_enabled?: boolean | null
           question_ids?: string[]
           shuffle_options?: boolean | null
           shuffle_questions?: boolean | null
           students?: Json | null
           subject?: string
+          time_limit?: number | null
           title?: string
           total_points?: number
           updated_at?: string
