@@ -64,6 +64,42 @@ export type Database = {
           },
         ]
       }
+      exam_headers: {
+        Row: {
+          author_id: string
+          content: Json
+          created_at: string
+          id: string
+          institution: string
+          is_default: boolean | null
+          logo_url: string | null
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          content?: Json
+          created_at?: string
+          id?: string
+          institution: string
+          is_default?: boolean | null
+          logo_url?: string | null
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          content?: Json
+          created_at?: string
+          id?: string
+          institution?: string
+          is_default?: boolean | null
+          logo_url?: string | null
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       exams: {
         Row: {
           answer_sheet: Json | null
