@@ -163,6 +163,45 @@ export type Database = {
         }
         Relationships: []
       }
+      file_uploads: {
+        Row: {
+          author_id: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          file_name: string
+          file_size: number
+          file_type: string
+          id: string
+          public_url: string | null
+          storage_path: string
+        }
+        Insert: {
+          author_id: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          file_name: string
+          file_size: number
+          file_type: string
+          id?: string
+          public_url?: string | null
+          storage_path: string
+        }
+        Update: {
+          author_id?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          file_name?: string
+          file_size?: number
+          file_type?: string
+          id?: string
+          public_url?: string | null
+          storage_path?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -253,6 +292,33 @@ export type Database = {
           title?: string
           type?: Database["public"]["Enums"]["question_type"]
           updated_at?: string
+        }
+        Relationships: []
+      }
+      reports: {
+        Row: {
+          author_id: string
+          data: Json
+          exam_id: string | null
+          generated_at: string
+          id: string
+          type: string
+        }
+        Insert: {
+          author_id: string
+          data?: Json
+          exam_id?: string | null
+          generated_at?: string
+          id?: string
+          type: string
+        }
+        Update: {
+          author_id?: string
+          data?: Json
+          exam_id?: string | null
+          generated_at?: string
+          id?: string
+          type?: string
         }
         Relationships: []
       }
