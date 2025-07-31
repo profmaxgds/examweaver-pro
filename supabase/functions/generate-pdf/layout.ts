@@ -50,30 +50,46 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         .qr-code-section p { font-size: 9pt; text-align: center; margin-top: 5px; }
         .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding-left: 15px; display: flex; flex-direction: column; }
         .answer-grid-header { text-align: center; margin-bottom: 5px; font-size: 9pt; font-weight: bold; }
-        .answer-options-header { display: flex; margin-left: 28px; margin-bottom: 2px; }
-        .answer-options-header span { width: 18px; text-align: center; font-size: 9pt; font-weight: bold; }
+        .answer-options-header { display: flex; align-items: center; justify-content: flex-start; margin-bottom: 2px; }
+        .answer-options-header .spacing { width: 28px; }
+        .answer-options-header .option-label { width: 18px; text-align: center; font-size: 9pt; font-weight: bold; margin: 0 3px; }
         .answer-row { display: flex; align-items: center; margin-bottom: 2px; }
-        .answer-row .q-number { font-weight: bold; margin-right: 5px; font-size: 10pt; width: 28px; }
-        .answer-row .options-bubbles { display: flex; }
-        .answer-row .bubble { width: 12px; height: 12px; border: 1px solid #999; border-radius: 50%; margin: 0 3px; }
+        .answer-row .q-number { font-weight: bold; margin-right: 5px; font-size: 10pt; width: 23px; text-align: right; }
+        .answer-row .options-bubbles { display: flex; align-items: center; }
+        .answer-row .bubble { width: 12px; height: 12px; border: 1px solid #999; border-radius: 50%; margin: 0 3px; background-color: white; }
         .instructions { margin-bottom: 25px; text-align: justify; font-size: 10pt; color: #444; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
+        .text-field { column-span: all; break-inside: avoid; margin: 20px 0; border: 1px solid #ccc; padding: 15px; }
+        .text-field h3 { margin: 0 0 10px 0; font-size: 11pt; font-weight: bold; }
+        .text-lines { line-height: 1.8; }
+        .text-line { border-bottom: 1px solid #ddd; height: 20px; margin-bottom: 2px; position: relative; }
+        .text-line::before { content: counter(line-counter) "."; counter-increment: line-counter; position: absolute; left: -25px; width: 20px; text-align: right; font-size: 9pt; color: #666; }
+        .text-lines { counter-reset: line-counter; padding-left: 30px; }
         .questions-container { column-count: ${isDoubleColumn ? 2 : 1}; column-gap: 1.5cm; }
         .question { margin-bottom: 18px; page-break-inside: avoid; -webkit-column-break-inside: avoid; break-inside: avoid; }
         .question-header { font-weight: bold; margin-bottom: 8px; font-size: 11pt; }
-        .question-content { text-align: justify; margin-bottom: 10px; }
+        .question-content { text-align: justify; margin-bottom: 10px; word-wrap: break-word; overflow-wrap: break-word; }
+        .question-content img { max-width: 100%; height: auto; display: block; margin: 10px 0; }
+        .question.has-image { column-span: all; width: 100%; }
         .options-list { list-style-type: none; padding-left: 0; margin-top: 5px; }
         .option { margin-bottom: 6px; display: flex; align-items: flex-start; }
-        .option-letter { font-weight: bold; margin-right: 8px; }
+        .option-letter { font-weight: bold; margin-right: 8px; min-width: 20px; }
+        .option-text { flex: 1; word-wrap: break-word; }
         .correct-answer-highlight { background-color: #cccccc; border-radius: 3px; padding: 1px 4px; }
         .page-footer { display: flex; justify-content: space-between; font-size: 10pt; margin-top: 20px; border-top: 1px solid #ccc; padding-top: 5px; }
-        @media print { body { -webkit-print-color-adjust: exact; } }
+        @media print { body { -webkit-print-color-adjust: exact; } .question { page-break-inside: avoid; } }
     `;
 
     const generateAnswerGrid = () => {
         let grid = `<div class="answer-grid-header">Marque o gabarito preenchendo completamente a região de cada alternativa.</div>`;
-        grid += `<div class="answer-options-header">${['a', 'b', 'c', 'd', 'e'].map(l => `<span>${l}</span>`).join('')}</div>`;
+        grid += `<div class="answer-options-header">
+                    <span class="spacing"></span>
+                    ${['a', 'b', 'c', 'd', 'e'].map(l => `<span class="option-label">${l}</span>`).join('')}
+                 </div>`;
         for (let i = 1; i <= totalQuestions; i++) {
-            grid += `<div class="answer-row"><span class="q-number">Q.${i}:</span><div class="options-bubbles">${Array(5).fill('<div class="bubble"></div>').join('')}</div></div>`;
+            grid += `<div class="answer-row">
+                        <span class="q-number">${i}:</span>
+                        <div class="options-bubbles">${Array(5).fill('<div class="bubble"></div>').join('')}</div>
+                     </div>`;
         }
         return grid;
     };
@@ -113,13 +129,32 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
                 ${questions.map((q, index) => {
                     let questionContent = typeof q.content === 'string' ? q.content : JSON.stringify(q.content);
                     let optionsHTML = '';
+                    let hasImage = questionContent.includes('<img') || questionContent.includes('![');
+                    let questionClass = hasImage ? 'question has-image' : 'question';
+                    
                     if (q.type === 'multiple_choice' && Array.isArray(q.options)) {
                         optionsHTML = `<ol class="options-list">${q.options.map((opt: any, optIndex: number) => {
                             const isCorrect = includeAnswers && Array.isArray(q.correct_answer) && q.correct_answer.includes(opt.id);
-                            return `<li class="option ${isCorrect ? 'correct-answer-highlight' : ''}"><span class="option-letter">${String.fromCharCode(65 + optIndex)})</span><div>${opt.text}</div></li>`;
+                            return `<li class="option ${isCorrect ? 'correct-answer-highlight' : ''}">
+                                      <span class="option-letter">${String.fromCharCode(65 + optIndex)})</span>
+                                      <span class="option-text">${opt.text}</span>
+                                    </li>`;
                         }).join('')}</ol>`;
+                    } else if (q.type === 'text') {
+                        // Campo de texto com linhas numeradas
+                        const textLines = Array.from({length: q.text_lines || 10}, (_, i) => 
+                            `<div class="text-line"></div>`
+                        ).join('');
+                        optionsHTML = `<div class="text-field">
+                                        <h3>Resposta:</h3>
+                                        <div class="text-lines">${textLines}</div>
+                                      </div>`;
                     }
-                    return `<div class="question"><div class="question-header">Questão ${index + 1} (${q.points.toFixed(2)} pts)</div><div class="question-content">${questionContent}</div>${optionsHTML}</div>`;
+                    return `<div class="${questionClass}">
+                              <div class="question-header">Questão ${index + 1} (${q.points.toFixed(2)} pts)</div>
+                              <div class="question-content">${questionContent}</div>
+                              ${optionsHTML}
+                            </div>`;
                 }).join('')}
             </div>
             <div class="page-footer"><span>${exam.title} - V${version}</span><span>Página 1 de 1</span></div>

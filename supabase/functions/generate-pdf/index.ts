@@ -63,9 +63,50 @@ serve(async (req) => {
     const html = generateExamHTML(exam, processedQuestions, version, includeAnswers);
     console.log('HTML gerado com sucesso, tamanho:', html.length, 'caracteres');
 
-    // 4. Retorna a resposta
-    return new Response(JSON.stringify({ html, examTitle: exam.title, version }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    // 4. Gera o PDF real
+    console.log('Convertendo HTML para PDF...');
+    const pdfResponse = await fetch('https://chrome-api.browserless.io/pdf', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      },
+      body: JSON.stringify({
+        html: html,
+        options: {
+          format: 'A4',
+          printBackground: true,
+          margin: {
+            top: '1cm',
+            right: '1cm', 
+            bottom: '1cm',
+            left: '1cm'
+          },
+          displayHeaderFooter: false,
+          preferCSSPageSize: true
+        }
+      })
+    });
+
+    if (!pdfResponse.ok) {
+      console.error('Erro na conversão PDF:', pdfResponse.statusText);
+      // Fallback para HTML se PDF falhar
+      return new Response(JSON.stringify({ html, examTitle: exam.title, version }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const pdfBuffer = await pdfResponse.arrayBuffer();
+    console.log('PDF gerado com sucesso, tamanho:', pdfBuffer.byteLength, 'bytes');
+
+    // 5. Retorna o PDF
+    return new Response(pdfBuffer, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${exam.title}-v${version}.pdf"`,
+        'Content-Length': pdfBuffer.byteLength.toString()
+      },
     });
 
   } catch (error) {
