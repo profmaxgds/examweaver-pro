@@ -76,7 +76,7 @@ function EditExamPageContent() {
 
   const proceedWithPdfGeneration = () => {
     if (pdfParams) {
-        previewExam(pdfParams.version, pdfParams.includeAnswers);
+        previewExam(pdfParams.version);
     }
   };
 
@@ -175,9 +175,17 @@ export default function EditExamPage() {
       if (examError || !exam) throw new Error('Prova não encontrada');
       if (allQsError) throw allQsError;
       
-      setAllQuestions(allQs || []);
+      setAllQuestions((allQs || []).map(q => ({
+        ...q,
+        options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : null)
+      })));
 
-      const selectedQs = allQs?.filter(q => exam.question_ids.includes(q.id)) || [];
+      const selectedQs = (allQs || [])
+        .filter(q => exam.question_ids.includes(q.id))
+        .map(q => ({
+          ...q,
+          options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : null)
+        }));
 
       setExamData({
         id: exam.id,
@@ -457,7 +465,7 @@ export default function EditExamPage() {
                 correctAnswer: editQuestion.correct_answer,
                 category: editQuestion.category || '',
                 subject: editQuestion.subject,
-                institution: editQuestion.institution || '',
+                institution: '',
                 difficulty: editQuestion.difficulty as 'easy' | 'medium' | 'hard' | 'custom',
                 tags: editQuestion.tags || [],
                 points: editQuestion.points,
