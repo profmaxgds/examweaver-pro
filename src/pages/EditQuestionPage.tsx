@@ -1,10 +1,14 @@
+// src/pages/EditQuestionPage.tsx
+
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { QuestionEditor } from '@/components/QuestionEditor';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft } from 'lucide-react';
 
 // Reutilizamos a interface do QuestionEditor
 interface Option {
@@ -100,7 +104,7 @@ export default function EditQuestionPage() {
         title: questionData.title,
         content: questionData.content,
         type: questionData.type,
-        options: questionData.type === 'multiple_choice' ? questionData.options : null,
+        options: questionData.type === 'multiple_choice' ? questionData.options.map(({ id, text }) => ({ id, text })) : null,
         correct_answer: questionData.type === 'multiple_choice'
           ? questionData.options.filter(opt => opt.isCorrect).map(opt => opt.id)
           : questionData.correctAnswer,
@@ -125,7 +129,7 @@ export default function EditQuestionPage() {
         description: "Questão atualizada com sucesso.",
       });
 
-      navigate('/questions');
+      // Permanece na página de edição após salvar
     } catch (error) {
       console.error('Erro ao atualizar questão:', error);
       toast({
@@ -138,22 +142,39 @@ export default function EditQuestionPage() {
     }
   };
 
-  if (loading || !initialData) {
-    return (
-      <div className="max-w-6xl mx-auto p-6 space-y-6">
-        <Skeleton className="h-10 w-48" />
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-6">
-            <Skeleton className="h-64 w-full" />
-            <Skeleton className="h-64 w-full" />
-          </div>
-          <div className="space-y-6">
-            <Skeleton className="h-96 w-full" />
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="border-b bg-card sticky top-0 z-10">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center space-x-4">
+            <Link to="/questions">
+              <Button variant="ghost" size="sm">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Voltar
+              </Button>
+            </Link>
+            <h1 className="text-2xl font-bold">Editar Questão</h1>
           </div>
         </div>
-      </div>
-    );
-  }
-
-  return <QuestionEditor onSave={handleUpdate} initialData={initialData as any} loading={loading} />;
+      </header>
+      <main className="container mx-auto px-4 py-8">
+        {loading || !initialData ? (
+          <div className="space-y-6">
+            <Skeleton className="h-10 w-1/3" />
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-2 space-y-6">
+                <Skeleton className="h-64 w-full" />
+                <Skeleton className="h-64 w-full" />
+              </div>
+              <div className="space-y-6">
+                <Skeleton className="h-96 w-full" />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <QuestionEditor onSave={handleUpdate} initialData={initialData as any} loading={loading} />
+        )}
+      </main>
+    </div>
+  );
 }
