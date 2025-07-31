@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Search, Eye, Edit } from 'lucide-react';
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 
 const getTypeLabel = (type: string) => ({
   'multiple_choice': 'Múltipla Escolha', 'true_false': 'V/F', 'essay': 'Dissertativa'
@@ -23,6 +24,8 @@ export function QuestionBank() {
   const [filterSubject, setFilterSubject] = useState('');
   const [filterDifficulty, setFilterDifficulty] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   const subjects = [...new Set(allQuestions.map(q => q.subject))].filter(Boolean);
   const difficulties = ['easy', 'medium', 'hard', 'custom'];
@@ -41,12 +44,19 @@ export function QuestionBank() {
     if (filterType) filtered = filtered.filter(q => q.type === filterType);
     
     setFilteredQuestions(filtered);
+    setCurrentPage(1); // Reseta a paginação ao mudar os filtros
   }, [allQuestions, searchTerm, filterSubject, filterDifficulty, filterType]);
+
+  const pageCount = Math.ceil(filteredQuestions.length / ITEMS_PER_PAGE);
+  const paginatedQuestions = filteredQuestions.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Banco de Questões</CardTitle>
+        <CardTitle>Banco de Questões ({filteredQuestions.length})</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
@@ -82,8 +92,8 @@ export function QuestionBank() {
           </Select>
         </div>
 
-        <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-          {filteredQuestions.map((question) => {
+        <div className="space-y-3 h-[22rem] overflow-y-auto pr-2">
+          {paginatedQuestions.map((question) => {
             const isSelected = examData?.selectedQuestions.some(q => q.id === question.id);
             return (
               <div
@@ -115,6 +125,30 @@ export function QuestionBank() {
             );
           })}
         </div>
+
+        {pageCount > 1 && (
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); setCurrentPage(p => Math.max(p - 1, 1)); }}
+                  className={currentPage === 1 ? 'pointer-events-none opacity-50' : ''}
+                />
+              </PaginationItem>
+               <PaginationItem>
+                 <span className="text-sm p-2">{currentPage} de {pageCount}</span>
+               </PaginationItem>
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); setCurrentPage(p => Math.min(p + 1, pageCount)); }}
+                  className={currentPage === pageCount ? 'pointer-events-none opacity-50' : ''}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        )}
       </CardContent>
     </Card>
   );

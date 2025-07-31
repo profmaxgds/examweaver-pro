@@ -11,7 +11,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { QuestionEditor } from '@/components/QuestionEditor';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
-import { ExamEditorContext, useExamEditor } from '@/components/exam-editor/ExamEditorContext'; 
+import { ExamEditorContext, useExamEditor } from '@/components/exam-editor/ExamEditorContext';
 import { QuestionBank } from '@/components/exam-editor/QuestionBank';
 import { SelectedQuestionsList } from '@/components/exam-editor/SelectedQuestionsList';
 import { ExamSettingsPanel } from '@/components/exam-editor/ExamSettingsPanel';
@@ -157,59 +157,74 @@ export default function EditExamPage() {
   const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
   const [editQuestion, setEditQuestion] = useState<Question | null>(null);
 
-   useEffect(() => {
-    if (id && user) {
-      fetchExamAndQuestions();
-    }
-  }, [id, user]);
-
   const fetchExamAndQuestions = async () => {
     if (!id || !user) return;
-    setLoading(true);
+    // Não seta o loading aqui para a atualização em segundo plano ser mais suave
     try {
       const examPromise = supabase.from('exams').select('*').eq('id', id).eq('author_id', user.id).single();
       const allQuestionsPromise = supabase.from('questions').select('*').eq('author_id', user.id).order('created_at', { ascending: false });
 
       const [{ data: exam, error: examError }, { data: allQs, error: allQsError }] = await Promise.all([examPromise, allQuestionsPromise]);
 
-      if (examError || !exam) throw new Error('Prova não encontrada');
+      if (examError || !exam) {
+        toast({ title: "Erro", description: "Prova não encontrada ou você não tem permissão para acessá-la.", variant: "destructive" });
+        navigate('/exams');
+        throw new Error('Prova não encontrada');
+      };
       if (allQsError) throw allQsError;
       
-      setAllQuestions((allQs || []).map(q => ({
+      const currentQuestions = (allQs || []).map(q => ({
         ...q,
         options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : null)
-      })));
+      }));
+      setAllQuestions(currentQuestions);
 
-      const selectedQs = (allQs || [])
-        .filter(q => exam.question_ids.includes(q.id))
-        .map(q => ({
-          ...q,
-          options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : null)
-        }));
+      const selectedQs = currentQuestions
+        .filter(q => exam.question_ids.includes(q.id));
 
-      setExamData({
-        id: exam.id,
-        title: exam.title,
-        subject: exam.subject,
-        institution: exam.institution || '',
-        examDate: exam.exam_date ? new Date(exam.exam_date).toISOString().split('T')[0] : '',
-        selectedQuestions: selectedQs,
-        shuffleQuestions: exam.shuffle_questions || false,
-        shuffleOptions: exam.shuffle_options || false,
-        versions: exam.versions || 1,
-        layout: exam.layout || 'single_column',
-        header_id: exam.header_id,
-        qr_enabled: exam.qr_enabled !== false,
-        time_limit: exam.time_limit
-      });
+      // Apenas atualiza o examData se ele ainda não foi carregado
+      if (!examData) {
+        setExamData({
+          id: exam.id,
+          title: exam.title,
+          subject: exam.subject,
+          institution: exam.institution || '',
+          examDate: exam.exam_date ? new Date(exam.exam_date).toISOString().split('T')[0] : '',
+          selectedQuestions: selectedQs,
+          shuffleQuestions: exam.shuffle_questions || false,
+          shuffleOptions: exam.shuffle_options || false,
+          versions: exam.versions || 1,
+          layout: exam.layout || 'single_column',
+          header_id: exam.header_id,
+          qr_enabled: exam.qr_enabled !== false,
+          time_limit: exam.time_limit
+        });
+      }
+
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
-      toast({ title: "Erro", description: "Não foi possível carregar os dados da prova.", variant: "destructive" });
-      navigate('/exams');
     } finally {
       setLoading(false);
     }
   };
+
+  // Efeito para buscar os dados na primeira vez e ao re-focar a janela
+  useEffect(() => {
+    if (id && user) {
+        fetchExamAndQuestions();
+
+        const handleFocus = () => {
+            console.log("Janela focada, atualizando questões...");
+            fetchExamAndQuestions();
+        };
+
+        window.addEventListener('focus', handleFocus);
+
+        return () => {
+            window.removeEventListener('focus', handleFocus);
+        };
+    }
+  }, [id, user]);
 
   const handleSave = async () => {
     if (!examData) return;
@@ -256,17 +271,25 @@ export default function EditExamPage() {
     }
   };
 
-  const generateAndDownloadFile = (htmlContent: string, filename: string) => {
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const openPrintDialog = (htmlContent: string) => {
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    } else {
+      toast({
+        title: "Erro",
+        description: "Não foi possível abrir a janela de impressão. Verifique as configurações de pop-up do seu navegador.",
+        variant: "destructive",
+      });
+    }
   };
+
 
   const generatePDF = async (version: number = 1, includeAnswers: boolean = false) => {
     if (!examData) return;
@@ -283,14 +306,12 @@ export default function EditExamPage() {
 
       if (error) throw error;
 
-      const { html, examTitle } = data;
-      const filename = `${examTitle.replace(/\s+/g, '_')}_v${version}${includeAnswers ? '_gabarito' : ''}.html`;
-      
-      generateAndDownloadFile(html, filename);
+      const { html } = data;
+      openPrintDialog(html);
 
       toast({
         title: "Sucesso!",
-        description: `Arquivo da Versão ${version} ${includeAnswers ? 'com gabarito' : 'da prova'} gerado com sucesso.`,
+        description: `Arquivo da Versão ${version} ${includeAnswers ? 'com gabarito' : 'da prova'} pronto para salvar como PDF.`,
       });
 
     } catch (error: any) {
@@ -313,7 +334,7 @@ export default function EditExamPage() {
         await generatePDF(version, false);
         await generatePDF(version, true);
       }
-      toast({ title: "Sucesso!", description: "Todos os arquivos foram gerados com sucesso." });
+      toast({ title: "Sucesso!", description: "Todos os arquivos foram gerados." });
     } catch (error) {
       toast({ title: "Erro", description: "Não foi possível gerar todos os arquivos.", variant: "destructive" });
     } finally {

@@ -1,3 +1,5 @@
+// src/pages/Dashboard.tsx
+
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -5,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, Image as ImageIcon } from 'lucide-react';
+import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, Image as ImageIcon, Users } from 'lucide-react'; // <-- Ícone 'Users' importado
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface DashboardStats {
@@ -35,7 +37,6 @@ export default function Dashboard() {
           supabase.from('questions').select('id', { count: 'exact', head: true }).eq('author_id', user.id),
           supabase.from('exams').select('id', { count: 'exact', head: true }).eq('author_id', user.id),
           supabase.from('corrections').select('id', { count: 'exact', head: true }),
-          // CORREÇÃO: Usar .maybeSingle() para não dar erro se não houver provas
           supabase.from('exams').select('id, title, subject').eq('author_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
         ]);
 
@@ -104,7 +105,10 @@ export default function Dashboard() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Link to="/questions/new"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><PlusCircle /> Nova Questão</CardTitle></CardHeader><CardContent><CardDescription>Adicionar uma nova questão ao seu banco de dados.</CardDescription></CardContent></Card></Link>
             <Link to="/exams/new"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><FileText /> Nova Prova</CardTitle></CardHeader><CardContent><CardDescription>Montar uma nova prova usando suas questões.</CardDescription></CardContent></Card></Link>
-            <Link to="/headers"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><ClipboardList /> Gerenciar Cabeçalhos</CardTitle></CardHeader><CardContent><CardDescription>Criar e editar cabeçalhos personalizados.</CardDescription></CardContent></Card></Link>
+            
+            {/* NOVO CARD ADICIONADO AQUI */}
+            <Link to="/students"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><Users /> Gerenciar Alunos</CardTitle></CardHeader><CardContent><CardDescription>Adicionar e editar alunos, turmas e instituições.</CardDescription></CardContent></Card></Link>
+
             <Link to="/corrections"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><Upload /> Corrigir Provas</CardTitle></CardHeader><CardContent><CardDescription>Escanear e corrigir provas automaticamente.</CardDescription></CardContent></Card></Link>
           </div>
 
