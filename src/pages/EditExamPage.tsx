@@ -9,10 +9,9 @@ import { Link } from 'react-router-dom';
 import { CorrectionScanner } from '@/components/CorrectionScanner';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { QuestionEditor } from '@/components/QuestionEditor';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
-
-import { ExamEditorContext, useExamEditor } from '@/components/exam-editor/ExamEditorContext';
+import { ExamEditorContext, useExamEditor } from '@/components/exam-editor/ExamEditorContext'; 
 import { QuestionBank } from '@/components/exam-editor/QuestionBank';
 import { SelectedQuestionsList } from '@/components/exam-editor/SelectedQuestionsList';
 import { ExamSettingsPanel } from '@/components/exam-editor/ExamSettingsPanel';
@@ -89,7 +88,7 @@ function EditExamPageContent() {
             <AlertDialogHeader>
             <AlertDialogTitle>Nenhum Cabeçalho Selecionado</AlertDialogTitle>
             <AlertDialogDescription>
-                Sua prova será gerada com um cabeçalho padrão contendo o título e a matéria. Deseja continuar?
+                Sua prova será gerada com um cabeçalho padrão. Deseja continuar?
             </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -168,7 +167,6 @@ export default function EditExamPage() {
     if (!id || !user) return;
     setLoading(true);
     try {
-      // **CORRIGIDO:** Busca sem o join problemático. A busca do header será feita na função.
       const examPromise = supabase.from('exams').select('*').eq('id', id).eq('author_id', user.id).single();
       const allQuestionsPromise = supabase.from('questions').select('*').eq('author_id', user.id).order('created_at', { ascending: false });
 

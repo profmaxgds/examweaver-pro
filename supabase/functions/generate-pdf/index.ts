@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Função auxiliar para embaralhar arrays (mantida)
+// Função auxiliar para embaralhar arrays
 function shuffleArray<T>(array: T[], seed: number): T[] {
     const arr = [...array];
     let m = arr.length;
@@ -22,9 +22,8 @@ function shuffleArray<T>(array: T[], seed: number): T[] {
     return arr;
 }
 
-// **NOVO:** Função para gerar o HTML da prova (reformulada)
-function generateExamHTML(exam: any, questions: any[], version: number, includeAnswers: boolean): string {
-    const header = exam.exam_headers; // Pode ser null
+// Função para gerar o HTML da prova
+function generateExamHTML(exam: any, header: any, questions: any[], version: number, includeAnswers: boolean): string {
     const isDoubleColumn = exam.layout === 'double_column';
 
     const styles = `
@@ -47,8 +46,6 @@ function generateExamHTML(exam: any, questions: any[], version: number, includeA
         .option { margin-bottom: 6px; display: flex; align-items: flex-start; }
         .option-letter { font-weight: bold; margin-right: 8px; }
         .correct-answer { background-color: #d4edda; border-radius: 4px; padding: 2px 5px; }
-        .base-text-block { background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 15px; margin-bottom: 20px; border-radius: 5px; font-size: 11pt; }
-        .base-text-block h4 { margin-top: 0; }
     `;
 
     return `
@@ -114,19 +111,30 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
     
-    // **CORRIGIDO:** A consulta agora busca o cabeçalho como uma relação opcional.
+    // **CORREÇÃO DEFINITIVA:**
+    // Passo 1: Buscar a prova.
     const { data: exam, error: examError } = await supabase
       .from('exams')
-      .select(`
-        *,
-        exam_headers(*)
-      `)
+      .select(`*`)
       .eq('id', examId)
       .single();
 
     if (examError) throw examError;
     if (!exam) throw new Error('Prova não encontrada');
 
+    // Passo 2: Buscar o cabeçalho separadamente, SE existir um header_id.
+    let header = null;
+    if (exam.header_id) {
+        const { data: headerData, error: headerError } = await supabase
+            .from('exam_headers')
+            .select('*')
+            .eq('id', exam.header_id)
+            .single();
+        if (headerError) console.error("Erro ao buscar cabeçalho:", headerError.message);
+        else header = headerData;
+    }
+
+    // Passo 3: Buscar as questões.
     const { data: questions, error: questionsError } = await supabase
       .from('questions')
       .select('*')
@@ -146,7 +154,7 @@ serve(async (req) => {
         }));
     }
 
-    const html = generateExamHTML(exam, orderedQuestions, version, includeAnswers);
+    const html = generateExamHTML(exam, header, orderedQuestions, version, includeAnswers);
 
     return new Response(JSON.stringify({ html, examTitle: exam.title, version }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
