@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Editor } from '@tinymce/tinymce-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth'; // <-- ADICIONADO
 
 interface Option {
   id: string;
@@ -41,6 +42,7 @@ interface QuestionEditorProps {
 }
 
 export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorProps) {
+  const { user } = useAuth(); // <-- ADICIONADO
   const [activeTab, setActiveTab] = useState('editor');
   const [question, setQuestion] = useState<QuestionData>({
     title: initialData?.title || '',
@@ -156,8 +158,19 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
   };
 
   const handleImageUpload = async (blobInfo: any): Promise<string> => {
+    // MODIFICAÇÃO INICIA AQUI
+    if (!user) {
+      toast({
+          title: "Erro de Autenticação",
+          description: "Você precisa estar logado para enviar imagens.",
+          variant: "destructive",
+      });
+      throw new Error("Usuário não autenticado");
+    }
+
     const file = blobInfo.blob();
-    const fileName = `${Date.now()}-${blobInfo.filename()}`;
+    const fileName = `${user.id}/${Date.now()}-${blobInfo.filename()}`;
+    // MODIFICAÇÃO TERMINA AQUI
     
     try {
       const { data, error } = await supabase.storage

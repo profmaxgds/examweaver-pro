@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Search, Plus, Edit, Copy, Trash2, ArrowLeft } from 'lucide-react';
+import { Search, Plus, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ActionButtons } from '@/components/ActionButtons'; // <-- Importado
 
 interface Question {
   id: string;
@@ -63,8 +64,6 @@ export default function QuestionsPage() {
   };
 
   const deleteQuestion = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir esta questão?')) return;
-
     try {
       const { error } = await supabase
         .from('questions')
@@ -89,7 +88,6 @@ export default function QuestionsPage() {
   };
 
   const filteredQuestions = questions.filter(question => {
-    // A lógica de filtragem continua a mesma
     const contentText = typeof question.content === 'string' ? question.content.replace(/<[^>]*>/g, '') : '';
     const matchesSearch = question.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          contentText.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -124,15 +122,12 @@ export default function QuestionsPage() {
     return labels[difficulty] || difficulty;
   };
 
-  // ===== FUNÇÃO ADICIONADA PARA GERAR O PREVIEW DO TEXTO =====
   const createPreview = (htmlContent: string | null) => {
     if (!htmlContent) return 'Questão sem enunciado...';
     
-    // Usa o parser do navegador para converter HTML em texto de forma segura
     const doc = new DOMParser().parseFromString(htmlContent, 'text/html');
     const text = doc.body.textContent || "";
 
-    // Limita o texto a 150 caracteres para o preview
     if (text.length > 150) {
       return text.substring(0, 150) + '...';
     }
@@ -164,7 +159,6 @@ export default function QuestionsPage() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        {/* Filtros */}
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Filtros</CardTitle>
@@ -236,7 +230,6 @@ export default function QuestionsPage() {
           </CardContent>
         </Card>
 
-        {/* Lista de Questões */}
         {loading ? (
           <div className="text-center py-8">
             <p>Carregando questões...</p>
@@ -266,7 +259,6 @@ export default function QuestionsPage() {
                   <div className="flex justify-between items-start mb-4">
                     <div className="flex-1">
                       <h3 className="text-lg font-semibold mb-2">{question.title}</h3>
-                      {/* ===== CÓDIGO ALTERADO AQUI ===== */}
                       <div className="text-sm text-muted-foreground mb-3 line-clamp-2">
                         {createPreview(question.content)}
                       </div>
@@ -285,22 +277,14 @@ export default function QuestionsPage() {
                         ))}
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2 ml-4">
-                      <Link to={`/questions/${question.id}/edit`}>
-                        <Button variant="outline" size="sm">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                      </Link>
-                      <Button variant="outline" size="sm">
-                        <Copy className="w-4 h-4" />
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => deleteQuestion(question.id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                    <div className="ml-4">
+                      {/* REFATORADO AQUI */}
+                      <ActionButtons 
+                        entityName="questão"
+                        onEdit={() => navigate(`/questions/${question.id}/edit`)}
+                        onDelete={() => deleteQuestion(question.id)}
+                        onCopy={() => alert('Função duplicar não implementada.')} // Exemplo
+                      />
                     </div>
                   </div>
                   <Separator />

@@ -9,8 +9,10 @@ import { Link } from 'react-router-dom';
 import { CorrectionScanner } from '@/components/CorrectionScanner';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { QuestionEditor } from '@/components/QuestionEditor';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
-import { ExamEditorContext } from '@/components/exam-editor/ExamEditorContext';
+
+import { ExamEditorContext, useExamEditor } from '@/components/exam-editor/ExamEditorContext';
 import { QuestionBank } from '@/components/exam-editor/QuestionBank';
 import { SelectedQuestionsList } from '@/components/exam-editor/SelectedQuestionsList';
 import { ExamSettingsPanel } from '@/components/exam-editor/ExamSettingsPanel';
@@ -61,9 +63,42 @@ function EditExamPanel() {
 function EditExamPageContent() {
   const { examData, handleSave, previewExam, loading, toast } = useExamEditor();
   const [activeTab, setActiveTab] = useState('edit');
+  const [headerAlertOpen, setHeaderAlertOpen] = useState(false);
+  const [pdfParams, setPdfParams] = useState<{version: number, includeAnswers: boolean} | null>(null);
+  
+  const handlePreviewClick = () => {
+    if (!examData?.header_id) {
+        setPdfParams({ version: 1, includeAnswers: false });
+        setHeaderAlertOpen(true);
+    } else {
+        previewExam(1);
+    }
+  };
+
+  const proceedWithPdfGeneration = () => {
+    if (pdfParams) {
+        previewExam(pdfParams.version, pdfParams.includeAnswers);
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-background">
+      <AlertDialog open={headerAlertOpen} onOpenChange={setHeaderAlertOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>Nenhum Cabeçalho Selecionado</AlertDialogTitle>
+            <AlertDialogDescription>
+                Sua prova será gerada com um cabeçalho padrão contendo o título e a matéria. Deseja continuar?
+            </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setActiveTab('edit')}>Cancelar e Editar</AlertDialogCancel>
+            <AlertDialogAction onClick={proceedWithPdfGeneration}>Continuar</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -76,7 +111,7 @@ function EditExamPageContent() {
              <div className="flex space-x-2">
               {activeTab === 'edit' && (
                 <>
-                  <Button variant="outline" onClick={() => previewExam(1)} disabled={loading}>
+                  <Button variant="outline" onClick={handlePreviewClick} disabled={loading}>
                     <Eye className="w-4 h-4 mr-2" />
                     Visualizar Prova
                   </Button>
@@ -133,7 +168,8 @@ export default function EditExamPage() {
     if (!id || !user) return;
     setLoading(true);
     try {
-      const examPromise = supabase.from('exams').select('*, exam_headers(*)').eq('id', id).eq('author_id', user.id).single();
+      // **CORRIGIDO:** Busca sem o join problemático. A busca do header será feita na função.
+      const examPromise = supabase.from('exams').select('*').eq('id', id).eq('author_id', user.id).single();
       const allQuestionsPromise = supabase.from('questions').select('*').eq('author_id', user.id).order('created_at', { ascending: false });
 
       const [{ data: exam, error: examError }, { data: allQs, error: allQsError }] = await Promise.all([examPromise, allQuestionsPromise]);
@@ -178,7 +214,6 @@ export default function EditExamPage() {
       const updateData = {
         title: examData.title,
         subject: examData.subject,
-        institution: examData.institution || null,
         exam_date: examData.examDate ? new Date(examData.examDate).toISOString() : null,
         question_ids: examData.selectedQuestions.map(q => q.id),
         total_points: totalPoints,
@@ -203,11 +238,11 @@ export default function EditExamPage() {
         description: "Prova atualizada com sucesso.",
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao atualizar prova:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível atualizar a prova.",
+        description: `Não foi possível atualizar a prova: ${error.message}`,
         variant: "destructive",
       });
     } finally {
@@ -252,11 +287,11 @@ export default function EditExamPage() {
         description: `Arquivo da Versão ${version} ${includeAnswers ? 'com gabarito' : 'da prova'} gerado com sucesso.`,
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao gerar arquivo:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível gerar o arquivo da prova.",
+        description: `Não foi possível gerar o arquivo da prova: ${error.message}`,
         variant: "destructive",
       });
     } finally {
@@ -280,12 +315,12 @@ export default function EditExamPage() {
     }
   };
 
-  const previewExam = async (version: number = 1) => {
+  const previewExam = async (version: number = 1, includeAnswers: boolean = false) => {
     if (!examData) return;
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('generate-pdf', {
-        body: { examId: examData.id, version, includeAnswers: false }
+        body: { examId: examData.id, version, includeAnswers }
       });
       if (error) throw error;
       const { html } = data;
@@ -294,8 +329,8 @@ export default function EditExamPage() {
         printWindow.document.write(html);
         printWindow.document.close();
       }
-    } catch (error) {
-      toast({ title: "Erro", description: "Não foi possível gerar a visualização da prova.", variant: "destructive" });
+    } catch (error: any) {
+      toast({ title: "Erro", description: `Não foi possível gerar a visualização da prova: ${error.message}`, variant: "destructive" });
     } finally {
       setLoading(false);
     }
