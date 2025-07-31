@@ -17,28 +17,39 @@ serve(async (req) => {
   }
 
   try {
+    console.log('Iniciando geração de PDF...');
     const { examId, version = 1, includeAnswers = false } = await req.json();
+    console.log('Parâmetros recebidos:', { examId, version, includeAnswers });
 
     if (!examId) {
       throw new Error("O ID da prova é obrigatório.");
     }
 
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    console.log('URLs Supabase:', { url: supabaseUrl ? 'definida' : 'não definida', key: supabaseKey ? 'definida' : 'não definida' });
+
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      supabaseUrl ?? '',
+      supabaseKey ?? ''
     );
     
     // 1. Busca os dados usando o módulo separado
+    console.log('Buscando dados do exame...');
     const { exam, questions } = await fetchExamData(supabase, examId);
 
     // 2. Prepara os dados (ordenação e embaralhamento)
+    console.log('Preparando questões para versão:', version);
     const originalOrderMap = new Map(exam.question_ids.map((id: string, index: number) => [id, index]));
     let processedQuestions = [...questions].sort((a, b) => (originalOrderMap.get(a.id) ?? Infinity) - (originalOrderMap.get(b.id) ?? Infinity));
 
     if (exam.shuffle_questions && version > 1) {
+        console.log('Embaralhando questões...');
         processedQuestions = shuffleArray(processedQuestions, version);
     }
     if (exam.shuffle_options && version > 1) {
+        console.log('Embaralhando opções...');
         processedQuestions = processedQuestions.map(q => ({
             ...q,
             options: q.options && Array.isArray(q.options)
@@ -48,7 +59,9 @@ serve(async (req) => {
     }
 
     // 3. Gera o HTML usando o módulo de layout
+    console.log('Gerando HTML da prova...');
     const html = generateExamHTML(exam, processedQuestions, version, includeAnswers);
+    console.log('HTML gerado com sucesso, tamanho:', html.length, 'caracteres');
 
     // 4. Retorna a resposta
     return new Response(JSON.stringify({ html, examTitle: exam.title, version }), {
