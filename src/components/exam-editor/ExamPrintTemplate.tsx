@@ -1,5 +1,7 @@
 import QRCode from 'qrcode';
 import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 // Interfaces para os dados da prova
 interface Question {
@@ -41,7 +43,32 @@ interface ExamPrintTemplateProps {
 
 // Componente React que renderiza o HTML da Prova
 export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: ExamPrintTemplateProps) {
+  const { user } = useAuth();
   const [qrCodeUrl, setQrCodeUrl] = useState('');
+  const [professorName, setProfessorName] = useState<string>('');
+
+  // Buscar nome do professor do perfil
+  useEffect(() => {
+    const fetchProfessorName = async () => {
+      if (user) {
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('name')
+            .eq('user_id', user.id)
+            .single();
+          
+          if (profile?.name) {
+            setProfessorName(profile.name);
+          }
+        } catch (error) {
+          console.error('Erro ao buscar perfil:', error);
+        }
+      }
+    };
+    
+    fetchProfessorName();
+  }, [user]);
 
   // Gera o QR Code dinamicamente no cliente
   useEffect(() => {
@@ -72,31 +99,76 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
   // Função para gerar o gabarito de bolhas com âncoras
   const generateAnswerGrid = () => {
     const multipleChoiceQuestions = questions.filter(q => q.type === 'multiple_choice');
-    if (multipleChoiceQuestions.length === 0) return '';
+    const trueFalseQuestions = questions.filter(q => q.type === 'true_false');
+    const essayQuestions = questions.filter(q => q.type === 'essay');
     
     let grid = `<div class="answer-grid-container">`;
-    grid += `<div class="answer-grid-header">Marque o gabarito preenchendo completamente a região de cada alternativa.</div>`;
-    grid += `<div class="answer-options-header">${['a', 'b', 'c', 'd', 'e'].map(l => `<span>${l}</span>`).join('')}</div>`;
+    grid += `<div class="answer-grid-header">Marque o gabarito preenchendo completamente a região correspondente.</div>`;
     
-    // Área com âncoras apenas ao redor das bolinhas
-    grid += `<div class="bubbles-detection-area">`;
-    grid += `<div class="detection-anchor detection-top-left"></div>`;
-    grid += `<div class="detection-anchor detection-top-right"></div>`;
+    // Seção de questões múltipla escolha
+    if (multipleChoiceQuestions.length > 0) {
+      grid += `<div class="section-header">QUESTÕES DE MÚLTIPLA ESCOLHA</div>`;
+      grid += `<div class="answer-options-header">${['a', 'b', 'c', 'd', 'e'].map(l => `<span>${l}</span>`).join('')}</div>`;
+      
+      grid += `<div class="bubbles-detection-area">`;
+      grid += `<div class="detection-anchor detection-top-left"></div>`;
+      grid += `<div class="detection-anchor detection-top-right"></div>`;
+      
+      multipleChoiceQuestions.forEach((_, index) => {
+          const questionNumber = index + 1;
+          grid += `
+          <div class="answer-row">
+              <span class="q-number">Q.${questionNumber}:</span>
+              <div class="options-bubbles">
+                  ${Array(5).fill(0).map(() => `<div class="bubble-outer"><div class="bubble-inner"></div></div>`).join('')}
+              </div>
+          </div>`;
+      });
+      
+      grid += `<div class="detection-anchor detection-bottom-left"></div>`;
+      grid += `<div class="detection-anchor detection-bottom-right"></div>`;
+      grid += `</div>`;
+    }
     
-    multipleChoiceQuestions.forEach((_, index) => {
-        const questionNumber = index + 1;
-        grid += `
-        <div class="answer-row">
-            <span class="q-number">Q.${questionNumber}:</span>
-            <div class="options-bubbles">
-                ${Array(5).fill(0).map(() => `<div class="bubble-outer"><div class="bubble-inner"></div></div>`).join('')}
-            </div>
-        </div>`;
-    });
+    // Seção de questões verdadeiro/falso
+    if (trueFalseQuestions.length > 0) {
+      grid += `<div class="section-header">QUESTÕES VERDADEIRO/FALSO</div>`;
+      grid += `<div class="answer-options-header"><span>V</span><span>F</span></div>`;
+      
+      grid += `<div class="bubbles-detection-area tf-section">`;
+      grid += `<div class="detection-anchor detection-top-left"></div>`;
+      grid += `<div class="detection-anchor detection-top-right"></div>`;
+      
+      trueFalseQuestions.forEach((_, index) => {
+          const questionNumber = multipleChoiceQuestions.length + index + 1;
+          grid += `
+          <div class="answer-row">
+              <span class="q-number">Q.${questionNumber}:</span>
+              <div class="options-bubbles tf-bubbles">
+                  <div class="bubble-outer"><div class="bubble-inner"></div></div>
+                  <div class="bubble-outer"><div class="bubble-inner"></div></div>
+              </div>
+          </div>`;
+      });
+      
+      grid += `<div class="detection-anchor detection-bottom-left"></div>`;
+      grid += `<div class="detection-anchor detection-bottom-right"></div>`;
+      grid += `</div>`;
+    }
     
-    grid += `<div class="detection-anchor detection-bottom-left"></div>`;
-    grid += `<div class="detection-anchor detection-bottom-right"></div>`;
-    grid += `</div>`;
+    // Seção de questões abertas
+    if (essayQuestions.length > 0) {
+      grid += `<div class="section-header">QUESTÕES ABERTAS</div>`;
+      grid += `<div class="essay-questions-list">`;
+      
+      essayQuestions.forEach((_, index) => {
+          const questionNumber = multipleChoiceQuestions.length + trueFalseQuestions.length + index + 1;
+          grid += `<div class="essay-question-item">Q.${questionNumber}: Questão Aberta</div>`;
+      });
+      
+      grid += `</div>`;
+    }
+    
     grid += `</div>`;
     return grid;
   };
@@ -131,13 +203,17 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
           .detection-bottom-left { bottom: -3px; left: -3px; }
           .detection-bottom-right { bottom: -3px; right: -3px; }
           .answer-grid-header { text-align: center; margin: 10px 0; font-size: 9pt; font-weight: bold; }
+          .section-header { background-color: #f0f0f0; padding: 5px; margin: 10px 0 5px 0; font-size: 10pt; font-weight: bold; text-align: center; border: 1px solid #ccc; }
           .answer-options-header { display: flex; margin-left: 40px; margin-bottom: 8px; gap: 6px; }
           .answer-options-header span { width: 14px; text-align: center; font-size: 9pt; font-weight: bold; }
           .answer-row { display: flex; align-items: center; margin-bottom: 5px; }
           .answer-row .q-number { font-weight: bold; margin-right: 10px; font-size: 10pt; width: 30px; }
           .answer-row .options-bubbles { display: flex; gap: 6px; }
+          .tf-bubbles { gap: 12px; }
           .bubble-outer { width: 14px; height: 14px; border: 2px solid #000; border-radius: 50%; display: flex; justify-content: center; align-items: center; background-color: white; }
           .bubble-inner { width: 6px; height: 6px; border: 1px solid #000; border-radius: 50%; background-color: white; }
+          .essay-questions-list { padding: 10px; background-color: #f9f9f9; border: 1px solid #ddd; margin: 5px 0; }
+          .essay-question-item { font-size: 9pt; margin-bottom: 3px; color: #666; }
           .essay-lines { margin-top: 15px; width: 100%; }
           .essay-line { border-bottom: 1px solid #333; height: 20px; margin-bottom: 3px; width: 100%; min-height: 20px; }
           .instructions { margin-bottom: 25px; text-align: justify; font-size: 10pt; color: #444; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
@@ -170,7 +246,7 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
             </div>
             <div className="info-grid">
                 <div><strong>Disciplina:</strong> {exam.subject}</div>
-                <div><strong>Professor(a):</strong> {header?.content?.professor || '__________________'}</div>
+                <div><strong>Professor(a):</strong> {header?.content?.professor || header?.content?.professorName || professorName || 'Prof. Nome'}</div>
                 <div><strong>Data:</strong> {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString('pt-BR') : '___/___/______'}</div>
                 <div><strong>Valor:</strong> {exam.total_points.toFixed(2)} pontos</div>
             </div>

@@ -12,6 +12,7 @@ import jsQR from 'jsqr';
 import heic2any from 'heic2any';
 import { EssayQuestionCorrection } from '@/components/EssayQuestionCorrection';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { preprocessImage } from '@/utils/imagePreprocessing';
 
 interface QRCodeData {
   examId: string;
@@ -368,9 +369,16 @@ export default function AutoCorrectionPage() {
           const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
           setSelectedFile(file);
           
-          // Criar preview da imagem capturada
-          const previewUrl = URL.createObjectURL(blob);
-          setPreviewImage(previewUrl);
+          // Aplicar preprocessamento para preview
+          try {
+            const processedPreviewUrl = await preprocessImage(file);
+            setPreviewImage(processedPreviewUrl);
+          } catch (error) {
+            console.error('Erro no preprocessamento:', error);
+            // Fallback para preview normal
+            const previewUrl = URL.createObjectURL(blob);
+            setPreviewImage(previewUrl);
+          }
           
           stopCamera();
           
@@ -881,7 +889,14 @@ export default function AutoCorrectionPage() {
         });
       }
 
-      // Criar resultado das questões fechadas
+      // Buscar dados completos da prova do banco
+      const { data: examDetails } = await supabase
+        .from('exams')
+        .select('*')
+        .eq('id', examInfo.examId)
+        .single();
+
+      // Criar resultado das questões fechadas com dados completos da prova
       const closedQuestionsResult = {
         examId: examInfo.examId,
         studentId: examInfo.studentId,
@@ -893,7 +908,15 @@ export default function AutoCorrectionPage() {
         correctAnswers: correctAnswers,
         feedback: feedback,
         hasOpenQuestions: openQuestions.length > 0,
-        openQuestions: openQuestions
+        openQuestions: openQuestions,
+        examInfo: {
+          title: examDetails?.title || examInfo.examTitle || 'Prova',
+          subject: examDetails?.subject || 'Disciplina',
+          date: examDetails?.exam_date ? new Date(examDetails.exam_date).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR'),
+          institution: examDetails?.institutions || 'Instituição',
+          totalPoints: examDetails?.total_points || totalPoints,
+          instructions: examDetails?.instructions
+        }
       };
 
       setCorrectionResult(closedQuestionsResult);
@@ -1257,9 +1280,22 @@ export default function AutoCorrectionPage() {
                       ref={fileInputRef}
                       type="file"
                       accept="image/*,.heic,.pdf"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
-                        if (file) setSelectedFile(file);
+                        if (file) {
+                          setSelectedFile(file);
+                          
+                          // Aplicar preprocessamento para preview
+                          try {
+                            const processedPreviewUrl = await preprocessImage(file);
+                            setPreviewImage(processedPreviewUrl);
+                          } catch (error) {
+                            console.error('Erro no preprocessamento:', error);
+                            // Fallback para preview normal
+                            const previewUrl = URL.createObjectURL(file);
+                            setPreviewImage(previewUrl);
+                          }
+                        }
                       }}
                       className="hidden"
                     />
@@ -1554,6 +1590,20 @@ export default function AutoCorrectionPage() {
                     </div>
                   </div>
                 )}
+                {/* Informações da prova */}
+                {(correctionResult as any).examInfo && (
+                  <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-lg">
+                    <h4 className="font-semibold mb-2">Informações da Prova</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                      <p><strong>Título:</strong> {(correctionResult as any).examInfo.title}</p>
+                      <p><strong>Disciplina:</strong> {(correctionResult as any).examInfo.subject}</p>
+                      <p><strong>Data:</strong> {(correctionResult as any).examInfo.date}</p>
+                      <p><strong>Instituição:</strong> {(correctionResult as any).examInfo.institution}</p>
+                      <p><strong>Total de Pontos:</strong> {(correctionResult as any).examInfo.totalPoints}</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Informações do aluno */}
                 <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
                   <h4 className="font-semibold mb-2">Informações do Aluno</h4>
