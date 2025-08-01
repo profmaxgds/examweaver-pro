@@ -16,6 +16,7 @@ interface CorrectionResult {
   answers: Record<string, string>;
   studentName?: string;
   studentId?: string;
+  processedImageUrl?: string;
 }
 
 export function AutoCorrectionScanner() {
@@ -87,7 +88,8 @@ export function AutoCorrectionScanner() {
         percentage: ocrResult.percentage || 0,
         answers: ocrResult.answers || {},
         studentName: ocrResult.studentName || manualStudentName,
-        studentId: ocrResult.studentId || manualStudentId
+        studentId: ocrResult.studentId || manualStudentId,
+        processedImageUrl: publicUrl
       };
 
       // Salvar correção no banco
@@ -205,6 +207,22 @@ export function AutoCorrectionScanner() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {correctionResult.processedImageUrl && (
+              <div className="bg-muted/50 rounded-lg p-4">
+                <h4 className="font-medium mb-3">Imagem Processada</h4>
+                <div className="flex justify-center">
+                  <img 
+                    src={correctionResult.processedImageUrl} 
+                    alt="Imagem utilizada para detecção das marcações"
+                    className="max-w-full max-h-96 rounded-lg border"
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground text-center mt-2">
+                  Imagem utilizada para detecção das marcações
+                </p>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="text-center p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground">Pontuação</p>

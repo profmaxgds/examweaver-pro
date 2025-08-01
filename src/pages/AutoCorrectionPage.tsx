@@ -835,13 +835,11 @@ export default function AutoCorrectionPage() {
         }
       });
 
-      // Salvar URL da imagem processada
-      if (ocrResult && ocrResult.fileName) {
-        const { data: imageUrl } = supabase.storage
-          .from('correction-scans')
-          .getPublicUrl(ocrResult.fileName);
-        setProcessedImage(imageUrl.publicUrl);
-      }
+      // Obter URL da imagem processada
+      const { data: imageUrl } = supabase.storage
+        .from('correction-scans')
+        .getPublicUrl(fileName);
+      setProcessedImage(imageUrl.publicUrl);
 
       if (ocrError) {
         throw new Error(`Erro na detecção de marcações: ${ocrError.message}`);
