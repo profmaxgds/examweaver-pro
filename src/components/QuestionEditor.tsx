@@ -359,9 +359,32 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
               <CardContent className="space-y-4">
                 <div>
                   <Label htmlFor="type">Tipo de Questão</Label>
-                  <Select value={question.type} onValueChange={(value: any) => setQuestion(prev => ({ ...prev, type: value, correctAnswer: null, options: prev.options.map(o => ({ ...o, isCorrect: false })) }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
+                  <Select 
+                    value={question.type} 
+                    onValueChange={(value: 'multiple_choice' | 'true_false' | 'essay') => {
+                      setQuestion(prev => {
+                        const newQuestion = { ...prev, type: value };
+                        
+                        // Reset correctAnswer based on type
+                        if (value === 'multiple_choice') {
+                          newQuestion.correctAnswer = null;
+                          newQuestion.options = prev.options.map(o => ({ ...o, isCorrect: false }));
+                        } else if (value === 'true_false') {
+                          newQuestion.correctAnswer = null;
+                          newQuestion.options = [];
+                        } else if (value === 'essay') {
+                          newQuestion.correctAnswer = '';
+                          newQuestion.options = [];
+                        }
+                        
+                        return newQuestion;
+                      });
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border z-50">
                       <SelectItem value="multiple_choice">Múltipla Escolha</SelectItem>
                       <SelectItem value="true_false">Verdadeiro/Falso</SelectItem>
                       <SelectItem value="essay">Dissertativa</SelectItem>
@@ -382,9 +405,11 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
                 </div>
                 <div>
                   <Label htmlFor="difficulty">Dificuldade</Label>
-                  <Select value={question.difficulty} onValueChange={(value: any) => setQuestion(prev => ({ ...prev, difficulty: value }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
+                  <Select value={question.difficulty} onValueChange={(value: 'easy' | 'medium' | 'hard' | 'custom') => setQuestion(prev => ({ ...prev, difficulty: value }))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border z-50">
                       <SelectItem value="easy">Fácil</SelectItem>
                       <SelectItem value="medium">Médio</SelectItem>
                       <SelectItem value="hard">Difícil</SelectItem>
