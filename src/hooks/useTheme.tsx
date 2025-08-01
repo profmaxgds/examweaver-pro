@@ -51,18 +51,36 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const root = document.documentElement;
     
-    // Remove all theme classes
-    themes.forEach(t => {
-      root.removeAttribute('data-theme');
-    });
+    // Remove all existing theme attributes
+    root.removeAttribute('data-theme');
     
     // Apply the selected theme
     if (theme !== 'default') {
       root.setAttribute('data-theme', theme);
     }
     
+    // Always save to localStorage
     localStorage.setItem('app-theme', theme);
-  }, [theme, themes]);
+  }, [theme]);
+
+  // Load theme on mount and when user logs in
+  useEffect(() => {
+    const loadSavedTheme = () => {
+      const savedTheme = localStorage.getItem('app-theme') as Theme;
+      if (savedTheme && themes.find(t => t.value === savedTheme)) {
+        setTheme(savedTheme);
+      }
+    };
+
+    loadSavedTheme();
+    
+    // Listen for storage changes (useful for multi-tab scenarios)
+    window.addEventListener('storage', loadSavedTheme);
+    
+    return () => {
+      window.removeEventListener('storage', loadSavedTheme);
+    };
+  }, []);
 
   const value = {
     theme,

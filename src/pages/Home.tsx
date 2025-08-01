@@ -91,19 +91,19 @@ export default function Home() {
             <Link to="/questions">
               <Card className="hover:border-primary transition-colors">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Total de Questões</CardTitle><BookOpen className="h-4 w-4 text-muted-foreground" /></CardHeader>
-                <CardContent><div className="text-2xl font-bold">{loading ? <Skeleton className="h-8 w-12" /> : stats.questions}</div><p className="text-xs text-muted-foreground">No seu banco de questões</p></CardContent>
+                <CardContent><div className="text-2xl font-bold">{loading ? <Skeleton className="h-8 w-12" /> : stats.questions}</div><div className="text-xs text-muted-foreground">No seu banco de questões</div></CardContent>
               </Card>
             </Link>
             <Link to="/exams">
               <Card className="hover:border-primary transition-colors">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Provas Criadas</CardTitle><FileText className="h-4 w-4 text-muted-foreground" /></CardHeader>
-                <CardContent><div className="text-2xl font-bold">{loading ? <Skeleton className="h-8 w-12" /> : stats.exams}</div><p className="text-xs text-muted-foreground">Provas disponíveis</p></CardContent>
+                <CardContent><div className="text-2xl font-bold">{loading ? <Skeleton className="h-8 w-12" /> : stats.exams}</div><div className="text-xs text-muted-foreground">Provas disponíveis</div></CardContent>
               </Card>
             </Link>
             <Link to="/reports">
               <Card className="hover:border-primary transition-colors">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Correções Realizadas</CardTitle><BarChart3 className="h-4 w-4 text-muted-foreground" /></CardHeader>
-                <CardContent><div className="text-2xl font-bold">{loading ? <Skeleton className="h-8 w-12" /> : stats.corrections}</div><p className="text-xs text-muted-foreground">Total de provas corrigidas</p></CardContent>
+                <CardContent><div className="text-2xl font-bold">{loading ? <Skeleton className="h-8 w-12" /> : stats.corrections}</div><div className="text-xs text-muted-foreground">Total de provas corrigidas</div></CardContent>
               </Card>
             </Link>
           </div>
