@@ -77,7 +77,7 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
     let grid = `<div class="answer-grid-container">`;
     grid += `<div class="answer-grid-header">Marque o gabarito preenchendo completamente a região de cada alternativa.</div>`;
     grid += `<div class="answer-options-header">${['a', 'b', 'c', 'd', 'e'].map(l => `<span>${l}</span>`).join('')}</div>`;
-    grid += `<div class="answers-area">`;
+    grid += `<div class="bubbles-area">`;
     grid += `<div class="anchor-corner anchor-top-left"></div>`;
     grid += `<div class="anchor-corner anchor-top-right"></div>`;
     
@@ -122,7 +122,7 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
           .qr-code-section p { font-size: 9pt; text-align: center; margin-top: 5px; }
           .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding: 10px; display: flex; flex-direction: column; position: relative; }
           .answer-grid-container { position: relative; padding: 20px; border: 2px solid #000; margin: 5px; }
-          .answers-area { position: relative; padding: 10px; }
+          .bubbles-area { position: relative; padding: 10px; }
           .anchor-corner { position: absolute; width: 20px; height: 20px; background-color: #000; border: 2px solid #000; }
           .anchor-top-left { top: -2px; left: -2px; }
           .anchor-top-right { top: -2px; right: -2px; }
