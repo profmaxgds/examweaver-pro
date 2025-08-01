@@ -53,6 +53,25 @@ export default function AutoCorrectionPage() {
     };
   }, [cameraStream]);
 
+  // Effect para configurar o vídeo quando useCamera ou cameraStream mudar
+  useEffect(() => {
+    if (useCamera && cameraStream && videoRef.current) {
+      console.log('Configurando stream no vídeo via useEffect...');
+      videoRef.current.srcObject = cameraStream;
+      
+      const playVideo = async () => {
+        try {
+          await videoRef.current?.play();
+          console.log('Vídeo iniciado via useEffect');
+        } catch (error) {
+          console.error('Erro ao reproduzir vídeo via useEffect:', error);
+        }
+      };
+
+      playVideo();
+    }
+  }, [useCamera, cameraStream]);
+
   const startCamera = async () => {
     try {
       // Verificar se getUserMedia está disponível
@@ -78,13 +97,26 @@ export default function AutoCorrectionPage() {
       setCameraStream(stream);
       setUseCamera(true);
       
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        // Garantir que o vídeo seja reproduzido
-        videoRef.current.play().catch(err => {
-          console.error('Erro ao reproduzir vídeo:', err);
-        });
-      }
+      // Aguardar um pouco para garantir que o estado foi atualizado
+      setTimeout(() => {
+        if (videoRef.current) {
+          console.log('Configurando srcObject do vídeo...');
+          videoRef.current.srcObject = stream;
+          
+          // Forçar o play do vídeo
+          videoRef.current.play().then(() => {
+            console.log('Vídeo iniciado com sucesso');
+          }).catch(err => {
+            console.error('Erro ao reproduzir vídeo:', err);
+            // Tentar novamente em caso de erro
+            setTimeout(() => {
+              if (videoRef.current) {
+                videoRef.current.play().catch(e => console.error('Erro no segundo tentativa:', e));
+              }
+            }, 500);
+          });
+        }
+      }, 100);
 
       toast({
         title: "Sucesso!",
