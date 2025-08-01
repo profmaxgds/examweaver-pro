@@ -87,23 +87,26 @@ export default function AutoCorrectionPage() {
     }
   }, [useCamera, cameraStream]);
 
-  // Som de bip para quando detectar QR code
   const playBeep = () => {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.frequency.value = 800; // Frequência agradável
-    oscillator.type = 'sine';
-    
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-    
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.5);
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 1000; // Frequência mais alta e clara
+      oscillator.type = 'square'; // Som mais nítido
+      
+      gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (error) {
+      console.log('Erro ao reproduzir som:', error);
+    }
   };
 
   const startCamera = async () => {
@@ -226,19 +229,19 @@ export default function AutoCorrectionPage() {
     }
   };
 
-  // Função para escaneamento automático contínuo
+  // Função para escaneamento automático contínuo ultra-rápido
   const startAutoScan = () => {
-    if (scanIntervalRef.current) return; // Já está escaneando
+    if (scanIntervalRef.current) return;
     
-    console.log('Iniciando escaneamento automático de QR codes...');
+    console.log('🚀 Iniciando escaneamento ultra-rápido...');
     scanIntervalRef.current = setInterval(() => {
       if (videoRef.current && videoRef.current.readyState >= 2) {
         scanVideoForQR();
       }
-    }, 100); // Escanear muito mais frequentemente (10x por segundo)
+    }, 50); // 20x por segundo para detecção instantânea
   };
 
-  // Função para escanear vídeo em busca de QR code
+  // Função otimizada para escanear vídeo em busca de QR code
   const scanVideoForQR = () => {
     if (!videoRef.current || !canvasRef.current || !isScanning || !cameraStream) return;
 
@@ -248,31 +251,45 @@ export default function AutoCorrectionPage() {
 
     if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
 
-    // Usar resolução menor para escaneamento mais rápido
-    const scanWidth = 640;
-    const scanHeight = 480;
+    // Usar resolução muito pequena para máxima velocidade
+    const scanWidth = 320;
+    const scanHeight = 240;
     
     canvas.width = scanWidth;
     canvas.height = scanHeight;
+    
+    // Desenhar com suavização desabilitada para velocidade
+    context.imageSmoothingEnabled = false;
     context.drawImage(video, 0, 0, scanWidth, scanHeight);
 
     const imageData = context.getImageData(0, 0, scanWidth, scanHeight);
     
-    // Configurações otimizadas para velocidade
-    const code = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: "dontInvert"
-    });
+    // Tentar múltiplas configurações para máxima compatibilidade
+    const configurations = [
+      { inversionAttempts: "dontInvert" as const },
+      { inversionAttempts: "onlyInvert" as const },
+      { inversionAttempts: "attemptBoth" as const }
+    ];
 
-    if (code) {
-      // QR code detectado!
-      console.log('✅ QR code detectado:', code.data);
-      playBeep(); // Som de sucesso
-      setIsScanning(false);
-      if (scanIntervalRef.current) {
-        clearInterval(scanIntervalRef.current);
-        scanIntervalRef.current = null;
+    for (const config of configurations) {
+      try {
+        const code = jsQR(imageData.data, imageData.width, imageData.height, config);
+        
+        if (code && code.data && code.data.trim()) {
+          console.log('✅ QR code detectado instantaneamente:', code.data);
+          playBeep();
+          setIsScanning(false);
+          if (scanIntervalRef.current) {
+            clearInterval(scanIntervalRef.current);
+            scanIntervalRef.current = null;
+          }
+          processQRCodeData(code.data);
+          return; // Sair da função após detecção
+        }
+      } catch (error) {
+        // Continuar para próxima configuração
+        continue;
       }
-      processQRCodeData(code.data);
     }
   };
 
@@ -817,15 +834,17 @@ export default function AutoCorrectionPage() {
                        {isScanning ? (
                          <div className="text-center space-y-2">
                            <div className="inline-flex items-center gap-2 text-green-600">
-                             <div className="animate-pulse w-3 h-3 bg-green-600 rounded-full"></div>
-                             <div className="animate-spin w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full"></div>
-                             <span className="text-sm font-medium">🔍 Escaneando QR Code...</span>
+                             <div className="relative">
+                               <div className="animate-ping absolute w-4 h-4 bg-green-400 rounded-full opacity-75"></div>
+                               <div className="relative w-4 h-4 bg-green-600 rounded-full"></div>
+                             </div>
+                             <span className="text-sm font-bold">⚡ DETECÇÃO INSTANTÂNEA ATIVA</span>
                            </div>
-                           <div className="text-xs text-green-600 mt-1">
-                             Posicione bem próximo à câmera
+                           <div className="text-xs text-green-700 mt-1 font-medium">
+                             Aproxime o QR code da câmera
                            </div>
-                           <Button variant="outline" onClick={stopCamera} size="sm" className="mt-2">
-                             ⏹ Parar Escaneamento
+                           <Button variant="outline" onClick={stopCamera} size="sm" className="mt-2 border-red-300 text-red-600 hover:bg-red-50">
+                             ⏹ Parar
                            </Button>
                          </div>
                        ) : isProcessing ? (
@@ -861,10 +880,10 @@ export default function AutoCorrectionPage() {
               <div className="text-sm text-muted-foreground text-center space-y-1">
                  {step === 'capture' && (
                    <>
-                     <p>🎯 <strong>Etapa 1:</strong> Posicione o QR code bem próximo à câmera</p>
-                     <p>📋 Detecção automática ultra-rápida em tempo real</p>
-                     <p>🔊 Som de "bip" quando detectado com sucesso</p>
-                     <p className="text-xs text-blue-600">💡 Marcadores âncora agora ficam apenas na região do gabarito</p>
+                     <p>⚡ <strong>DETECÇÃO INSTANTÂNEA:</strong> Aproxime o QR code da câmera</p>
+                     <p>🚀 Escaneamento a 20fps para detecção em tempo real</p>
+                     <p>🔊 Som de alerta quando detectado</p>
+                     <p className="text-xs text-blue-600">💡 Múltiplas configurações para máxima compatibilidade</p>
                    </>
                  )}
                 {step === 'qr-detected' && examInfo && (
