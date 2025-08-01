@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      classes: {
+        Row: {
+          author_id: string
+          created_at: string
+          description: string | null
+          id: string
+          institution_header_id: string | null
+          name: string
+          semester: number | null
+          updated_at: string
+          year: number | null
+        }
+        Insert: {
+          author_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          institution_header_id?: string | null
+          name: string
+          semester?: number | null
+          updated_at?: string
+          year?: number | null
+        }
+        Update: {
+          author_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          institution_header_id?: string | null
+          name?: string
+          semester?: number | null
+          updated_at?: string
+          year?: number | null
+        }
+        Relationships: []
+      }
       corrections: {
         Row: {
           answers: Json
@@ -123,7 +159,8 @@ export type Database = {
           header: Json | null
           header_id: string | null
           id: string
-          institution: string | null
+          institutions: string | null
+          instructions: string | null
           layout: string | null
           qr_code_data: string | null
           qr_enabled: boolean | null
@@ -148,7 +185,8 @@ export type Database = {
           header?: Json | null
           header_id?: string | null
           id?: string
-          institution?: string | null
+          institutions?: string | null
+          instructions?: string | null
           layout?: string | null
           qr_code_data?: string | null
           qr_enabled?: boolean | null
@@ -173,7 +211,8 @@ export type Database = {
           header?: Json | null
           header_id?: string | null
           id?: string
-          institution?: string | null
+          institutions?: string | null
+          instructions?: string | null
           layout?: string | null
           qr_code_data?: string | null
           qr_enabled?: boolean | null
@@ -348,6 +387,66 @@ export type Database = {
           type?: string
         }
         Relationships: []
+      }
+      students: {
+        Row: {
+          author_id: string
+          class_id: string | null
+          course: string | null
+          created_at: string
+          email: string | null
+          exam_id: string | null
+          grade: number | null
+          id: string
+          institution_header_id: string | null
+          name: string
+          student_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          class_id?: string | null
+          course?: string | null
+          created_at?: string
+          email?: string | null
+          exam_id?: string | null
+          grade?: number | null
+          id?: string
+          institution_header_id?: string | null
+          name: string
+          student_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          class_id?: string | null
+          course?: string | null
+          created_at?: string
+          email?: string | null
+          exam_id?: string | null
+          grade?: number | null
+          id?: string
+          institution_header_id?: string | null
+          name?: string
+          student_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "students_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "students_exam_id_fkey"
+            columns: ["exam_id"]
+            isOneToOne: false
+            referencedRelation: "exams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
