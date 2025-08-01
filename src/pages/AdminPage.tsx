@@ -90,39 +90,34 @@ export default function AdminPage() {
 
       if (profilesError) throw profilesError;
 
-      // Para cada usuário, buscar créditos reais
-      const usersWithCredits = await Promise.all(
-        profilesData.map(async (profile) => {
-          // Buscar créditos reais usando query SQL
-          const { data: creditsData } = await supabase
-            .from('credit_transactions')
-            .select('amount')
-            .eq('user_id', profile.user_id);
-          
-          const credits = creditsData?.reduce((sum, transaction) => sum + Number(transaction.amount), 0) || 0;
+      // Para cada usuário, usar os créditos do perfil  
+      const currentUser = await supabase.auth.getUser();
+      
+      const usersWithCredits = profilesData.map((profile) => {
+        // Usar créditos do perfil por enquanto
+        const credits = profile.credits || 0;
 
-          // Verificar se é admin (temporário)
-          const isAdminUser = profile.user_id === (await supabase.auth.getUser()).data.user?.id;
-          const isProfessorUser = false; // Temporário
+        // Verificar se é admin (temporário)
+        const isAdminUser = profile.user_id === currentUser.data.user?.id;
+        const isProfessorUser = false; // Temporário
 
-          // Simular roles
-          const roles = [];
-          if (isAdminUser) {
-            roles.push({ id: 'admin', role: 'admin' as const });
-          }
-          if (isProfessorUser) {
-            roles.push({ id: 'professor', role: 'professor' as const });
-          }
+        // Simular roles
+        const roles = [];
+        if (isAdminUser) {
+          roles.push({ id: 'admin', role: 'admin' as const });
+        }
+        if (isProfessorUser) {
+          roles.push({ id: 'professor', role: 'professor' as const });
+        }
 
-          return {
-            ...profile,
-            current_credits: credits || 0,
-            roles,
-            status: 'active' as const, // Temporário até o campo ser adicionado
-            registration_date: profile.created_at
-          };
-        })
-      );
+        return {
+          ...profile,
+          current_credits: credits || 0,
+          roles,
+          status: 'active' as const, // Temporário até o campo ser adicionado
+          registration_date: profile.created_at
+        };
+      });
 
       setUsers(usersWithCredits);
     } catch (error) {
