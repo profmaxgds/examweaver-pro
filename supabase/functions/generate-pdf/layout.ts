@@ -171,7 +171,12 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         <div class="page-container">
             <div class="answer-sheet-container">
                 <div class="qr-code-section">
-                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${studentInfo?.qrId ? `studentExamId:${studentInfo.qrId}` : `examId:${exam.id},version:${version}`}" alt="QR Code" />
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(JSON.stringify({
+                        examId: exam.id,
+                        studentId: studentInfo?.id || 'version-' + version,
+                        version: version,
+                        studentExamId: studentInfo?.qrId || null
+                    }))}" alt="QR Code" />
                     <p>Prova: ${exam.id.split('-')[0]}.${studentInfo?.id || version}</p>
                 </div>
                 <div class="answer-grid-section">${generateAnswerGrid()}</div>

@@ -45,7 +45,14 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
   useEffect(() => {
     const generateQRCode = async () => {
       try {
-        const url = await QRCode.toDataURL(`examId:${exam.id},version:${version}`, {
+        // Gerar QR code com formato JSON padronizado
+        const qrData = {
+          examId: exam.id,
+          studentId: `version-${version}`, // Para versões gerais
+          version: version
+        };
+        
+        const url = await QRCode.toDataURL(JSON.stringify(qrData), {
           width: 120,
           margin: 1,
         });

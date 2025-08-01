@@ -206,23 +206,49 @@ export default function AutoCorrectionPage() {
   // Função para extrair dados do QR Code
   const extractQRCodeData = (qrCodeText: string): QRCodeData | null => {
     try {
-      // Assumindo que o QR code contém JSON com examId e studentId
+      console.log('Texto do QR Code:', qrCodeText);
+      
+      // Primeiro, tentar parsear como JSON (novo formato)
       const data = JSON.parse(qrCodeText);
-      if (data.examId && data.studentId) {
-        return data;
-      }
-      return null;
-    } catch {
-      // Se não for JSON, tentar extrair por padrão
-      const match = qrCodeText.match(/examId=([^&]+)&studentId=([^&]+)/);
-      if (match) {
+      if (data.examId && (data.studentId || data.studentExamId)) {
         return {
-          examId: match[1],
-          studentId: match[2]
+          examId: data.examId,
+          studentId: data.studentId || data.studentExamId,
+          version: data.version || 1
         };
       }
-      return null;
+      
+      // Se não for JSON válido, tentar o formato antigo
+    } catch {
+      // Formato antigo: examId:valor,version:valor ou examId=valor&studentId=valor
+      const patterns = [
+        /examId:([^,]+),version:(\d+)/,
+        /examId=([^&]+)&studentId=([^&]+)/,
+        /studentExamId:(.+)/
+      ];
+      
+      for (const pattern of patterns) {
+        const match = qrCodeText.match(pattern);
+        if (match) {
+          if (pattern === patterns[2]) { // studentExamId format
+            return {
+              examId: 'unknown', // Will need to fetch from studentExamId
+              studentId: match[1],
+              version: 1
+            };
+          } else {
+            return {
+              examId: match[1],
+              studentId: match[2] || `version-${match[2] || 1}`,
+              version: parseInt(match[2] || '1')
+            };
+          }
+        }
+      }
     }
+    
+    console.error('Formato de QR Code não reconhecido:', qrCodeText);
+    return null;
   };
 
   // Função para ler QR code localmente da imagem
