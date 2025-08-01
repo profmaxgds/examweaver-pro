@@ -145,15 +145,7 @@ export default function CorrectionsManagementPage() {
 
       const { data: correctionsData, error: correctionsError } = await supabase
         .from('exam_corrections')
-        .select(`
-          *,
-          exams (
-            title,
-            subject,
-            total_points,
-            question_ids
-          )
-        `)
+        .select('*')
         .eq('author_id', user!.id)
         .order('correction_date', { ascending: false });
 

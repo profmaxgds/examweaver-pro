@@ -121,42 +121,50 @@ export default function Home() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
-                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                    <CheckCircle className="w-5 h-5 text-green-600" />
+                <Link to="/auto-correction" className="no-underline">
+                  <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">Correção Automática</p>
+                      <p className="text-xs text-muted-foreground">OCR + IA para detectar marcações</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-semibold text-sm">Correção Automática</p>
-                    <p className="text-xs text-muted-foreground">OCR + IA para detectar marcações</p>
+                </Link>
+                <Link to="/corrections-management" className="no-underline">
+                  <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Target className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">Correção Manual</p>
+                      <p className="text-xs text-muted-foreground">Interface interativa tipo gabarito</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    <Target className="w-5 h-5 text-blue-600" />
+                </Link>
+                <Link to="/reports" className="no-underline">
+                  <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                    <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                      <BarChart3 className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">Estatísticas</p>
+                      <p className="text-xs text-muted-foreground">Relatórios em tempo real</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-semibold text-sm">Correção Manual</p>
-                    <p className="text-xs text-muted-foreground">Interface interativa tipo gabarito</p>
+                </Link>
+                <Link to="/corrections-management" className="no-underline">
+                  <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                    <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                      <Send className="w-5 h-5 text-orange-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">Publicação</p>
+                      <p className="text-xs text-muted-foreground">Envio individual ou em massa</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
-                  <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                    <BarChart3 className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">Estatísticas</p>
-                    <p className="text-xs text-muted-foreground">Relatórios em tempo real</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
-                  <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
-                    <Send className="w-5 h-5 text-orange-600" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">Publicação</p>
-                    <p className="text-xs text-muted-foreground">Envio individual ou em massa</p>
-                  </div>
-                </div>
+                </Link>
               </div>
               <div className="flex flex-wrap gap-3">
                 <Link to="/auto-correction" className="no-underline">
