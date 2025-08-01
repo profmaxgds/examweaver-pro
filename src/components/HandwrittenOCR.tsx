@@ -173,6 +173,34 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
     img.src = previewUrl;
   }, [brightness, contrast, binarize, grayscale, enhanceLines, removeBackground, denoiseImage, previewUrl]);
 
+  // Hook para configurar stream no vídeo quando a câmera for ativada
+  useEffect(() => {
+    if (!useCamera || !cameraStream || !videoRef.current) return;
+
+    const setupVideo = async () => {
+      if (!videoRef.current) return;
+      
+      try {
+        console.log('📺 Conectando stream ao elemento video');
+        videoRef.current.srcObject = cameraStream;
+        
+        await videoRef.current.play();
+        console.log('▶️ Vídeo reproduzindo automaticamente');
+        
+      } catch (error) {
+        console.error('❌ Erro ao reproduzir vídeo:', error);
+        // Tentar reproduzir manualmente
+        setTimeout(() => {
+          if (videoRef.current) {
+            videoRef.current.play().catch(e => console.error('Erro reprodução manual:', e));
+          }
+        }, 500);
+      }
+    };
+
+    setupVideo();
+  }, [useCamera, cameraStream]);
+
   // Iniciar câmera
   const startCamera = async () => {
     console.log('🎥 Iniciando câmera...');
@@ -205,40 +233,6 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
       setUseCamera(true);
       
       console.log('🔄 Estado useCamera atualizado para true');
-      
-      if (videoRef.current) {
-        console.log('📺 Conectando stream ao elemento video');
-        videoRef.current.srcObject = stream;
-        
-        // Forçar reprodução imediata
-        const playPromise = videoRef.current.play();
-        if (playPromise !== undefined) {
-          playPromise.then(() => {
-            console.log('▶️ Vídeo reproduzindo automaticamente');
-          }).catch(error => {
-            console.error('❌ Erro ao reproduzir automaticamente:', error);
-            // Tentar reproduzir manualmente
-            setTimeout(() => {
-              if (videoRef.current) {
-                videoRef.current.play().catch(e => console.error('Erro reprodução manual:', e));
-              }
-            }, 500);
-          });
-        }
-        
-        videoRef.current.onloadedmetadata = () => {
-          console.log('📽️ Metadata carregada:', {
-            videoWidth: videoRef.current?.videoWidth,
-            videoHeight: videoRef.current?.videoHeight
-          });
-        };
-        
-        videoRef.current.onerror = (error) => {
-          console.error('❌ Erro no elemento video:', error);
-        };
-      } else {
-        console.error('❌ videoRef.current é null');
-      }
       
       toast({
         title: "📷 Câmera ativa!",
