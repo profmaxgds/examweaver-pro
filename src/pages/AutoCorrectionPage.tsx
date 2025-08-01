@@ -2,13 +2,16 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Camera, Upload, QrCode, Loader2, FileImage, ScanLine, CheckCircle, Save, ArrowLeft } from 'lucide-react';
+import { Camera, Upload, QrCode, Loader2, FileImage, ScanLine, CheckCircle, Save, ArrowLeft, AlertTriangle, PenTool } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Link } from 'react-router-dom';
 import jsQR from 'jsqr';
 import heic2any from 'heic2any';
+import { EssayQuestionCorrection } from '@/components/EssayQuestionCorrection';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface QRCodeData {
   examId: string;
@@ -48,11 +51,14 @@ export default function AutoCorrectionPage() {
   const { toast } = useToast();
   
   // Estados principais
-  const [step, setStep] = useState<'upload' | 'qr-scan' | 'photo-capture' | 'qr-detected' | 'scan-marks' | 'corrected' | 'need-answer-sheet'>('upload');
+  const [step, setStep] = useState<'upload' | 'qr-scan' | 'photo-capture' | 'qr-detected' | 'scan-marks' | 'corrected' | 'need-answer-sheet' | 'essay-correction'>('upload');
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [examInfo, setExamInfo] = useState<ExamInfo | null>(null);
   const [correctionResult, setCorrectionResult] = useState<CorrectionResult | null>(null);
+  const [essayQuestions, setEssayQuestions] = useState<any[]>([]);
+  const [currentEssayIndex, setCurrentEssayIndex] = useState(0);
+  const [essayScores, setEssayScores] = useState<Record<string, { score: number; feedback: string }>>({});
   
   // Estados da câmera
   const [useCamera, setUseCamera] = useState(false);
@@ -498,6 +504,18 @@ export default function AutoCorrectionPage() {
         studentData = { name: `Versão ${qrData.version}`, student_id: versionStudentId };
       }
 
+      // Buscar questões do exame para verificar se há questões abertas
+      const { data: questionsData, error: questionsError } = await supabase
+        .from('questions')
+        .select('*')
+        .in('id', examData.question_ids);
+
+      if (questionsError) {
+        console.error('Erro ao buscar questões:', questionsError);
+      }
+
+      const essayQuestionsFound = questionsData?.filter(q => q.type === 'essay') || [];
+
       const examInfo: ExamInfo = {
         examId: qrData.examId,
         studentId: qrData.studentId,
@@ -508,8 +526,17 @@ export default function AutoCorrectionPage() {
       };
 
       setExamInfo(examInfo);
+      setEssayQuestions(essayQuestionsFound);
       setStep('need-answer-sheet'); // Novo step: precisa da imagem da prova respondida
       stopCamera(); // Parar a câmera após detectar
+      
+      // Alertar sobre questões abertas
+      if (essayQuestionsFound.length > 0) {
+        toast({
+          title: "⚠️ Atenção: Questões Abertas Detectadas",
+          description: `Esta prova contém ${essayQuestionsFound.length} questão(ões) aberta(s) que precisarão de correção manual.`,
+        });
+      }
       
       toast({
         title: "✅ QR Code detectado!",
@@ -673,12 +700,22 @@ export default function AutoCorrectionPage() {
       };
 
       setCorrectionResult(result);
-      setStep('corrected');
       
-      toast({
-        title: "Correção realizada!",
-        description: `Prova corrigida: ${score}/${maxScore} (${percentage.toFixed(1)}%)`,
-      });
+      // Se há questões abertas, ir para correção manual
+      if (essayQuestions.length > 0) {
+        setStep('essay-correction');
+        setCurrentEssayIndex(0);
+        toast({
+          title: "Correção automática concluída!",
+          description: `Agora corrija manualmente as ${essayQuestions.length} questões abertas.`,
+        });
+      } else {
+        setStep('corrected');
+        toast({
+          title: "Correção realizada!",
+          description: `Prova corrigida: ${score}/${maxScore} (${percentage.toFixed(1)}%)`,
+        });
+      }
 
     } catch (error) {
       console.error('Erro no processamento:', error);
@@ -705,26 +742,94 @@ export default function AutoCorrectionPage() {
     }
   };
 
+  // Funções para correção de questões abertas
+  const handleEssayScore = (questionId: string, score: number, feedback: string, extractedText?: string) => {
+    setEssayScores(prev => ({
+      ...prev,
+      [questionId]: { score, feedback, extractedText }
+    }));
+    
+    // Ir para próxima questão aberta
+    if (currentEssayIndex < essayQuestions.length - 1) {
+      setCurrentEssayIndex(prev => prev + 1);
+    } else {
+      // Todas as questões abertas corrigidas, finalizar
+      finalizeCorrectionWithEssays();
+    }
+  };
+
+  const skipEssayQuestion = () => {
+    // Ir para próxima questão aberta sem pontuação
+    if (currentEssayIndex < essayQuestions.length - 1) {
+      setCurrentEssayIndex(prev => prev + 1);
+    } else {
+      // Finalizar mesmo sem corrigir todas
+      finalizeCorrectionWithEssays();
+    }
+  };
+
+  const finalizeCorrectionWithEssays = () => {
+    if (!correctionResult) return;
+    
+    // Calcular pontuação total incluindo questões abertas
+    let totalEssayScore = 0;
+    let totalEssayMaxScore = 0;
+    
+    for (const question of essayQuestions) {
+      totalEssayMaxScore += question.points;
+      if (essayScores[question.id]) {
+        totalEssayScore += essayScores[question.id].score;
+      }
+    }
+    
+    const finalScore = correctionResult.score + totalEssayScore;
+    const finalMaxScore = correctionResult.maxScore + totalEssayMaxScore;
+    const finalPercentage = (finalScore / finalMaxScore) * 100;
+    
+    // Atualizar resultado final
+    setCorrectionResult(prev => prev ? {
+      ...prev,
+      score: finalScore,
+      maxScore: finalMaxScore,
+      percentage: finalPercentage,
+      // Adicionar scores das questões abertas aos dados
+      essayScores
+    } as any : null);
+    
+    setStep('corrected');
+    
+    toast({
+      title: "Correção finalizada!",
+      description: `Pontuação final: ${finalScore}/${finalMaxScore} (${finalPercentage.toFixed(1)}%)`,
+    });
+  };
+
   const saveCorrection = async () => {
     if (!correctionResult || !user) return;
 
     setIsSaving(true);
 
     try {
+      // Preparar dados incluindo questões abertas
+      const correctionData = {
+        exam_id: correctionResult.examId,
+        student_id: correctionResult.studentId,
+        student_name: correctionResult.studentName,
+        answers: {
+          ...correctionResult.answers,
+          essay_scores: essayScores // Incluir pontuações das questões abertas
+        },
+        score: correctionResult.score,
+        max_score: correctionResult.maxScore,
+        percentage: correctionResult.percentage,
+        auto_corrected: essayQuestions.length === 0, // Se tem questões abertas, não é totalmente automático
+        author_id: user.id,
+        image_url: selectedFile ? `correction_${Date.now()}_${selectedFile.name}` : null
+      };
+
       const { error } = await supabase
         .from('exam_corrections')
-        .insert({
-          exam_id: correctionResult.examId,
-          student_id: correctionResult.studentId,
-          student_name: correctionResult.studentName,
-          answers: correctionResult.answers,
-          score: correctionResult.score,
-          max_score: correctionResult.maxScore,
-          percentage: correctionResult.percentage,
-          auto_corrected: true,
-          author_id: user.id,
-          image_url: selectedFile ? `correction_${Date.now()}_${selectedFile.name}` : null
-        });
+        .insert(correctionData);
 
       if (error) {
         throw error;
@@ -738,6 +843,9 @@ export default function AutoCorrectionPage() {
       // Limpar estado
       setCorrectionResult(null);
       setSelectedFile(null);
+      setEssayScores({});
+      setEssayQuestions([]);
+      setCurrentEssayIndex(0);
       
     } catch (error) {
       console.error('Erro ao salvar:', error);
@@ -1098,8 +1206,43 @@ export default function AutoCorrectionPage() {
             </CardContent>
           </Card>
 
+          {/* Tela de correção de questões abertas */}
+          {step === 'essay-correction' && essayQuestions.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <PenTool className="h-5 w-5 text-orange-600" />
+                  Correção Manual - Questões Abertas
+                  <Badge variant="outline">
+                    {currentEssayIndex + 1} de {essayQuestions.length}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {essayQuestions.length > 0 && (
+                  <>
+                    {/* Alerta sobre questões abertas */}
+                    <Alert className="mb-6">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        Esta prova contém questões abertas que requerem correção manual.
+                        Use a ferramenta de OCR para extrair texto manuscrito e compare com o gabarito.
+                      </AlertDescription>
+                    </Alert>
+
+                    <EssayQuestionCorrection
+                      question={essayQuestions[currentEssayIndex]}
+                      onScoreSubmit={handleEssayScore}
+                      onSkip={skipEssayQuestion}
+                    />
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Resultado da correção */}
-          {correctionResult && (
+          {correctionResult && step === 'corrected' && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">

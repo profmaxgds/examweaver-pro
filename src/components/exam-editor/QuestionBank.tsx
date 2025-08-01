@@ -35,9 +35,24 @@ export function QuestionBank() {
     let filtered = allQuestions;
 
     if (searchTerm) {
-      filtered = filtered.filter(q =>
-        q.title.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      filtered = filtered.filter(q => {
+        const searchLower = searchTerm.toLowerCase();
+        const titleMatch = q.title.toLowerCase().includes(searchLower);
+        
+        // Buscar também no conteúdo da questão
+        let contentMatch = false;
+        if (q.content) {
+          if (typeof q.content === 'string') {
+            contentMatch = q.content.toLowerCase().includes(searchLower);
+          } else if (q.content.text) {
+            contentMatch = q.content.text.toLowerCase().includes(searchLower);
+          } else if (q.content.statement) {
+            contentMatch = q.content.statement.toLowerCase().includes(searchLower);
+          }
+        }
+        
+        return titleMatch || contentMatch;
+      });
     }
     if (filterSubject) filtered = filtered.filter(q => q.subject === filterSubject);
     if (filterDifficulty) filtered = filtered.filter(q => q.difficulty === filterDifficulty);
@@ -63,7 +78,7 @@ export function QuestionBank() {
           <div className="relative lg:col-span-4">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar por título..."
+              placeholder="Buscar por título ou conteúdo..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
