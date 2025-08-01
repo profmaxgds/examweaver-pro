@@ -1,12 +1,16 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Camera, Upload, FileImage, Loader2, Eye, PenTool, Sparkles, Settings } from 'lucide-react';
+import { Camera, Upload, FileImage, Loader2, Eye, PenTool, Sparkles, Settings, Contrast, Palette, Filter } from 'lucide-react';
 import { pipeline, env } from '@huggingface/transformers';
 
 // Configure transformers.js
@@ -23,15 +27,105 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
   const { toast } = useToast();
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [processedPreviewUrl, setProcessedPreviewUrl] = useState<string | null>(null);
   const [extractedText, setExtractedText] = useState<string>('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [useCamera, setUseCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [ocrEngine, setOcrEngine] = useState<'trocr' | 'tesseract' | 'easyocr'>('trocr');
+  const [ocrEngine, setOcrEngine] = useState<'trocr' | 'tesseract' | 'easyocr'>('tesseract');
+  
+  // Estados para pré-processamento
+  const [brightness, setBrightness] = useState(100);
+  const [contrast, setContrast] = useState(100);
+  const [binarize, setBinarize] = useState(false);
+  const [grayscale, setGrayscale] = useState(false);
+  const [enhanceLines, setEnhanceLines] = useState(false);
+  const [showPreprocessing, setShowPreprocessing] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const processCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Aplicar pré-processamento à imagem
+  const applyImageProcessing = (sourceCanvas: HTMLCanvasElement) => {
+    if (!processCanvasRef.current) return null;
+    
+    const processCanvas = processCanvasRef.current;
+    const ctx = processCanvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Copiar dimensões da imagem original
+    processCanvas.width = sourceCanvas.width;
+    processCanvas.height = sourceCanvas.height;
+    
+    // Aplicar filtros CSS
+    let filters = [];
+    if (brightness !== 100) filters.push(`brightness(${brightness}%)`);
+    if (contrast !== 100) filters.push(`contrast(${contrast}%)`);
+    if (grayscale) filters.push('grayscale(100%)');
+    
+    ctx.filter = filters.join(' ');
+    ctx.drawImage(sourceCanvas, 0, 0);
+    
+    // Aplicar binarização se habilitada
+    if (binarize) {
+      const imageData = ctx.getImageData(0, 0, processCanvas.width, processCanvas.height);
+      const data = imageData.data;
+      
+      for (let i = 0; i < data.length; i += 4) {
+        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+        const binary = avg > 128 ? 255 : 0;
+        data[i] = binary;     // red
+        data[i + 1] = binary; // green  
+        data[i + 2] = binary; // blue
+      }
+      
+      ctx.putImageData(imageData, 0, 0);
+    }
+    
+    // Melhorar linhas se habilitado
+    if (enhanceLines) {
+      const imageData = ctx.getImageData(0, 0, processCanvas.width, processCanvas.height);
+      const data = imageData.data;
+      
+      // Aplicar filtro de sharpening simples
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] < 100) { // Pixels escuros (texto)
+          data[i] = Math.max(0, data[i] - 20);
+          data[i + 1] = Math.max(0, data[i + 1] - 20);
+          data[i + 2] = Math.max(0, data[i + 2] - 20);
+        }
+      }
+      
+      ctx.putImageData(imageData, 0, 0);
+    }
+    
+    return processCanvas;
+  };
+
+  // Atualizar preview processado quando configurações mudam
+  useEffect(() => {
+    if (!previewUrl) return;
+    
+    const img = new Image();
+    img.onload = () => {
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      if (!tempCtx) return;
+      
+      tempCanvas.width = img.width;
+      tempCanvas.height = img.height;
+      tempCtx.drawImage(img, 0, 0);
+      
+      const processedCanvas = applyImageProcessing(tempCanvas);
+      if (processedCanvas) {
+        const processedUrl = processedCanvas.toDataURL('image/jpeg', 0.9);
+        setProcessedPreviewUrl(processedUrl);
+      }
+    };
+    img.src = previewUrl;
+  }, [brightness, contrast, binarize, grayscale, enhanceLines, previewUrl]);
 
   // Iniciar câmera
   const startCamera = async () => {
@@ -46,17 +140,17 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
 
       console.log('✅ getUserMedia disponível');
 
-      const constraints = {
+      // Primeiro, tentar configurações mais simples
+      const basicConstraints = {
         video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 }
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
         }
       };
 
-      console.log('📱 Solicitando acesso à câmera com constraints:', constraints);
+      console.log('📱 Solicitando acesso à câmera com constraints básicas:', basicConstraints);
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await navigator.mediaDevices.getUserMedia(basicConstraints);
       
       console.log('✅ Stream obtido:', stream);
       console.log('📹 Tracks de vídeo:', stream.getVideoTracks());
@@ -70,13 +164,26 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
         console.log('📺 Conectando stream ao elemento video');
         videoRef.current.srcObject = stream;
         
-        // Aguardar o vídeo carregar e reproduzir
-        videoRef.current.onloadedmetadata = () => {
-          console.log('📽️ Metadata do vídeo carregada');
-          videoRef.current?.play().then(() => {
-            console.log('▶️ Vídeo reproduzindo');
+        // Forçar reprodução imediata
+        const playPromise = videoRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            console.log('▶️ Vídeo reproduzindo automaticamente');
           }).catch(error => {
-            console.error('❌ Erro ao reproduzir vídeo:', error);
+            console.error('❌ Erro ao reproduzir automaticamente:', error);
+            // Tentar reproduzir manualmente
+            setTimeout(() => {
+              if (videoRef.current) {
+                videoRef.current.play().catch(e => console.error('Erro reprodução manual:', e));
+              }
+            }, 500);
+          });
+        }
+        
+        videoRef.current.onloadedmetadata = () => {
+          console.log('📽️ Metadata carregada:', {
+            videoWidth: videoRef.current?.videoWidth,
+            videoHeight: videoRef.current?.videoHeight
           });
         };
         
@@ -177,7 +284,7 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
         
         toast({
           title: "✅ Foto capturada!",
-          description: "Agora clique em 'Extrair Texto' para processar",
+          description: "Configure o pré-processamento e clique em 'Extrair Texto'",
         });
       } else {
         toast({
@@ -197,7 +304,7 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
     
     toast({
       title: "Imagem carregada!",
-      description: "Clique em 'Extrair Texto' para processar a caligrafia",
+      description: "Configure o pré-processamento e clique em 'Extrair Texto'",
     });
   };
 
@@ -240,8 +347,8 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
   };
 
   // Extrair texto usando Tesseract
-  const extractWithTesseract = async () => {
-    const imageUrl = URL.createObjectURL(selectedImage!);
+  const extractWithTesseract = async (imageFile: File = selectedImage!) => {
+    const imageUrl = URL.createObjectURL(imageFile);
     
     try {
       console.log('Carregando Tesseract...');
@@ -264,11 +371,11 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
   };
 
   // Extrair texto usando EasyOCR (simulado via API)
-  const extractWithEasyOCR = async () => {
+  const extractWithEasyOCR = async (imageFile: File = selectedImage!) => {
     try {
       // Por enquanto, vamos simular com Tesseract
       console.log('EasyOCR não implementado, usando Tesseract como fallback');
-      return await extractWithTesseract();
+      return await extractWithTesseract(imageFile);
     } catch (error) {
       console.error('Erro EasyOCR:', error);
       throw error;
@@ -292,6 +399,16 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
     try {
       let text = '';
       let engineName = '';
+      let imageToProcess = selectedImage;
+      
+      // Se há pré-processamento, usar a imagem processada
+      if (processedPreviewUrl && (brightness !== 100 || contrast !== 100 || binarize || grayscale || enhanceLines)) {
+        // Converter a imagem processada em blob
+        const response = await fetch(processedPreviewUrl);
+        const blob = await response.blob();
+        imageToProcess = new File([blob], 'processed_image.jpg', { type: 'image/jpeg' });
+        console.log('🖼️ Usando imagem pré-processada para OCR');
+      }
       
       console.log(`Iniciando extração com engine: ${ocrEngine}`);
       
@@ -311,7 +428,7 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
             description: "Usando Tesseract OCR",
           });
           engineName = 'Tesseract';
-          text = await extractWithTesseract();
+          text = await extractWithTesseract(imageToProcess);
           break;
           
         case 'easyocr':
@@ -320,7 +437,7 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
             description: "Usando EasyOCR",
           });
           engineName = 'EasyOCR';
-          text = await extractWithEasyOCR();
+          text = await extractWithEasyOCR(imageToProcess);
           break;
       }
       
@@ -559,11 +676,116 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
           <div className="space-y-3">
             <div className="text-center">
               <p className="text-sm font-medium mb-2">Imagem capturada:</p>
-              <img 
-                src={previewUrl} 
-                alt="Resposta manuscrita" 
-                className="max-w-full max-h-48 rounded border mx-auto"
-              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Imagem original */}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Original</p>
+                  <img 
+                    src={previewUrl} 
+                    alt="Resposta manuscrita original" 
+                    className="max-w-full max-h-48 rounded border mx-auto"
+                  />
+                </div>
+                
+                {/* Imagem processada */}
+                {processedPreviewUrl && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Pré-processada</p>
+                    <img 
+                      src={processedPreviewUrl} 
+                      alt="Resposta manuscrita processada" 
+                      className="max-w-full max-h-48 rounded border mx-auto"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Controles de Pré-processamento */}
+            <div className="border rounded-lg p-4 bg-muted/50">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4 text-blue-600" />
+                  <Label className="text-sm font-medium">Pré-processamento de Imagem</Label>
+                </div>
+                <Switch 
+                  checked={showPreprocessing} 
+                  onCheckedChange={setShowPreprocessing}
+                />
+              </div>
+              
+              {showPreprocessing && (
+                <div className="space-y-4">
+                  {/* Brilho */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label className="text-xs">Brilho</Label>
+                      <span className="text-xs text-muted-foreground">{brightness}%</span>
+                    </div>
+                    <Slider
+                      value={[brightness]}
+                      onValueChange={(value) => setBrightness(value[0])}
+                      min={50}
+                      max={150}
+                      step={5}
+                      className="w-full"
+                    />
+                  </div>
+
+                  {/* Contraste */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label className="text-xs">Contraste</Label>
+                      <span className="text-xs text-muted-foreground">{contrast}%</span>
+                    </div>
+                    <Slider
+                      value={[contrast]}
+                      onValueChange={(value) => setContrast(value[0])}
+                      min={50}
+                      max={200}
+                      step={5}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <Separator />
+
+                  {/* Switches para filtros */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Escala de Cinza</Label>
+                      <Switch checked={grayscale} onCheckedChange={setGrayscale} />
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Binarizar (Preto e Branco)</Label>
+                      <Switch checked={binarize} onCheckedChange={setBinarize} />
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Melhorar Espessura das Linhas</Label>
+                      <Switch checked={enhanceLines} onCheckedChange={setEnhanceLines} />
+                    </div>
+                  </div>
+
+                  {/* Botão de reset */}
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => {
+                      setBrightness(100);
+                      setContrast(100);
+                      setBinarize(false);
+                      setGrayscale(false);
+                      setEnhanceLines(false);
+                    }}
+                    className="w-full"
+                  >
+                    <Palette className="w-3 h-3 mr-1" />
+                    Resetar Filtros
+                  </Button>
+                </div>
+              )}
             </div>
             
             <Button
@@ -625,6 +847,9 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
           )}
           <p>📱 Suporte para HEIC, JPG, PNG • ⚡ Processamento local no navegador</p>
         </div>
+        
+        {/* Canvas oculto para processamento */}
+        <canvas ref={processCanvasRef} style={{ display: 'none' }} />
       </CardContent>
     </Card>
   );
