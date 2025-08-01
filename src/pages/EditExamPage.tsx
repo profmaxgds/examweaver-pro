@@ -420,26 +420,38 @@ export default function EditExamPage() {
             ? { studentExamId: id, includeAnswers } // Para turma, 'id' é o student_exam_id
             : { examId: examData.id, version: id, includeAnswers }; // Para versões, 'id' é o número da versão
 
-        const pdfBlob = await callGeneratePdfFunction(payload, true);
+        const response = await supabase.functions.invoke('generate-pdf', { 
+          body: { ...payload, generatePDF: true } 
+        });
         
-        // Criar link para download do PDF
-        const blob = new Blob([pdfBlob], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        
-        const fileName = typeof id === 'string'
-          ? `${examData.title}_${id}_${includeAnswers ? 'gabarito' : 'prova'}.pdf`
-          : `${examData.title}_v${id}_${includeAnswers ? 'gabarito' : 'prova'}.pdf`;
+        if (response.error) {
+          throw new Error(response.error.message);
+        }
+
+        // Verificar se a resposta contém HTML para conversão
+        if (response.data && typeof response.data === 'string') {
+          // Recebemos HTML, vamos converter para PDF usando o navegador
+          const printWindow = window.open('', '_blank');
+          if (printWindow) {
+            printWindow.document.write(response.data);
+            printWindow.document.close();
+            
+            // Aguardar um pouco para o conteúdo carregar e então abrir o diálogo de impressão
+            setTimeout(() => {
+              printWindow.print();
+            }, 1000);
+          }
           
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        
-        toast({ title: "Sucesso!", description: `PDF gerado: ${fileName}` });
+          const fileName = typeof id === 'string'
+            ? `${examData.title}_${id}_${includeAnswers ? 'gabarito' : 'prova'}`
+            : `${examData.title}_v${id}_${includeAnswers ? 'gabarito' : 'prova'}`;
+            
+          toast({ title: "Sucesso!", description: `Arquivo pronto para salvar como PDF: ${fileName}` });
+        } else {
+          throw new Error('Resposta inválida do servidor');
+        }
     } catch (error: any) {
+        console.error('Erro ao gerar PDF:', error);
         toast({ title: "Erro", description: `Não foi possível gerar o PDF: ${error.message}`, variant: "destructive" });
     } finally {
         setLoading(false);

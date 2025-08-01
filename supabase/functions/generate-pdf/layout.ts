@@ -115,12 +115,17 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
             font-size: 10pt;
         }
         
-        /* Marcadores âncora APENAS na região do gabarito */
+        /* Container da folha de respostas */
         .answer-sheet-container {
             position: relative;
         }
         
-        /* Marcadores âncora principais nos cantos do gabarito */
+        /* Container da grade de respostas com marcadores âncora */
+        .answer-grid-section {
+            position: relative;
+        }
+        
+        /* Marcadores âncora APENAS na região da grade de respostas (à direita do QR code) */
         .anchor-marker {
             position: absolute;
             width: 8px;
@@ -131,24 +136,24 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
             z-index: 20;
         }
         
-        .top-left-anchor {
-            top: 3px;
-            left: 3px;
+        .grid-top-left-anchor {
+            top: 5px;
+            left: 5px;
         }
         
-        .top-right-anchor {
-            top: 3px;
-            right: 3px;
+        .grid-top-right-anchor {
+            top: 5px;
+            right: 5px;
         }
         
-        .bottom-left-anchor {
-            bottom: 3px;
-            left: 3px;
+        .grid-bottom-left-anchor {
+            bottom: 5px;
+            left: 5px;
         }
         
-        .bottom-right-anchor {
-            bottom: 3px;
-            right: 3px;
+        .grid-bottom-right-anchor {
+            bottom: 5px;
+            right: 5px;
         }
 
         /* Marcadores de delimitação da área de respostas */
@@ -162,7 +167,7 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         .answer-top-marker {
             width: 12px;
             height: 3px;
-            top: 0px;
+            top: 15px;
             left: 50%;
             transform: translateX(-50%);
         }
@@ -170,7 +175,7 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         .answer-bottom-marker {
             width: 12px;
             height: 3px;
-            bottom: 0px;
+            bottom: 5px;
             left: 50%;
             transform: translateX(-50%);
         }
@@ -179,7 +184,7 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         .answer-left-marker {
             width: 3px;
             height: 12px;
-            left: 0px;
+            left: 15px;
             top: 50%;
             transform: translateY(-50%);
         }
@@ -187,7 +192,7 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         .answer-right-marker {
             width: 3px;
             height: 12px;
-            right: 0px;
+            right: 15px;
             top: 50%;
             transform: translateY(-50%);
         }
@@ -203,39 +208,34 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         }
         
         .ref-q1 {
-            top: 25px;
-            left: 20px;
+            top: 35px;
+            left: 25px;
         }
         
         .ref-q5 {
-            top: 85px;
-            left: 20px;
+            top: 95px;
+            left: 25px;
         }
         
         .ref-q10 {
-            top: 145px;
-            left: 20px;
+            top: 155px;
+            left: 25px;
         }
 
-        /* Exclusão do QR code da área de detecção */
+        /* QR code - sem marcadores âncora */
         .qr-code-section {
             position: relative;
-            z-index: 5; /* Menor que os marcadores */
-        }
-        
-        .qr-code-section::after {
-            content: "";
-            position: absolute;
-            top: -5px;
-            left: -5px;
-            right: -5px;
-            bottom: -5px;
-            border: 1px dashed #ccc;
-            z-index: 1;
+            z-index: 5;
         }
 
         .page-footer { display: flex; justify-content: space-between; font-size: 10pt; margin-top: 20px; border-top: 1px solid #ccc; padding-top: 5px; }
-        @media print { body { -webkit-print-color-adjust: exact; } }
+        @media print { 
+            body { -webkit-print-color-adjust: exact; }
+            .anchor-marker, .answer-area-marker, .detection-reference { 
+                -webkit-print-color-adjust: exact !important; 
+                color-adjust: exact !important; 
+            }
+        }
     `;
 
     const generateAnswerGrid = () => {
@@ -289,12 +289,6 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
     <body>
         <div class="page-container">
             <div class="answer-sheet-container">
-                <!-- Marcadores âncora PRINCIPAIS nos cantos do gabarito -->
-                <div class="anchor-marker top-left-anchor"></div>
-                <div class="anchor-marker top-right-anchor"></div>
-                <div class="anchor-marker bottom-left-anchor"></div>
-                <div class="anchor-marker bottom-right-anchor"></div>
-                
                 <div class="qr-code-section">
                     <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(JSON.stringify({
                         examId: exam.id,
@@ -304,7 +298,13 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
                     }))}" alt="QR Code" />
                     <p>Prova: ${exam.id.split('-')[0]}.${studentInfo?.id || version}</p>
                 </div>
-                <div class="answer-grid-section" style="position: relative;">
+                <div class="answer-grid-section">
+                    <!-- Marcadores âncora APENAS na região da grade de respostas (à direita do QR code) -->
+                    <div class="anchor-marker grid-top-left-anchor"></div>
+                    <div class="anchor-marker grid-top-right-anchor"></div>
+                    <div class="anchor-marker grid-bottom-left-anchor"></div>
+                    <div class="anchor-marker grid-bottom-right-anchor"></div>
+                    
                     <!-- Marcadores de delimitação da área de respostas -->
                     <div class="answer-area-marker answer-top-marker"></div>
                     <div class="answer-area-marker answer-bottom-marker"></div>

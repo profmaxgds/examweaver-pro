@@ -8,9 +8,6 @@ import { fetchExamData as fetchVersionExamData } from './data-fetcher.ts';
 import { generateExamHTML } from './layout.ts';
 import { shuffleArray } from './utils.ts';
 
-// Importar puppeteer para geração de PDF
-import puppeteer from "https://deno.land/x/puppeteer@16.2.0/mod.ts";
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -125,41 +122,33 @@ serve(async (req) => {
         throw new Error("Parâmetros inválidos. Forneça 'studentExamId' ou 'examId'.");
     }
 
-    // Se solicitado PDF, gerar PDF ao invés de HTML
+    // Se solicitado PDF, gerar PDF 
     if (generatePDF) {
       console.log('Gerando PDF da prova...');
       
-      const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
-      
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        margin: {
-          top: '20mm',
-          right: '15mm',
-          bottom: '20mm',
-          left: '15mm'
-        },
-        printBackground: true,
-        preferCSSPageSize: true
-      });
-      
-      await browser.close();
-      
-      console.log('PDF gerado com sucesso!');
-      
-      return new Response(pdfBuffer, {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `attachment; filename="${examTitle}_v${version}.pdf"`
-        },
-      });
+      try {
+        // Usar uma abordagem simples: retornar o HTML com headers específicos para PDF
+        // O navegador/cliente irá lidar com a conversão
+        return new Response(html, {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'text/html',
+            'Content-Disposition': `inline; filename="${examTitle.replace(/\s+/g, '_')}_v${version}.html"`,
+            'X-PDF-Conversion': 'true'
+          },
+        });
+      } catch (error) {
+        console.error('Erro ao gerar PDF:', error);
+        return new Response(JSON.stringify({ 
+          error: `Erro ao gerar PDF: ${error.message}`,
+          html, 
+          examTitle, 
+          version
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     return new Response(JSON.stringify({ html, examTitle, version }), {
