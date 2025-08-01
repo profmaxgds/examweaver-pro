@@ -66,6 +66,8 @@ export default function AutoCorrectionPage() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanMode, setScanMode] = useState<'qr' | 'photo'>('qr');
   const [isSaving, setIsSaving] = useState(false);
+  const [autoDetectGrading, setAutoDetectGrading] = useState(false);
+  const [detectedAnswerSheet, setDetectedAnswerSheet] = useState(false);
   
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -225,11 +227,18 @@ export default function AutoCorrectionPage() {
         await videoRef.current.play();
         console.log('Vídeo iniciado com sucesso');
         
-        // Se está no modo QR, começar escaneamento
+        // Se está no modo QR, começar escaneamento de QR
         if (scanMode === 'qr') {
           setTimeout(() => {
             startAutoScan();
           }, 500);
+        }
+        
+        // Se está no modo photo e já tem examInfo, ativar detecção automática do gabarito
+        if (scanMode === 'photo') {
+          setTimeout(() => {
+            startAnswerSheetDetection();
+          }, 1000);
         }
       } catch (error) {
         console.error('Erro ao reproduzir vídeo:', error);
@@ -334,7 +343,7 @@ export default function AutoCorrectionPage() {
     setStep('upload');
   };
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (!videoRef.current || !canvasRef.current) return;
 
     const canvas = canvasRef.current;
@@ -347,11 +356,26 @@ export default function AutoCorrectionPage() {
     if (context) {
       context.drawImage(video, 0, 0);
       
-      canvas.toBlob((blob) => {
+      canvas.toBlob(async (blob) => {
         if (blob) {
           const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
           setSelectedFile(file);
           stopCamera();
+          
+          // Se ainda não temos examInfo, tentar detectar QR code na imagem capturada
+          if (!examInfo) {
+            try {
+              console.log('🔍 Tentando detectar QR code na imagem capturada...');
+              const qrCodeText = await readQRCodeFromFile(file);
+              if (qrCodeText) {
+                console.log('✅ QR code encontrado na imagem capturada!');
+                await processQRCodeData(qrCodeText);
+                return;
+              }
+            } catch (error) {
+              console.log('ℹ️ QR code não encontrado na imagem, mas isso é ok');
+            }
+          }
           
           // Se já temos examInfo (QR detectado), vamos para estado "pronto para corrigir"
           if (examInfo) {
@@ -363,7 +387,7 @@ export default function AutoCorrectionPage() {
           } else {
             toast({
               title: "Foto capturada!",
-              description: "Agora você pode processar a correção.",
+              description: "Use 'Processar Correção' para detectar QR code e corrigir.",
             });
           }
         }
@@ -381,6 +405,116 @@ export default function AutoCorrectionPage() {
         scanVideoForQR();
       }
     }, 50); // 20x por segundo para detecção instantânea
+  };
+
+  // Função para detectar automaticamente o gabarito quando a câmera está ativa
+  const startAnswerSheetDetection = () => {
+    if (scanIntervalRef.current) return;
+    
+    console.log('🎯 Iniciando detecção automática do gabarito...');
+    setAutoDetectGrading(true);
+    
+    scanIntervalRef.current = setInterval(() => {
+      if (videoRef.current && videoRef.current.readyState >= 2) {
+        detectAnswerSheetStructure();
+      }
+    }, 100); // Detectar a cada 100ms
+  };
+
+  // Função para detectar estrutura similar ao gabarito gerado
+  const detectAnswerSheetStructure = () => {
+    if (!videoRef.current || !canvasRef.current || !cameraStream) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+
+    if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
+
+    // Usar resolução média para detecção
+    const scanWidth = 640;
+    const scanHeight = 480;
+    
+    canvas.width = scanWidth;
+    canvas.height = scanHeight;
+    
+    context.drawImage(video, 0, 0, scanWidth, scanHeight);
+    const imageData = context.getImageData(0, 0, scanWidth, scanHeight);
+    
+    // Detectar padrões que indicam um gabarito (linhas, círculos, etc)
+    if (detectGradingPattern(imageData)) {
+      // Se detectou padrão de gabarito, capturar automaticamente
+      console.log('✅ Estrutura de gabarito detectada! Capturando automaticamente...');
+      playBeep();
+      setDetectedAnswerSheet(true);
+      
+      // Parar detecção
+      setAutoDetectGrading(false);
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+      
+      // Capturar automaticamente
+      setTimeout(() => {
+        capturePhoto();
+      }, 500);
+      
+      toast({
+        title: "🎯 Gabarito detectado!",
+        description: "Capturando imagem automaticamente...",
+      });
+    }
+  };
+
+  // Função simples para detectar padrões que indicam um gabarito
+  const detectGradingPattern = (imageData: ImageData): boolean => {
+    const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
+    
+    let darkPixels = 0;
+    let totalPixels = 0;
+    let circularPatterns = 0;
+    
+    // Analisar pixels procurando por padrões de círculos e linhas
+    for (let y = 0; y < height; y += 4) {
+      for (let x = 0; x < width; x += 4) {
+        const index = (y * width + x) * 4;
+        const r = data[index];
+        const g = data[index + 1];
+        const b = data[index + 2];
+        
+        // Calcular luminosidade
+        const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+        
+        totalPixels++;
+        if (luminance < 128) {
+          darkPixels++;
+        }
+        
+        // Detectar possíveis círculos ou padrões circulares
+        if (luminance < 100 && x > 10 && x < width - 10 && y > 10 && y < height - 10) {
+          // Verificar se há um padrão circular simples
+          let surroundingBright = 0;
+          for (let dy = -2; dy <= 2; dy++) {
+            for (let dx = -2; dx <= 2; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const surroundIndex = ((y + dy) * width + (x + dx)) * 4;
+              const surroundLum = 0.299 * data[surroundIndex] + 0.587 * data[surroundIndex + 1] + 0.114 * data[surroundIndex + 2];
+              if (surroundLum > 150) surroundingBright++;
+            }
+          }
+          if (surroundingBright > 12) circularPatterns++;
+        }
+      }
+    }
+    
+    const darkPixelRatio = darkPixels / totalPixels;
+    
+    // Heurística: Se há entre 10-40% de pixels escuros e pelo menos 5 padrões circulares
+    // provavelmente é um gabarito
+    return darkPixelRatio > 0.1 && darkPixelRatio < 0.4 && circularPatterns > 5;
   };
 
   // Função otimizada para escanear vídeo em busca de QR code
@@ -977,6 +1111,23 @@ export default function AutoCorrectionPage() {
                           </Button>
                         </div>
                       )}
+                      
+                      {/* Indicador de detecção automática do gabarito */}
+                      {scanMode === 'photo' && autoDetectGrading && (
+                        <div className="text-center space-y-2 mt-4">
+                          <div className="inline-flex items-center gap-2 text-green-600">
+                            <div className="relative">
+                              <div className="animate-ping absolute w-4 h-4 bg-green-400 rounded-full opacity-75"></div>
+                              <div className="relative w-4 h-4 bg-green-600 rounded-full"></div>
+                            </div>
+                            <ScanLine className="w-5 h-5 animate-pulse" />
+                            <span className="text-sm font-bold">DETECTANDO GABARITO</span>
+                          </div>
+                          <div className="text-xs text-green-700 mt-1 font-medium">
+                            Posicione a prova respondida para detecção automática
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1038,7 +1189,7 @@ export default function AutoCorrectionPage() {
                 {step === 'photo-capture' && (
                   <>
                     <p>📷 <strong>MODO FOTO:</strong> Posicione a prova respondida</p>
-                    <p>🎯 Certifique-se que o gabarito está bem visível</p>
+                    <p>🎯 Detecção automática quando gabarito for detectado</p>
                     <p>💡 Use boa iluminação para melhor resultado</p>
                   </>
                 )}
@@ -1073,7 +1224,6 @@ export default function AutoCorrectionPage() {
                       const qrCodeText = await readQRCodeFromFile(selectedFile);
                       if (qrCodeText) {
                         await processQRCodeData(qrCodeText);
-                        setSelectedFile(null); // Limpar arquivo após extrair QR
                       } else {
                         throw new Error('QR Code não encontrado no arquivo. Verifique se a imagem contém um QR code válido e bem visível.');
                       }
@@ -1098,7 +1248,7 @@ export default function AutoCorrectionPage() {
                   ) : (
                     <>
                       <QrCode className="w-4 h-4 mr-2" />
-                      Detectar QR Code no Arquivo
+                      Processar Correção
                     </>
                   )}
                 </Button>
