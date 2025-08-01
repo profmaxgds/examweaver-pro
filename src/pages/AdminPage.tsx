@@ -93,10 +93,13 @@ export default function AdminPage() {
       // Para cada usuário, buscar créditos reais
       const usersWithCredits = await Promise.all(
         profilesData.map(async (profile) => {
-          // Buscar créditos reais da função
+          // Buscar créditos reais usando query SQL
           const { data: creditsData } = await supabase
-            .rpc('get_user_credits' as any, { user_uuid: profile.user_id });
-          const credits = creditsData || 0;
+            .from('credit_transactions')
+            .select('amount')
+            .eq('user_id', profile.user_id);
+          
+          const credits = creditsData?.reduce((sum, transaction) => sum + Number(transaction.amount), 0) || 0;
 
           // Verificar se é admin (temporário)
           const isAdminUser = profile.user_id === (await supabase.auth.getUser()).data.user?.id;
