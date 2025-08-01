@@ -8,6 +8,8 @@ import { Camera, Upload, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
 
 interface CorrectionResult {
   score: number;
@@ -33,6 +35,70 @@ export function AutoCorrectionScanner() {
     if (file) {
       setSelectedFile(file);
       setCorrectionResult(null);
+    }
+  };
+
+  const takePictureWithCamera = async () => {
+    try {
+      // Verificar se estamos em dispositivo móvel
+      if (!Capacitor.isNativePlatform()) {
+        toast.error('Câmera nativa disponível apenas em dispositivos móveis');
+        return;
+      }
+
+      const image = await CapacitorCamera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Camera,
+        width: 1920,
+        height: 1920
+      });
+
+      if (image.dataUrl) {
+        // Converter dataURL para File
+        const response = await fetch(image.dataUrl);
+        const blob = await response.blob();
+        const file = new File([blob], `camera_capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        
+        setSelectedFile(file);
+        setCorrectionResult(null);
+        toast.success('Foto capturada com sucesso!');
+      }
+    } catch (error) {
+      console.error('Erro ao capturar foto:', error);
+      toast.error('Erro ao acessar a câmera. Verifique as permissões.');
+    }
+  };
+
+  const selectFromGallery = async () => {
+    try {
+      if (!Capacitor.isNativePlatform()) {
+        // No navegador, usar input file
+        fileInputRef.current?.click();
+        return;
+      }
+
+      const image = await CapacitorCamera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Photos
+      });
+
+      if (image.dataUrl) {
+        // Converter dataURL para File
+        const response = await fetch(image.dataUrl);
+        const blob = await response.blob();
+        const file = new File([blob], `gallery_image_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        
+        setSelectedFile(file);
+        setCorrectionResult(null);
+        toast.success('Imagem selecionada da galeria!');
+      }
+    } catch (error) {
+      console.error('Erro ao selecionar da galeria:', error);
+      toast.error('Erro ao acessar a galeria.');
     }
   };
 
@@ -136,18 +202,48 @@ export function AutoCorrectionScanner() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="exam-image">Imagem da Prova</Label>
-            <Input
-              ref={fileInputRef}
-              type="file"
-              id="exam-image"
-              accept="image/*"
-              onChange={handleFileSelect}
-              className="mt-1"
-            />
-            <p className="text-sm text-muted-foreground mt-1">
-              Selecione uma imagem clara da folha de respostas com QR code visível
-            </p>
+            <Label>Capturar Imagem da Prova</Label>
+            <div className="mt-2 space-y-3">
+              {/* Botões para dispositivos móveis */}
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={takePictureWithCamera}
+                  className="flex items-center gap-2"
+                >
+                  <Camera className="h-4 w-4" />
+                  Tirar Foto
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={selectFromGallery}
+                  className="flex items-center gap-2"
+                >
+                  <Upload className="h-4 w-4" />
+                  Galeria
+                </Button>
+              </div>
+              
+              {/* Input file oculto para navegadores */}
+              <Input
+                ref={fileInputRef}
+                type="file"
+                id="exam-image"
+                accept="image/*"
+                onChange={handleFileSelect}
+                className="mt-1"
+                style={{ display: Capacitor.isNativePlatform() ? 'none' : 'block' }}
+              />
+              
+              <p className="text-sm text-muted-foreground">
+                {Capacitor.isNativePlatform() 
+                  ? 'Use os botões acima para capturar ou selecionar uma imagem da folha de respostas'
+                  : 'Selecione uma imagem clara da folha de respostas com QR code visível'
+                }
+              </p>
+            </div>
           </div>
 
           {selectedFile && (

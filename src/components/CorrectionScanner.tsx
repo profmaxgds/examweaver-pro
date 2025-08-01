@@ -7,6 +7,8 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Camera, Upload, Eye, AlertCircle, CheckCircle2, X, ScanLine } from 'lucide-react';
 import { FileUpload } from './FileUpload';
+import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
 
 interface CorrectionResult {
   correction: any;
@@ -132,6 +134,75 @@ export function CorrectionScanner({ examId, onCorrectionComplete }: CorrectionSc
       }
     };
   }, [cameraActive, autoDetectionEnabled, isScanning, checkForAnswerSheet]);
+
+  const takePictureWithCamera = async () => {
+    try {
+      // Verificar se estamos em dispositivo móvel
+      if (!Capacitor.isNativePlatform()) {
+        // Fallback para web
+        await startCamera();
+        return;
+      }
+
+      const image = await CapacitorCamera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Camera,
+        width: 1920,
+        height: 1920
+      });
+
+      if (image.dataUrl) {
+        setCapturedImage(image.dataUrl);
+        toast({
+          title: "Sucesso",
+          description: "Foto capturada com sucesso!",
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao capturar foto:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao acessar a câmera. Verifique as permissões.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const selectFromGallery = async () => {
+    try {
+      if (!Capacitor.isNativePlatform()) {
+        toast({
+          title: "Aviso",
+          description: "Galeria disponível apenas em dispositivos móveis",
+        });
+        return;
+      }
+
+      const image = await CapacitorCamera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Photos
+      });
+
+      if (image.dataUrl) {
+        setCapturedImage(image.dataUrl);
+        toast({
+          title: "Sucesso",
+          description: "Imagem selecionada da galeria!",
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao selecionar da galeria:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao acessar a galeria.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const startCamera = async () => {
     try {
@@ -270,12 +341,36 @@ export function CorrectionScanner({ examId, onCorrectionComplete }: CorrectionSc
       <CardContent className="space-y-4">
         {!capturedImage && !cameraActive && (
           <div className="space-y-4">
-            <div className="flex space-x-2">
-              <Button onClick={startCamera} className="flex-1">
-                <Camera className="w-4 h-4 mr-2" />
-                Usar Câmera
-              </Button>
-            </div>
+            {/* Botões para dispositivos móveis */}
+            {Capacitor.isNativePlatform() && (
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  onClick={takePictureWithCamera}
+                  className="flex items-center gap-2"
+                >
+                  <Camera className="h-4 w-4" />
+                  Tirar Foto
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={selectFromGallery}
+                  className="flex items-center gap-2"
+                >
+                  <Upload className="h-4 w-4" />
+                  Galeria
+                </Button>
+              </div>
+            )}
+            
+            {/* Câmera web para navegador */}
+            {!Capacitor.isNativePlatform() && (
+              <div className="flex space-x-2">
+                <Button onClick={startCamera} className="flex-1">
+                  <Camera className="w-4 h-4 mr-2" />
+                  Usar Câmera
+                </Button>
+              </div>
+            )}
             
             <div className="text-center">
               <span className="text-sm text-muted-foreground">ou</span>
