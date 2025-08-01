@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { Camera, Upload, FileImage, Loader2, Eye, PenTool, Sparkles, Settings, Contrast, Palette, Filter } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { pipeline, env } from '@huggingface/transformers';
 
 // Configure transformers.js
@@ -32,7 +33,7 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
   const [isExtracting, setIsExtracting] = useState(false);
   const [useCamera, setUseCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [ocrEngine, setOcrEngine] = useState<'trocr' | 'tesseract' | 'easyocr' | 'keras' | 'doctr'>('tesseract');
+  const [ocrEngine, setOcrEngine] = useState<'trocr' | 'tesseract' | 'easyocr' | 'keras' | 'doctr' | 'google-vision' | 'deepseek'>('tesseract');
   
   // Estados para pré-processamento
   const [brightness, setBrightness] = useState(100);
@@ -695,6 +696,18 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
                   EasyOCR (Versatil, múltiplos idiomas)
                 </div>
               </SelectItem>
+              <SelectItem value="google-vision">
+                <div className="flex items-center gap-2">
+                  <Settings className="h-4 w-4 text-blue-600" />
+                  Google Cloud Vision (Alta precisão)
+                </div>
+              </SelectItem>
+              <SelectItem value="deepseek">
+                <div className="flex items-center gap-2">
+                  <Settings className="h-4 w-4 text-green-600" />
+                  DeepSeek OCR (IA gratuita, manuscritos)
+                </div>
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -994,6 +1007,12 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
           )}
           {ocrEngine === 'easyocr' && (
             <p>⚡ <strong>EasyOCR:</strong> Versatil, suporte a múltiplos idiomas</p>
+          )}
+          {ocrEngine === 'google-vision' && (
+            <p>☁️ <strong>Google Cloud Vision:</strong> OCR profissional, alta precisão</p>
+          )}
+          {ocrEngine === 'deepseek' && (
+            <p>🤖 <strong>DeepSeek OCR:</strong> IA gratuita especializada em manuscritos</p>
           )}
           <p>📱 Suporte para HEIC, JPG, PNG • ⚡ Processamento local no navegador</p>
         </div>

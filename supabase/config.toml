@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.doctr-ocr]
 verify_jwt = false
+
+[functions.google-vision-ocr]
+verify_jwt = false
+
+[functions.deepseek-ocr]
+verify_jwt = false
