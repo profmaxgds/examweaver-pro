@@ -475,14 +475,14 @@ export default function AutoCorrectionPage() {
         scanIntervalRef.current = null;
       }
       
-      // Capturar automaticamente
+      // Capturar automaticamente após um delay maior para dar tempo de posicionar
       setTimeout(() => {
         capturePhoto();
-      }, 500);
+      }, 2000); // 2 segundos ao invés de 500ms
       
       toast({
         title: "🎯 Gabarito detectado!",
-        description: "Capturando imagem automaticamente...",
+        description: "Capturando imagem automaticamente em 2 segundos...",
       });
     }
   };
@@ -1368,6 +1368,9 @@ export default function AutoCorrectionPage() {
                      <p>📋 Prova: {examInfo.examTitle}</p>
                      <p>👤 Aluno: {examInfo.studentName}</p>
                      <p>📷 <strong>Próximo passo:</strong> Capture a prova respondida (QR + gabarito)</p>
+                     {essayQuestions.length > 0 && (
+                       <p className="text-orange-600 font-medium">⚠️ Esta prova contém {essayQuestions.length} questão(ões) aberta(s) que precisarão de OCR</p>
+                     )}
                      <p className="text-xs text-blue-600 mt-1">⏰ A câmera será aberta automaticamente em 3 segundos</p>
                   </>
                 )}
