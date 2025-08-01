@@ -23,7 +23,10 @@ import {
   Eye,
   Shield,
   GraduationCap,
-  UserCheck
+  UserCheck,
+  Edit2,
+  Save,
+  X
 } from 'lucide-react';
 
 interface Profile {
@@ -47,12 +50,20 @@ interface UserWithRoles extends Profile {
   current_credits: number;
 }
 
+interface CreditSetting {
+  id: string;
+  setting_name: string;
+  setting_value: number;
+  description: string;
+}
+
 export default function AdminPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { isAdmin, loading: rolesLoading } = useUserRoles();
   
   const [users, setUsers] = useState<UserWithRoles[]>([]);
+  const [creditSettings, setCreditSettings] = useState<CreditSetting[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<UserWithRoles[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -61,6 +72,8 @@ export default function AdminPage() {
   const [selectedUser, setSelectedUser] = useState<UserWithRoles | null>(null);
   const [creditAmount, setCreditAmount] = useState<string>('');
   const [creditDescription, setCreditDescription] = useState<string>('');
+  const [editingSettings, setEditingSettings] = useState<Record<string, boolean>>({});
+  const [tempSettings, setTempSettings] = useState<Record<string, number>>({});
 
   // Redirecionar se não for admin
   useEffect(() => {
@@ -72,6 +85,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (isAdmin) {
       loadUsers();
+      loadCreditSettings();
     }
   }, [isAdmin]);
 
@@ -130,6 +144,80 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadCreditSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .rpc('get_credit_settings');
+
+      if (error) {
+        console.error('Erro ao carregar configurações:', error);
+        // Fallback para valores padrão
+        setCreditSettings([
+          { id: '1', setting_name: 'manual_correction_cost', setting_value: 0.10, description: 'Custo em créditos para correção manual' },
+          { id: '2', setting_name: 'auto_correction_cost', setting_value: 1.00, description: 'Custo em créditos para correção automática' },
+          { id: '3', setting_name: 'initial_credits', setting_value: 30.00, description: 'Créditos iniciais para novos usuários' }
+        ]);
+        return;
+      }
+      
+      setCreditSettings(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar configurações de créditos:', error);
+      // Fallback para valores padrão
+      setCreditSettings([
+        { id: '1', setting_name: 'manual_correction_cost', setting_value: 0.10, description: 'Custo em créditos para correção manual' },
+        { id: '2', setting_name: 'auto_correction_cost', setting_value: 1.00, description: 'Custo em créditos para correção automática' },
+        { id: '3', setting_name: 'initial_credits', setting_value: 30.00, description: 'Créditos iniciais para novos usuários' }
+      ]);
+    }
+  };
+
+  const updateCreditSetting = async (settingName: string, newValue: number) => {
+    try {
+      const { error } = await supabase
+        .rpc('update_credit_setting', { 
+          setting_name_param: settingName, 
+          new_value: newValue 
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Configuração atualizada",
+        description: "Valor de crédito atualizado com sucesso",
+      });
+
+      loadCreditSettings();
+    } catch (error) {
+      console.error('Erro ao atualizar configuração:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar configuração",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const startEditing = (settingId: string, currentValue: number) => {
+    setEditingSettings({ ...editingSettings, [settingId]: true });
+    setTempSettings({ ...tempSettings, [settingId]: currentValue });
+  };
+
+  const saveEdit = (settingId: string) => {
+    const newValue = tempSettings[settingId];
+    if (newValue !== undefined) {
+      updateCreditSetting(settingId, newValue);
+    }
+    setEditingSettings({ ...editingSettings, [settingId]: false });
+  };
+
+  const cancelEdit = (settingId: string) => {
+    setEditingSettings({ ...editingSettings, [settingId]: false });
+    const newTemp = { ...tempSettings };
+    delete newTemp[settingId];
+    setTempSettings(newTemp);
   };
 
   const filterUsers = () => {
