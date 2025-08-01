@@ -76,7 +76,7 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
         <div class="answer-row">
             <span class="q-number">Q.${i}:</span>
             <div class="options-bubbles">
-                ${Array(5).fill('<div class="bubble"></div>').join('')}
+                ${Array(5).fill('<div class="bubble-container"><div class="bubble-outer"><div class="bubble-inner"></div></div></div>').join('')}
             </div>
         </div>`;
     }
@@ -105,13 +105,15 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
           .qr-code-section img { width: 120px; height: 120px; }
           .qr-code-section p { font-size: 9pt; text-align: center; margin-top: 5px; }
           .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding-left: 15px; display: flex; flex-direction: column; }
-          .answer-grid-header { text-align: center; margin-bottom: 5px; font-size: 9pt; font-weight: bold; }
-          .answer-options-header { display: flex; margin-left: 28px; margin-bottom: 2px; }
-          .answer-options-header span { width: 18px; text-align: center; font-size: 9pt; font-weight: bold; }
-          .answer-row { display: flex; align-items: center; margin-bottom: 2px; }
-          .answer-row .q-number { font-weight: bold; margin-right: 5px; font-size: 10pt; width: 28px; }
+          .answer-grid-header { text-align: center; margin-bottom: 8px; font-size: 9pt; font-weight: bold; }
+          .answer-options-header { display: flex; margin-left: 35px; margin-bottom: 4px; }
+          .answer-options-header span { width: 20px; text-align: center; font-size: 9pt; font-weight: bold; }
+          .answer-row { display: flex; align-items: center; margin-bottom: 3px; }
+          .answer-row .q-number { font-weight: bold; margin-right: 8px; font-size: 10pt; width: 28px; }
           .answer-row .options-bubbles { display: flex; }
-          .answer-row .bubble { width: 12px; height: 12px; border: 1px solid #999; border-radius: 50%; margin: 0 3px; }
+          .bubble-container { width: 20px; display: flex; justify-content: center; align-items: center; }
+          .bubble-outer { width: 14px; height: 14px; border: 1.5px solid #000; border-radius: 50%; display: flex; justify-content: center; align-items: center; }
+          .bubble-inner { width: 8px; height: 8px; border: 1px solid #666; border-radius: 50%; }
           .instructions { margin-bottom: 25px; text-align: justify; font-size: 10pt; color: #444; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
           .questions-container { column-count: ${isDoubleColumn ? 2 : 1}; column-gap: 1.5cm; }
           .question { margin-bottom: 18px; page-break-inside: avoid; -webkit-column-break-inside: avoid; break-inside: avoid; }
