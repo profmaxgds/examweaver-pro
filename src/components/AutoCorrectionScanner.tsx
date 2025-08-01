@@ -40,232 +40,213 @@ export function AutoCorrectionScanner() {
 
   const takePictureWithCamera = async () => {
     try {
-      console.log('🎥 Iniciando captura de foto...');
+      console.log('🎥 === INICIANDO CAPTURA DE FOTO ===');
       console.log('📱 Plataforma nativa?', Capacitor.isNativePlatform());
       console.log('🌐 User Agent:', navigator.userAgent);
       console.log('🔒 Protocolo:', window.location.protocol);
+      console.log('🌍 URL atual:', window.location.href);
       
-      // Se é app nativo, usar Capacitor Camera
-      if (Capacitor.isNativePlatform()) {
-        console.log('📱 Usando Capacitor Camera...');
-        const image = await CapacitorCamera.getPhoto({
-          quality: 90,
-          allowEditing: false,
-          resultType: CameraResultType.DataUrl,
-          source: CameraSource.Camera,
-          width: 1920,
-          height: 1920
+      // SEMPRE usar câmera web para browsers móveis
+      console.log('🌐 Forçando uso da câmera web...');
+      
+      // Verificar suporte básico
+      if (!navigator.mediaDevices) {
+        console.error('❌ navigator.mediaDevices não disponível');
+        toast.error('Câmera não suportada - tente acessar via HTTPS');
+        return;
+      }
+
+      if (!navigator.mediaDevices.getUserMedia) {
+        console.error('❌ getUserMedia não disponível');
+        toast.error('Câmera não suportada neste browser');
+        return;
+      }
+
+      console.log('✅ APIs de mídia disponíveis');
+
+      // Solicitar permissões primeiro
+      console.log('🔐 Solicitando permissões de câmera...');
+      
+      try {
+        // Tentar configuração simples primeiro
+        console.log('🔄 Tentativa 1: Configuração básica');
+        let stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
         });
-
-        if (image.dataUrl) {
-          console.log('✅ Imagem capturada via Capacitor');
-          const response = await fetch(image.dataUrl);
-          const blob = await response.blob();
-          const file = new File([blob], `camera_capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
-          
-          setSelectedFile(file);
-          setCorrectionResult(null);
-          toast.success('Foto capturada com sucesso!');
-        }
-      } else {
-        console.log('🌐 Usando câmera do browser...');
         
-        // Verificar suporte básico
-        if (!navigator.mediaDevices) {
-          console.error('❌ navigator.mediaDevices não disponível');
-          toast.error('Câmera não suportada neste browser. Tente usar HTTPS.');
-          return;
-        }
-
-        if (!navigator.mediaDevices.getUserMedia) {
-          console.error('❌ getUserMedia não disponível');
-          toast.error('Câmera não suportada neste browser.');
-          return;
-        }
-
-        console.log('🔍 Verificando dispositivos de mídia...');
+        console.log('✅ Stream obtido com sucesso!');
+        console.log('📊 Configurações do stream:', stream.getVideoTracks()[0]?.getSettings());
         
-        // Listar dispositivos disponíveis
+        await processStreamToFile(stream);
+        
+      } catch (firstError) {
+        console.warn('⚠️ Primeira tentativa falhou:', firstError);
+        
         try {
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const videoDevices = devices.filter(device => device.kind === 'videoinput');
-          console.log('📹 Dispositivos de vídeo encontrados:', videoDevices.length);
-          videoDevices.forEach((device, index) => {
-            console.log(`  📹 Dispositivo ${index + 1}:`, device.label || 'Sem nome', device.deviceId);
+          console.log('🔄 Tentativa 2: Câmera frontal');
+          let stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: 'user',
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
           });
           
-          if (videoDevices.length === 0) {
-            toast.error('Nenhuma câmera encontrada no dispositivo.');
+          console.log('✅ Stream obtido (câmera frontal)!');
+          await processStreamToFile(stream);
+          
+        } catch (secondError) {
+          console.warn('⚠️ Segunda tentativa falhou:', secondError);
+          
+          try {
+            console.log('🔄 Tentativa 3: Qualquer câmera');
+            let stream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false
+            });
+            
+            console.log('✅ Stream obtido (qualquer câmera)!');
+            await processStreamToFile(stream);
+            
+          } catch (thirdError) {
+            console.error('❌ Todas as tentativas falharam:', thirdError);
+            
+            if (thirdError.name === 'NotAllowedError') {
+              toast.error('Permissão negada! Permita o acesso à câmera e tente novamente.');
+            } else if (thirdError.name === 'NotFoundError') {
+              toast.error('Nenhuma câmera encontrada no dispositivo.');
+            } else if (thirdError.name === 'NotSupportedError') {
+              toast.error('Câmera não suportada. Tente acessar via HTTPS.');
+            } else {
+              toast.error(`Erro: ${thirdError.message}`);
+            }
             return;
           }
-        } catch (enumError) {
-          console.warn('⚠️ Não foi possível listar dispositivos:', enumError);
         }
+      }
+      
+    } catch (error) {
+      console.error('💥 Erro geral:', error);
+      toast.error('Erro inesperado ao acessar câmera');
+    }
+  };
 
-        // Tentar diferentes configurações de câmera
-        const cameraConfigs = [
-          // Configuração preferencial - câmera traseira com resolução alta
-          { 
-            video: { 
-              facingMode: { exact: 'environment' },
-              width: { ideal: 1920, max: 4096 },
-              height: { ideal: 1920, max: 4096 }
-            } 
-          },
-          // Fallback 1 - câmera traseira com resolução menor
-          { 
-            video: { 
-              facingMode: 'environment',
-              width: { ideal: 1280, max: 1920 },
-              height: { ideal: 1280, max: 1920 }
-            } 
-          },
-          // Fallback 2 - qualquer câmera
-          { 
-            video: { 
-              width: { ideal: 1280, max: 1920 },
-              height: { ideal: 1280, max: 1920 }
-            } 
-          },
-          // Fallback 3 - configuração básica
-          { video: true }
-        ];
-
-        let stream = null;
-        let configUsed = -1;
-
-        for (let i = 0; i < cameraConfigs.length; i++) {
-          try {
-            console.log(`🔄 Tentativa ${i + 1} com configuração:`, cameraConfigs[i]);
-            stream = await navigator.mediaDevices.getUserMedia(cameraConfigs[i]);
-            configUsed = i;
-            console.log(`✅ Sucesso com configuração ${i + 1}`);
-            break;
-          } catch (configError) {
-            console.warn(`⚠️ Configuração ${i + 1} falhou:`, configError.name, configError.message);
-            
-            if (i === cameraConfigs.length - 1) {
-              // Última tentativa falhou
-              if (configError.name === 'NotAllowedError') {
-                toast.error('Permissão de câmera negada. Por favor, permita o acesso à câmera nas configurações do browser.');
-              } else if (configError.name === 'NotFoundError') {
-                toast.error('Nenhuma câmera encontrada no dispositivo.');
-              } else if (configError.name === 'NotSupportedError') {
-                toast.error('Câmera não suportada neste browser.');
-              } else if (configError.name === 'OverconstrainedError') {
-                toast.error('Configuração de câmera não suportada pelo dispositivo.');
-              } else {
-                toast.error(`Erro ao acessar câmera: ${configError.message}`);
-              }
-              return;
-            }
-          }
-        }
-
-        if (!stream) {
-          console.error('❌ Não foi possível obter stream de vídeo');
-          toast.error('Erro ao acessar a câmera.');
-          return;
-        }
-
-        console.log(`📹 Stream obtido com configuração ${configUsed + 1}`);
-        console.log('📊 Tracks do stream:', stream.getTracks().map(track => ({
-          kind: track.kind,
-          label: track.label,
-          enabled: track.enabled,
-          settings: track.getSettings()
-        })));
-
-        // Criar elementos para captura
+  const processStreamToFile = async (stream: MediaStream) => {
+    return new Promise<void>((resolve, reject) => {
+      try {
+        console.log('📹 Processando stream para arquivo...');
+        
         const video = document.createElement('video');
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        
-        if (!context) {
-          stream.getTracks().forEach(track => track.stop());
-          toast.error('Erro interno: não foi possível criar contexto de canvas.');
-          return;
-        }
-        
         video.srcObject = stream;
-        video.setAttribute('playsinline', 'true'); // Crítico para iOS
-        video.setAttribute('autoplay', 'true');
-        video.setAttribute('muted', 'true');
-        video.style.position = 'fixed';
-        video.style.top = '-9999px'; // Esconder o elemento
+        video.autoplay = true;
+        video.muted = true;
+        video.playsInline = true; // Crucial para iOS
         
-        // Temporariamente adicionar ao DOM para iOS
+        // Adicionar temporariamente ao DOM (necessário para alguns browsers)
+        video.style.position = 'absolute';
+        video.style.top = '-9999px';
+        video.style.left = '-9999px';
+        video.style.width = '1px';
+        video.style.height = '1px';
         document.body.appendChild(video);
         
-        try {
-          // Aguardar o vídeo estar pronto
-          await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-              reject(new Error('Timeout ao carregar vídeo'));
-            }, 15000);
-
-            video.onloadedmetadata = () => {
-              clearTimeout(timeout);
-              console.log('📐 Dimensões do vídeo:', video.videoWidth, 'x', video.videoHeight);
+        const timeoutId = setTimeout(() => {
+          cleanup();
+          reject(new Error('Timeout - vídeo não carregou'));
+        }, 10000);
+        
+        const cleanup = () => {
+          clearTimeout(timeoutId);
+          if (document.body.contains(video)) {
+            document.body.removeChild(video);
+          }
+          stream.getTracks().forEach(track => {
+            console.log('⏹️ Parando track:', track.kind, track.label);
+            track.stop();
+          });
+        };
+        
+        video.addEventListener('loadedmetadata', () => {
+          console.log('📐 Metadados carregados:', {
+            width: video.videoWidth,
+            height: video.videoHeight,
+            duration: video.duration
+          });
+          
+          if (video.videoWidth === 0 || video.videoHeight === 0) {
+            cleanup();
+            reject(new Error('Dimensões inválidas do vídeo'));
+            return;
+          }
+          
+          // Aguardar um frame estar disponível
+          setTimeout(() => {
+            try {
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d');
               
-              if (video.videoWidth === 0 || video.videoHeight === 0) {
-                reject(new Error('Vídeo sem dimensões válidas'));
+              if (!ctx) {
+                cleanup();
+                reject(new Error('Não foi possível criar contexto do canvas'));
                 return;
               }
               
               canvas.width = video.videoWidth;
               canvas.height = video.videoHeight;
               
-              // Aguardar um pouco para garantir que há dados de vídeo
-              setTimeout(() => {
-                console.log('✅ Vídeo pronto para captura');
-                resolve(true);
-              }, 1500);
-            };
-            
-            video.onerror = (err) => {
-              clearTimeout(timeout);
-              console.error('❌ Erro no elemento de vídeo:', err);
-              reject(new Error('Erro ao carregar elemento de vídeo'));
-            };
-          });
-          
-          // Capturar frame
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          console.log('📸 Frame capturado do vídeo');
-          
-          // Converter para arquivo
-          const blob = await new Promise<Blob>((resolve, reject) => {
-            canvas.toBlob((result) => {
-              if (result) {
-                resolve(result);
-              } else {
-                reject(new Error('Erro ao criar blob da imagem'));
-              }
-            }, 'image/jpeg', 0.9);
-          });
-          
-          const file = new File([blob], `camera_web_${Date.now()}.jpg`, { type: 'image/jpeg' });
-          console.log('📁 Arquivo criado:', file.name, (file.size / 1024).toFixed(2), 'KB');
-          
-          setSelectedFile(file);
-          setCorrectionResult(null);
-          toast.success('Foto capturada com sucesso!');
-          
-        } finally {
-          // Limpar recursos
-          console.log('🧹 Limpando recursos...');
-          stream.getTracks().forEach(track => {
-            console.log('⏹️ Parando track:', track.kind);
-            track.stop();
-          });
-          document.body.removeChild(video);
-        }
+              console.log('🎨 Capturando frame...');
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              
+              canvas.toBlob((blob) => {
+                cleanup();
+                
+                if (!blob) {
+                  reject(new Error('Erro ao gerar blob da imagem'));
+                  return;
+                }
+                
+                const file = new File([blob], `camera_${Date.now()}.jpg`, { 
+                  type: 'image/jpeg' 
+                });
+                
+                console.log('✅ Arquivo criado:', {
+                  name: file.name,
+                  size: `${(file.size / 1024).toFixed(2)} KB`,
+                  type: file.type
+                });
+                
+                setSelectedFile(file);
+                setCorrectionResult(null);
+                toast.success('📸 Foto capturada com sucesso!');
+                resolve();
+                
+              }, 'image/jpeg', 0.9);
+              
+            } catch (captureError) {
+              cleanup();
+              reject(captureError);
+            }
+          }, 1000); // Aguardar 1 segundo para garantir frame válido
+        });
+        
+        video.addEventListener('error', (err) => {
+          console.error('❌ Erro no vídeo:', err);
+          cleanup();
+          reject(new Error('Erro ao carregar vídeo'));
+        });
+        
+      } catch (processError) {
+        console.error('❌ Erro no processamento:', processError);
+        stream.getTracks().forEach(track => track.stop());
+        reject(processError);
       }
-    } catch (error) {
-      console.error('💥 Erro geral ao capturar foto:', error);
-      toast.error('Erro inesperado ao acessar a câmera. Verifique se está usando HTTPS e tente novamente.');
-    }
+    });
   };
 
   const selectFromGallery = async () => {
