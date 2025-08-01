@@ -14,6 +14,7 @@ interface QRCodeData {
   examId: string;
   studentId: string;
   version?: number;
+  studentExamId?: string; // Adicionar campo para compatibilidade
 }
 
 interface CorrectionResult {
@@ -214,7 +215,8 @@ export default function AutoCorrectionPage() {
         return {
           examId: data.examId,
           studentId: data.studentId || data.studentExamId,
-          version: data.version || 1
+          version: data.version || 1,
+          studentExamId: data.studentExamId
         };
       }
       
@@ -325,28 +327,54 @@ export default function AutoCorrectionPage() {
         throw new Error('Prova não encontrada no sistema');
       }
 
-      // Primeiro, buscar dados do aluno pelo student_id (campo de texto)
-      const { data: studentData, error: studentError } = await supabase
-        .from('students')
-        .select('*')
-        .eq('student_id', qrData.studentId) // Usar student_id (texto) ao invés de id (UUID)
-        .eq('author_id', user.id)
-        .single();
+      let studentExam;
+      let studentData;
 
-      if (studentError || !studentData) {
-        throw new Error(`Aluno com ID ${qrData.studentId} não encontrado`);
-      }
+      // Verificar se temos studentExamId no QR code (prova individual)
+      if (qrData.studentExamId) {
+        // Buscar direto pelo student_exam ID
+        const { data: examInstance, error: examInstanceError } = await supabase
+          .from('student_exams')
+          .select(`
+            *,
+            students!inner(*)
+          `)
+          .eq('id', qrData.studentExamId)
+          .eq('author_id', user.id)
+          .single();
 
-      // Agora buscar gabarito específico do aluno usando o UUID correto
-      const { data: studentExam, error: studentExamError } = await supabase
-        .from('student_exams')
-        .select('*')
-        .eq('exam_id', qrData.examId)
-        .eq('student_id', studentData.id) // Usar o UUID do aluno
-        .single();
+        if (examInstanceError || !examInstance) {
+          throw new Error('Gabarito específico do aluno não encontrado');
+        }
 
-      if (studentExamError || !studentExam) {
-        throw new Error('Gabarito do aluno não encontrado');
+        studentExam = examInstance;
+        studentData = examInstance.students;
+      } else {
+        // Fallback: buscar pelo studentId (para compatibilidade com QR codes antigos)
+        const { data: student, error: studentError } = await supabase
+          .from('students')
+          .select('*')
+          .eq('student_id', qrData.studentId)
+          .eq('author_id', user.id)
+          .single();
+
+        if (studentError || !student) {
+          throw new Error(`Aluno com ID ${qrData.studentId} não encontrado`);
+        }
+
+        const { data: examInstance, error: examInstanceError } = await supabase
+          .from('student_exams')
+          .select('*')
+          .eq('exam_id', qrData.examId)
+          .eq('student_id', student.id)
+          .single();
+
+        if (examInstanceError || !examInstance) {
+          throw new Error('Gabarito do aluno não encontrado');
+        }
+
+        studentExam = examInstance;
+        studentData = student;
       }
 
       const examInfo: ExamInfo = {
