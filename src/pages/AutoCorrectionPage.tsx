@@ -40,10 +40,15 @@ interface CorrectionResult {
   correctAnswers: Record<string, string>;
   feedback: Array<{
     questionNumber: string;
+    questionId?: string;
     studentAnswer: string;
     correctAnswer: string;
     isCorrect: boolean;
+    points?: number;
+    earnedPoints?: number;
   }>;
+  hasOpenQuestions?: boolean;
+  openQuestions?: any[];
 }
 
 export default function AutoCorrectionPage() {
@@ -740,7 +745,7 @@ export default function AutoCorrectionPage() {
     return null;
   };
 
-  // Etapa 2: Processar marcações e fazer correção
+  // Etapa 2: Processar marcações e fazer correção (APENAS questões fechadas)
   const processCorrection = async () => {
     if (!selectedFile || !examInfo || !user) {
       toast({
@@ -765,12 +770,40 @@ export default function AutoCorrectionPage() {
         throw new Error(`Erro no upload: ${uploadError.message}`);
       }
 
-      // Chamar edge function para detectar marcações
+      // Primeiro, buscar informações detalhadas da prova para separar questões
+      const { data: examQuestions, error: questionsError } = await supabase
+        .from('questions')
+        .select('*')
+        .in('id', examInfo.answerKey ? Object.keys(examInfo.answerKey) : []);
+
+      if (questionsError) {
+        console.error('Erro ao buscar questões:', questionsError);
+      }
+
+      // Separar questões fechadas das abertas
+      const closedQuestions = examQuestions?.filter(q => 
+        q.type === 'multiple_choice' || q.type === 'true_false'
+      ) || [];
+      
+      const openQuestions = examQuestions?.filter(q => q.type === 'essay') || [];
+      
+      console.log('Questões fechadas:', closedQuestions.length);
+      console.log('Questões abertas:', openQuestions.length);
+
+      // Chamar edge function para detectar marcações APENAS das questões fechadas
       const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('ocr-correction', {
         body: {
           fileName: fileName,
           mode: 'detect_marks', // Apenas detectar marcações
-          examInfo: examInfo
+          examInfo: {
+            ...examInfo,
+            // Filtrar answerKey para incluir apenas questões fechadas
+            answerKey: Object.fromEntries(
+              Object.entries(examInfo.answerKey).filter(([qId]) => 
+                closedQuestions.some(q => q.id === qId)
+              )
+            )
+          }
         }
       });
 
@@ -778,26 +811,34 @@ export default function AutoCorrectionPage() {
         throw new Error(`Erro na detecção de marcações: ${ocrError.message}`);
       }
 
-      // Processar respostas detectadas
+      // Processar respostas detectadas APENAS para questões fechadas
       const detectedAnswers = ocrResult.detectedAnswers || {};
       
-      // Comparar com gabarito
-      const correctAnswers = examInfo.answerKey;
-      console.log('Gabarito da prova:', correctAnswers);
+      // Comparar com gabarito apenas das questões fechadas
+      const correctAnswers = Object.fromEntries(
+        Object.entries(examInfo.answerKey).filter(([qId]) => 
+          closedQuestions.some(q => q.id === qId)
+        )
+      );
+      
+      console.log('Gabarito questões fechadas:', correctAnswers);
       console.log('Respostas detectadas:', detectedAnswers);
       
       let score = 0;
       const feedback = [];
+      let totalPoints = 0;
 
-      // Processar cada questão do gabarito
+      // Processar cada questão fechada do gabarito
       for (const [questionId, correctAnswerArray] of Object.entries(correctAnswers)) {
+        const question = closedQuestions.find(q => q.id === questionId);
+        const questionPoints = question?.points || 1;
+        totalPoints += questionPoints;
+        
         // O gabarito pode estar como array, pegar o primeiro elemento
         const correctAnswer = Array.isArray(correctAnswerArray) ? correctAnswerArray[0] : correctAnswerArray;
         
         // Encontrar resposta do aluno para esta questão (buscar por índice ou ID)
         let studentAnswer = null;
-        
-        // Tentar diferentes formatos de mapeamento questão
         const questionIndex = Object.keys(correctAnswers).indexOf(questionId) + 1;
         studentAnswer = detectedAnswers[questionIndex.toString()] || 
                        detectedAnswers[questionId] || 
@@ -806,48 +847,55 @@ export default function AutoCorrectionPage() {
         const isCorrect = studentAnswer && studentAnswer === correctAnswer;
         
         if (isCorrect) {
-          score += 1; // Assumindo 1 ponto por questão
+          score += questionPoints;
         }
 
         feedback.push({
           questionNumber: questionIndex.toString(),
           questionId: questionId,
-          studentAnswer: studentAnswer || 'Não marcada',
-          correctAnswer: correctAnswer as string,
-          isCorrect: !!isCorrect
+          studentAnswer: studentAnswer || 'Não detectada',
+          correctAnswer: correctAnswer,
+          isCorrect: isCorrect,
+          points: questionPoints,
+          earnedPoints: isCorrect ? questionPoints : 0
         });
       }
 
-      const maxScore = Object.keys(correctAnswers).length;
-      const percentage = (score / maxScore) * 100;
-
-      const result: CorrectionResult = {
+      // Criar resultado das questões fechadas
+      const closedQuestionsResult = {
         examId: examInfo.examId,
         studentId: examInfo.studentId,
         studentName: examInfo.studentName,
         answers: detectedAnswers,
-        score,
-        maxScore,
-        percentage,
-        correctAnswers,
-        feedback
+        score: score,
+        maxScore: totalPoints,
+        percentage: totalPoints > 0 ? Math.round((score / totalPoints) * 100) : 0,
+        correctAnswers: correctAnswers,
+        feedback: feedback,
+        hasOpenQuestions: openQuestions.length > 0,
+        openQuestions: openQuestions
       };
 
-      setCorrectionResult(result);
+      setCorrectionResult(closedQuestionsResult);
       
-      // Se há questões abertas, ir para correção manual
-      if (essayQuestions.length > 0) {
-        setStep('essay-correction');
+      // Se há questões abertas, configurar para correção manual
+      if (openQuestions.length > 0) {
+        setEssayQuestions(openQuestions);
         setCurrentEssayIndex(0);
+        setStep('corrected'); // Mostrar resultado parcial com opção para questões abertas
+        
         toast({
-          title: "Correção automática concluída!",
-          description: `Agora corrija manualmente as ${essayQuestions.length} questões abertas.`,
+          title: "✅ Questões fechadas corrigidas!",
+          description: `${score}/${totalPoints} pontos. ${openQuestions.length} questões abertas pendentes.`,
         });
       } else {
+        // Se não há questões abertas, finalizar processo
+        await saveCorrection(closedQuestionsResult);
         setStep('corrected');
+        
         toast({
-          title: "Correção realizada!",
-          description: `Prova corrigida: ${score}/${maxScore} (${percentage.toFixed(1)}%)`,
+          title: "✅ Correção concluída!",
+          description: `Nota: ${score}/${totalPoints} (${closedQuestionsResult.percentage}%)`,
         });
       }
 
@@ -938,25 +986,26 @@ export default function AutoCorrectionPage() {
     });
   };
 
-  const saveCorrection = async () => {
-    if (!correctionResult || !user) return;
+  const saveCorrection = async (result?: CorrectionResult) => {
+    const resultToSave = result || correctionResult;
+    if (!resultToSave || !user) return;
 
     setIsSaving(true);
 
     try {
       // Preparar dados incluindo questões abertas
       const correctionData = {
-        exam_id: correctionResult.examId,
-        student_id: correctionResult.studentId,
-        student_name: correctionResult.studentName,
+        exam_id: resultToSave.examId,
+        student_id: resultToSave.studentId,
+        student_name: resultToSave.studentName,
         answers: {
-          ...correctionResult.answers,
+          ...resultToSave.answers,
           essay_scores: essayScores // Incluir pontuações das questões abertas
         },
-        score: correctionResult.score,
-        max_score: correctionResult.maxScore,
-        percentage: correctionResult.percentage,
-        auto_corrected: essayQuestions.length === 0, // Se tem questões abertas, não é totalmente automático
+        score: resultToSave.score,
+        max_score: resultToSave.maxScore,
+        percentage: resultToSave.percentage,
+        auto_corrected: !resultToSave.hasOpenQuestions, // Se tem questões abertas, não é totalmente automático
         author_id: user.id,
         image_url: selectedFile ? `correction_${Date.now()}_${selectedFile.name}` : null
       };
@@ -1055,15 +1104,60 @@ export default function AutoCorrectionPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      controls={false}
-                      className="w-full max-w-md mx-auto rounded-lg border bg-black"
-                      style={{ aspectRatio: '16/9' }}
-                    />
+                    <div className="relative w-full max-w-md mx-auto">
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        controls={false}
+                        className="w-full rounded-lg border bg-black"
+                        style={{ aspectRatio: '16/9' }}
+                      />
+                      
+                      {/* Guias visuais para captura */}
+                      {scanMode === 'qr' ? (
+                        // Guia para QR Code - quadrado menor no centro
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="relative">
+                            <div className="w-32 h-32 border-4 border-blue-500 rounded-lg bg-blue-500/10 animate-pulse">
+                              <div className="absolute -top-2 -left-2 w-4 h-4 border-t-4 border-l-4 border-blue-400"></div>
+                              <div className="absolute -top-2 -right-2 w-4 h-4 border-t-4 border-r-4 border-blue-400"></div>
+                              <div className="absolute -bottom-2 -left-2 w-4 h-4 border-b-4 border-l-4 border-blue-400"></div>
+                              <div className="absolute -bottom-2 -right-2 w-4 h-4 border-b-4 border-r-4 border-blue-400"></div>
+                            </div>
+                            <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-blue-300 font-bold bg-black/50 px-2 py-1 rounded">
+                              Posicione o QR aqui
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        // Guia para Gabarito - retângulo maior
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="relative">
+                            <div className="w-64 h-48 border-4 border-green-500 rounded-lg bg-green-500/10 animate-pulse">
+                              <div className="absolute -top-2 -left-2 w-6 h-6 border-t-4 border-l-4 border-green-400"></div>
+                              <div className="absolute -top-2 -right-2 w-6 h-6 border-t-4 border-r-4 border-green-400"></div>
+                              <div className="absolute -bottom-2 -left-2 w-6 h-6 border-b-4 border-l-4 border-green-400"></div>
+                              <div className="absolute -bottom-2 -right-2 w-6 h-6 border-b-4 border-r-4 border-green-400"></div>
+                              
+                              {/* Linhas de referência para o gabarito */}
+                              <div className="absolute top-4 left-4 right-4 border-t-2 border-green-400/50"></div>
+                              <div className="absolute top-8 left-4 right-4 border-t border-green-400/30"></div>
+                              <div className="absolute top-12 left-4 right-4 border-t border-green-400/30"></div>
+                              
+                              {/* Indicador de QR code no canto */}
+                              <div className="absolute top-2 right-2 w-8 h-8 border-2 border-green-400/60 rounded text-xs flex items-center justify-center text-green-300">
+                                QR
+                              </div>
+                            </div>
+                            <div className="absolute -bottom-10 left-1/2 transform -translate-x-1/2 text-xs text-green-300 font-bold bg-black/50 px-2 py-1 rounded text-center">
+                              Posicione a prova com QR e gabarito aqui
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     
                     {/* Canvas invisível para processamento */}
                     <canvas ref={canvasRef} style={{ display: 'none' }} />
@@ -1462,9 +1556,52 @@ export default function AutoCorrectionPage() {
                   </div>
                 </div>
 
+                {/* Questões abertas pendentes */}
+                {correctionResult.hasOpenQuestions && correctionResult.openQuestions && correctionResult.openQuestions.length > 0 && (
+                  <div className="border-t pt-6">
+                    <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-lg border border-orange-200 dark:border-orange-800">
+                      <div className="flex items-center gap-2 mb-3">
+                        <PenTool className="h-5 w-5 text-orange-600" />
+                        <h4 className="font-semibold text-orange-800 dark:text-orange-200">Questões Abertas Pendentes</h4>
+                        <Badge variant="outline" className="ml-auto">
+                          {correctionResult.openQuestions.length} questões
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-orange-700 dark:text-orange-300 mb-4">
+                        Esta prova contém questões abertas que requerem correção manual. 
+                        Capture imagens das respostas manuscritas para análise.
+                      </p>
+                      
+                      <div className="space-y-3">
+                        {correctionResult.openQuestions.map((question: any, index: number) => (
+                          <div key={question.id} className="flex items-center justify-between p-3 bg-white/50 dark:bg-black/20 rounded border">
+                            <div>
+                              <p className="font-medium">Questão {index + 1}</p>
+                              <p className="text-sm text-muted-foreground">{question.title}</p>
+                              <p className="text-xs text-blue-600">{question.points} pontos</p>
+                            </div>
+                            <Button
+                              onClick={() => {
+                                setEssayQuestions(correctionResult.openQuestions);
+                                setCurrentEssayIndex(index);
+                                setStep('essay-correction');
+                              }}
+                              size="sm"
+                              className="bg-orange-600 hover:bg-orange-700"
+                            >
+                              <Camera className="w-4 h-4 mr-2" />
+                              Capturar Resposta
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Botão para salvar */}
-                <Button 
-                  onClick={saveCorrection}
+                <Button
+                  onClick={() => saveCorrection()}
                   disabled={isSaving}
                   className="w-full"
                   size="lg"
