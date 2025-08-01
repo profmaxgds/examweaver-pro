@@ -688,20 +688,26 @@ export default function AutoCorrectionPage() {
 
       setExamInfo(examInfo);
       setEssayQuestions(essayQuestionsFound);
-      setStep('need-answer-sheet'); // Novo step: precisa da imagem da prova respondida
-      stopCamera(); // Parar a câmera após detectar
       
-      // Automaticamente iniciar captura do gabarito após 3 segundos (tempo para ler)
-      setTimeout(() => {
-        startCamera('photo');
-      }, 3000);
-      
-      // Alertar sobre questões abertas
+      // Se há questões abertas, ir direto para correção manual
       if (essayQuestionsFound.length > 0) {
+        setCurrentEssayIndex(0);
+        setStep('essay-correction'); // Ir direto para correção das questões abertas
+        stopCamera(); // Parar a câmera após detectar
+        
         toast({
-          title: "⚠️ Atenção: Questões Abertas Detectadas",
-          description: `Esta prova contém ${essayQuestionsFound.length} questão(ões) aberta(s) que precisarão de correção manual.`,
+          title: "⚠️ Questões Abertas Detectadas",
+          description: `Esta prova contém ${essayQuestionsFound.length} questão(ões) aberta(s). Corrija-as primeiro.`,
         });
+      } else {
+        // Se não há questões abertas, seguir fluxo normal
+        setStep('need-answer-sheet'); // Novo step: precisa da imagem da prova respondida
+        stopCamera(); // Parar a câmera após detectar
+        
+        // Automaticamente iniciar captura do gabarito após 3 segundos (tempo para ler)
+        setTimeout(() => {
+          startCamera('photo');
+        }, 3000);
       }
       
       toast({
@@ -928,18 +934,45 @@ export default function AutoCorrectionPage() {
 
       setCorrectionResult(closedQuestionsResult);
       
-      // Se há questões abertas, configurar para correção manual
-      if (openQuestions.length > 0) {
+      // Se há questões abertas mas já foram corrigidas, calcular resultado final
+      if (openQuestions.length > 0 && Object.keys(essayScores).length > 0) {
+        // Questões abertas já foram corrigidas, calcular resultado final
+        let totalEssayScore = 0;
+        let totalEssayMaxScore = 0;
+        
+        for (const question of openQuestions) {
+          totalEssayMaxScore += question.points;
+          if (essayScores[question.id]) {
+            totalEssayScore += essayScores[question.id].score;
+          }
+        }
+        
+        const finalScore = score + totalEssayScore;
+        const finalMaxScore = totalPoints + totalEssayMaxScore;
+        const finalPercentage = (finalScore / finalMaxScore) * 100;
+        
+        closedQuestionsResult.score = finalScore;
+        closedQuestionsResult.maxScore = finalMaxScore;
+        closedQuestionsResult.percentage = finalPercentage;
+        (closedQuestionsResult as any).essayScores = essayScores;
+        
+        setStep('corrected');
+        toast({
+          title: "✅ Correção completa!",
+          description: `Pontuação final: ${finalScore}/${finalMaxScore} (${finalPercentage.toFixed(1)}%)`,
+        });
+      } else if (openQuestions.length > 0) {
+        // Há questões abertas não corrigidas ainda
         setEssayQuestions(openQuestions);
         setCurrentEssayIndex(0);
-        setStep('essay-correction'); // Ir direto para correção das questões abertas
+        setStep('essay-correction');
         
         toast({
           title: "✅ Questões fechadas corrigidas!",
           description: `${score}/${totalPoints} pontos. Agora corrija as ${openQuestions.length} questões abertas.`,
         });
       } else {
-        // Se não há questões abertas, finalizar processo mas ainda mostrar detalhes
+        // Se não há questões abertas, finalizar processo
         setStep('corrected');
         
         toast({
@@ -1002,7 +1035,22 @@ export default function AutoCorrectionPage() {
   };
 
   const finalizeCorrectionWithEssays = () => {
-    if (!correctionResult) return;
+    if (!correctionResult) {
+      // Se não há resultado ainda (questões abertas foram corrigidas primeiro)
+      // Ir para captura do gabarito das questões fechadas
+      setStep('need-answer-sheet');
+      
+      // Automaticamente iniciar captura do gabarito após 2 segundos
+      setTimeout(() => {
+        startCamera('photo');
+      }, 2000);
+      
+      toast({
+        title: "✅ Questões abertas concluídas!",
+        description: "Agora capture o gabarito para corrigir as questões fechadas.",
+      });
+      return;
+    }
     
     // Calcular pontuação total incluindo questões abertas
     let totalEssayScore = 0;
