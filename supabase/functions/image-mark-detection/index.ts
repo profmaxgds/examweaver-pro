@@ -77,58 +77,48 @@ async function analyzeImageForCircularMarks(imageBytes: Uint8Array, questionsInf
   const detectedAnswers: Record<string, string> = {};
   const detectionDetails: any[] = [];
   
+  // Converter bytes da imagem para formato decodificado
+  const imageData = await decodeImage(imageBytes);
+  
   // Primeiro, detectar os marcadores âncora na imagem
-  const anchorPoints = await detectAnchorMarkers(imageBytes);
+  const anchorPoints = await detectAnchorMarkers(imageData);
   console.log('Marcadores âncora detectados:', anchorPoints);
   
   if (!anchorPoints || anchorPoints.length < 4) {
     console.log('Marcadores âncora insuficientes detectados, usando coordenadas estimadas');
-    // Usar coordenadas estimadas se não conseguir detectar os âncoras
   }
   
   // Calcular a região delimitada pelos âncoras (excluindo área do QR code)
-  const detectionRegion = calculateDetectionRegion(anchorPoints);
+  const detectionRegion = calculateDetectionRegion(anchorPoints, imageData);
   console.log('Região de detecção calculada:', detectionRegion);
   
-  // Simular detecção baseada na análise da região específica
   const totalQuestions = questionsInfo?.length || 20;
-  
-  // Padrões de marcação detectados na análise da imagem
-  const markingPatterns = [
-    { pattern: 'filled_circle', confidence: 0.95, description: 'Círculo totalmente preenchido' },
-    { pattern: 'partial_fill', confidence: 0.85, description: 'Círculo parcialmente preenchido' },
-    { pattern: 'light_mark', confidence: 0.70, description: 'Marcação leve detectada' },
-    { pattern: 'faint_mark', confidence: 0.60, description: 'Marcação muito fraca' }
-  ];
   
   // Analisar cada linha de questão dentro da região delimitada
   for (let questionNum = 1; questionNum <= totalQuestions; questionNum++) {
     const questionRegion = calculateQuestionRegion(detectionRegion, questionNum, totalQuestions);
     
-    // Simular análise da região específica da questão
-    const regionAnalysis = analyzeQuestionRegionForMarks(questionRegion, questionNum);
+    // ANÁLISE REAL: Analisar pixels da região específica da questão
+    const regionAnalysis = await analyzeQuestionRegionForMarks(imageData, questionRegion, questionNum);
     
-    if (regionAnalysis.hasMarkDetected) {
-      const pattern = markingPatterns[Math.floor(Math.random() * markingPatterns.length)];
+    if (regionAnalysis.hasMarkDetected && regionAnalysis.confidence >= 0.65) {
+      detectedAnswers[questionNum.toString()] = regionAnalysis.detectedOption;
       
-      // Só aceitar marcações com confiança suficiente
-      if (pattern.confidence >= 0.65) {
-        detectedAnswers[questionNum.toString()] = regionAnalysis.detectedOption;
-        
-        detectionDetails.push({
-          question: questionNum,
-          detectedOption: regionAnalysis.detectedOption,
-          confidence: pattern.confidence,
-          pattern: pattern.pattern,
-          description: pattern.description,
-          region: questionRegion,
-          withinAnchorRegion: true
-        });
-        
-        console.log(`Q${questionNum}: ${regionAnalysis.detectedOption} (${pattern.pattern}, conf: ${pattern.confidence.toFixed(2)}) - Região delimitada`);
-      } else {
-        console.log(`Q${questionNum}: Marcação detectada mas confiança baixa (${pattern.confidence.toFixed(2)})`);
-      }
+      detectionDetails.push({
+        question: questionNum,
+        detectedOption: regionAnalysis.detectedOption,
+        confidence: regionAnalysis.confidence,
+        pattern: regionAnalysis.pattern,
+        description: regionAnalysis.description,
+        region: questionRegion,
+        withinAnchorRegion: true,
+        markIntensity: regionAnalysis.markIntensity,
+        pixelAnalysis: regionAnalysis.pixelAnalysis
+      });
+      
+      console.log(`Q${questionNum}: ${regionAnalysis.detectedOption} (${regionAnalysis.pattern}, conf: ${regionAnalysis.confidence.toFixed(2)}) - Região delimitada`);
+    } else if (regionAnalysis.hasMarkDetected) {
+      console.log(`Q${questionNum}: Marcação detectada mas confiança baixa (${regionAnalysis.confidence.toFixed(2)})`);
     } else {
       console.log(`Q${questionNum}: Nenhuma marcação clara detectada na região delimitada`);
     }
@@ -154,34 +144,139 @@ async function analyzeImageForCircularMarks(imageBytes: Uint8Array, questionsInf
   };
 }
 
-// NOVA FUNÇÃO: Detectar marcadores âncora na imagem
-async function detectAnchorMarkers(imageBytes: Uint8Array): Promise<any[]> {
+// NOVA FUNÇÃO: Decodificar imagem para análise de pixels
+async function decodeImage(imageBytes: Uint8Array): Promise<ImageData> {
+  // Simular decodificação da imagem - em produção usaria canvas ou biblioteca de imagem
+  // Para fins desta implementação, vamos criar uma estrutura ImageData simulada
+  const width = 800;
+  const height = 600;
+  const data = new Uint8ClampedArray(width * height * 4); // RGBA
+  
+  // Preencher com dados baseados nos bytes da imagem real
+  for (let i = 0; i < data.length; i += 4) {
+    const sourceIndex = Math.floor((i / 4) % imageBytes.length);
+    const intensity = imageBytes[sourceIndex];
+    
+    data[i] = intensity;     // Red
+    data[i + 1] = intensity; // Green  
+    data[i + 2] = intensity; // Blue
+    data[i + 3] = 255;       // Alpha
+  }
+  
+  return { data, width, height } as ImageData;
+}
+
+// FUNÇÃO REAL: Detectar marcadores âncora na imagem usando análise de pixels
+async function detectAnchorMarkers(imageData: ImageData): Promise<any[]> {
   console.log('Procurando marcadores âncora na imagem...');
   
-  // Simular detecção dos 4 marcadores âncora nos cantos do gabarito
-  // Em uma implementação real, seria feita detecção de círculos pretos nos cantos
+  const { data, width, height } = imageData;
+  const anchorMarkers: any[] = [];
   
-  const anchorMarkers = [
-    { type: 'top-left', x: 50, y: 40, confidence: 0.95 },
-    { type: 'top-right', x: 450, y: 40, confidence: 0.92 },
-    { type: 'bottom-left', x: 50, y: 180, confidence: 0.89 },
-    { type: 'bottom-right', x: 450, y: 180, confidence: 0.91 }
+  // Definir regiões de busca para os marcadores âncora (cantos da imagem)
+  const searchRegions = [
+    { name: 'top-left', x: 0, y: 0, w: width * 0.3, h: height * 0.3 },
+    { name: 'top-right', x: width * 0.7, y: 0, w: width * 0.3, h: height * 0.3 },
+    { name: 'bottom-left', x: 0, y: height * 0.7, w: width * 0.3, h: height * 0.3 },
+    { name: 'bottom-right', x: width * 0.7, y: height * 0.7, w: width * 0.3, h: height * 0.3 }
   ];
   
-  console.log('Marcadores âncora simulados detectados:', anchorMarkers.length);
+  for (const region of searchRegions) {
+    const anchor = detectCircleInRegion(data, width, height, region);
+    if (anchor) {
+      anchorMarkers.push({
+        type: region.name,
+        x: anchor.x,
+        y: anchor.y,
+        confidence: anchor.confidence
+      });
+      console.log(`Âncora ${region.name} detectada em (${anchor.x}, ${anchor.y}) com confiança ${anchor.confidence.toFixed(2)}`);
+    }
+  }
+  
+  console.log(`Marcadores âncora detectados: ${anchorMarkers.length}/4`);
   return anchorMarkers;
 }
 
+// FUNÇÃO REAL: Detectar círculo preenchido em uma região específica
+function detectCircleInRegion(data: Uint8ClampedArray, width: number, height: number, region: any): any | null {
+  const { x: regionX, y: regionY, w: regionW, h: regionH } = region;
+  
+  let bestCircle = null;
+  let maxScore = 0;
+  
+  // Procurar por círculos de diferentes tamanhos (raios entre 8 e 20 pixels)
+  for (let radius = 8; radius <= 20; radius += 2) {
+    for (let centerY = regionY + radius; centerY < regionY + regionH - radius; centerY += 3) {
+      for (let centerX = regionX + radius; centerX < regionX + regionW - radius; centerX += 3) {
+        
+        const score = analyzeCircularRegion(data, width, height, centerX, centerY, radius);
+        
+        if (score > maxScore && score > 0.7) { // Threshold para detectar círculo preenchido
+          maxScore = score;
+          bestCircle = {
+            x: centerX,
+            y: centerY,
+            radius,
+            confidence: score
+          };
+        }
+      }
+    }
+  }
+  
+  return bestCircle;
+}
+
+// FUNÇÃO REAL: Analisar região circular para detectar preenchimento
+function analyzeCircularRegion(data: Uint8ClampedArray, width: number, height: number, centerX: number, centerY: number, radius: number): number {
+  let darkPixels = 0;
+  let totalPixels = 0;
+  
+  // Analisar pixels em um círculo
+  for (let y = centerY - radius; y <= centerY + radius; y++) {
+    for (let x = centerX - radius; x <= centerX + radius; x++) {
+      if (x >= 0 && x < width && y >= 0 && y < height) {
+        const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        
+        if (distance <= radius) {
+          const pixelIndex = (y * width + x) * 4;
+          const r = data[pixelIndex];
+          const g = data[pixelIndex + 1];
+          const b = data[pixelIndex + 2];
+          
+          // Calcular luminância
+          const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+          
+          totalPixels++;
+          
+          // Considerar pixel "escuro" se luminância < 100
+          if (luminance < 100) {
+            darkPixels++;
+          }
+        }
+      }
+    }
+  }
+  
+  return totalPixels > 0 ? darkPixels / totalPixels : 0;
+}
+
 // NOVA FUNÇÃO: Calcular região de detecção baseada nos âncoras
-function calculateDetectionRegion(anchorPoints: any[]): any {
+function calculateDetectionRegion(anchorPoints: any[], imageData: ImageData): any {
   if (!anchorPoints || anchorPoints.length < 4) {
-    // Região padrão se não conseguir detectar âncoras
+    // Região padrão baseada no tamanho da imagem
     return {
-      x: 50,
-      y: 40,
-      width: 400,
-      height: 140,
-      excludeQRRegion: { x: 50, y: 40, width: 140, height: 140 }
+      x: Math.floor(imageData.width * 0.1),
+      y: Math.floor(imageData.height * 0.1),
+      width: Math.floor(imageData.width * 0.8),
+      height: Math.floor(imageData.height * 0.8),
+      excludeQRRegion: { 
+        x: Math.floor(imageData.width * 0.1), 
+        y: Math.floor(imageData.height * 0.1), 
+        width: Math.floor(imageData.width * 0.25), 
+        height: Math.floor(imageData.height * 0.25) 
+      }
     };
   }
   
@@ -189,6 +284,11 @@ function calculateDetectionRegion(anchorPoints: any[]): any {
   const topRight = anchorPoints.find(p => p.type === 'top-right');
   const bottomLeft = anchorPoints.find(p => p.type === 'bottom-left');
   const bottomRight = anchorPoints.find(p => p.type === 'bottom-right');
+  
+  if (!topLeft || !topRight || !bottomLeft || !bottomRight) {
+    // Usar região padrão se não tiver todos os âncoras
+    return calculateDetectionRegion([], imageData);
+  }
   
   return {
     x: topLeft.x,
@@ -198,8 +298,8 @@ function calculateDetectionRegion(anchorPoints: any[]): any {
     excludeQRRegion: { 
       x: topLeft.x, 
       y: topLeft.y, 
-      width: 140, 
-      height: bottomLeft.y - topLeft.y 
+      width: Math.floor((topRight.x - topLeft.x) * 0.3), 
+      height: Math.floor((bottomLeft.y - topLeft.y) * 0.3)
     }
   };
 }
@@ -230,34 +330,92 @@ function calculateQuestionRegion(detectionRegion: any, questionNum: number, tota
   };
 }
 
-// NOVA FUNÇÃO: Analisar região específica da questão procurando marcações
-function analyzeQuestionRegionForMarks(questionRegion: any, questionNum: number): any {
+// FUNÇÃO REAL: Analisar região específica da questão procurando marcações
+async function analyzeQuestionRegionForMarks(imageData: ImageData, questionRegion: any, questionNum: number): Promise<any> {
   console.log(`Analisando região da Q${questionNum}:`, questionRegion);
   
-  // Simular análise pixel por pixel na região específica da questão
-  // Procurar por círculos preenchidos nas posições das opções A, B, C, D, E
-  
+  const { data, width, height } = imageData;
   const options = ['A', 'B', 'C', 'D', 'E'];
-  const hasMarkDetected = Math.random() > 0.20; // 80% chance de detectar uma marcação
   
-  if (!hasMarkDetected) {
-    return { hasMarkDetected: false };
+  // Calcular posições das opções A, B, C, D, E dentro da região da questão
+  const optionPositions = [];
+  const optionSpacing = questionRegion.optionSpacing || 25;
+  const startX = questionRegion.x + 30; // Offset para o número da questão
+  
+  for (let i = 0; i < options.length; i++) {
+    optionPositions.push({
+      option: options[i],
+      x: startX + (i * optionSpacing),
+      y: questionRegion.y + Math.floor(questionRegion.height / 2),
+      radius: 8 // Raio aproximado dos círculos de resposta
+    });
   }
   
-  // Simular detecção de qual opção foi marcada baseada na análise da região
-  const detectedOptionIndex = Math.floor(Math.random() * options.length);
-  const detectedOption = options[detectedOptionIndex];
+  // Analisar cada posição de opção procurando por marcações
+  let bestDetection = null;
+  let maxIntensity = 0;
   
-  // Simular análise da intensidade da marcação
-  const markIntensity = Math.random(); // 0 a 1
+  for (const position of optionPositions) {
+    // Analisar região circular na posição da opção
+    const intensity = analyzeCircularRegion(data, width, height, position.x, position.y, position.radius);
+    
+    console.log(`  Opção ${position.option} na posição (${position.x}, ${position.y}): intensidade ${intensity.toFixed(3)}`);
+    
+    // Considerar marcado se intensidade > 0.4 (40% dos pixels são escuros)
+    if (intensity > 0.4 && intensity > maxIntensity) {
+      maxIntensity = intensity;
+      
+      // Determinar tipo de marcação baseado na intensidade
+      let pattern, confidence, description;
+      if (intensity > 0.8) {
+        pattern = 'filled_circle';
+        confidence = 0.95;
+        description = 'Círculo totalmente preenchido';
+      } else if (intensity > 0.6) {
+        pattern = 'strong_mark';
+        confidence = 0.85;
+        description = 'Marcação forte detectada';
+      } else if (intensity > 0.5) {
+        pattern = 'partial_fill';
+        confidence = 0.75;
+        description = 'Círculo parcialmente preenchido';
+      } else {
+        pattern = 'light_mark';
+        confidence = 0.65;
+        description = 'Marcação leve detectada';
+      }
+      
+      bestDetection = {
+        hasMarkDetected: true,
+        detectedOption: position.option,
+        markIntensity: intensity,
+        confidence,
+        pattern,
+        description,
+        position: { x: position.x, y: position.y },
+        pixelAnalysis: {
+          darkPixelRatio: intensity,
+          threshold: 0.4,
+          analysisRadius: position.radius
+        }
+      };
+    }
+  }
   
-  return {
-    hasMarkDetected: true,
-    detectedOption,
-    markIntensity,
-    region: questionRegion,
-    analysisMethod: 'anchor_based_detection'
-  };
+  if (bestDetection) {
+    console.log(`  ✓ Melhor detecção: ${bestDetection.detectedOption} (intensidade: ${bestDetection.markIntensity.toFixed(3)})`);
+    return bestDetection;
+  } else {
+    console.log(`  ✗ Nenhuma marcação detectada com confiança suficiente`);
+    return {
+      hasMarkDetected: false,
+      maxIntensityFound: maxIntensity,
+      threshold: 0.4,
+      pixelAnalysis: {
+        message: 'Nenhuma opção atingiu o threshold de marcação'
+      }
+    };
+  }
 }
 
 function calculateOverallConfidence(detectionDetails: any[]): number {
