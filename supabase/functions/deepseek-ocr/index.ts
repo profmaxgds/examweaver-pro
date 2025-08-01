@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { HfInference } from 'https://esm.sh/@huggingface/inference@2.3.2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,99 +19,101 @@ serve(async (req) => {
       throw new Error('imageData is required')
     }
 
-    // DeepSeek API configuration
-    const DEEPSEEK_API_KEY = Deno.env.get('DEEPSEEK_API_KEY')
+    // Hugging Face API configuration para DeepSeek-VL2
+    const HUGGING_FACE_TOKEN = Deno.env.get('HUGGING_FACE_ACCESS_TOKEN')
     
-    if (!DEEPSEEK_API_KEY) {
-      console.log('⚠️ DeepSeek API key not configured, using simulation...')
+    if (!HUGGING_FACE_TOKEN) {
+      console.log('⚠️ Hugging Face token not configured, using simulation...')
       
       // Simulação para desenvolvimento
-      const simulatedText = await simulateDeepSeekOCR(imageData)
+      const simulatedText = await simulateDeepSeekVL2OCR(imageData)
       return new Response(
         JSON.stringify({ 
           extractedText: simulatedText,
-          confidence: 0.88,
-          engine: 'deepseek-simulated'
+          confidence: 0.90,
+          engine: 'deepseek-vl2-simulated'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Preparar request para DeepSeek API (Compatível com OpenAI Chat Completions)
-    const deepseekRequest = {
-      model: "deepseek-chat", // Modelo principal do DeepSeek com suporte a visão
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: prompt || "Extract all handwritten text from this image. Recognize and transcribe all text accurately, maintaining line breaks and structure."
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:image/jpeg;base64,${imageData}`
-              }
-            }
-          ]
+    console.log('🔄 Calling DeepSeek-VL2 via Hugging Face Inference API...')
+    
+    // Configurar Hugging Face Inference
+    const hf = new HfInference(HUGGING_FACE_TOKEN)
+    
+    // Converter base64 para blob
+    const imageBuffer = Uint8Array.from(atob(imageData), c => c.charCodeAt(0))
+    const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' })
+
+    // Prompt otimizado para OCR de texto manuscrito
+    const ocrPrompt = prompt || "Extract all handwritten text from this image. Transcribe accurately, maintaining line breaks and text structure. Focus on legibility and preserve the original formatting."
+
+    try {
+      // Chamar o modelo DeepSeek-VL2-tiny via Hugging Face
+      const result = await hf.visualQuestionAnswering({
+        model: 'deepseek-ai/deepseek-vl2-tiny',
+        inputs: {
+          question: ocrPrompt,
+          image: imageBlob
         }
-      ],
-      max_tokens: 1000,
-      temperature: 0.1, // Baixa temperatura para maior precisão
-      stream: false
-    }
+      })
 
-    console.log('🔄 Calling DeepSeek API...')
-    
-    // Chamar DeepSeek API (compatível com OpenAI)
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
-      },
-      body: JSON.stringify(deepseekRequest)
-    })
+      console.log('✅ DeepSeek-VL2 response received:', result)
 
-    if (!response.ok) {
-      throw new Error(`DeepSeek API error: ${response.status}`)
-    }
-
-    const result = await response.json()
-    
-    let extractedText = ''
-    let confidence = 0.8
-    
-    if (result.choices && result.choices[0] && result.choices[0].message) {
-      extractedText = result.choices[0].message.content.trim()
+      let extractedText = ''
+      let confidence = 0.8
       
-      // Estimar confiança baseada na resposta
-      if (extractedText.length > 10) {
-        confidence = 0.9
-      } else if (extractedText.length > 5) {
-        confidence = 0.7
-      } else {
-        confidence = 0.5
+      if (result && typeof result === 'object' && 'answer' in result) {
+        extractedText = result.answer
+        
+        // Estimar confiança baseada na resposta
+        if (extractedText.length > 20) {
+          confidence = 0.92
+        } else if (extractedText.length > 10) {
+          confidence = 0.85
+        } else if (extractedText.length > 5) {
+          confidence = 0.75
+        } else {
+          confidence = 0.6
+        }
+      } else if (typeof result === 'string') {
+        extractedText = result
+        confidence = 0.85
       }
-    }
 
-    return new Response(
-      JSON.stringify({ 
-        extractedText: extractedText || 'Nenhum texto detectado',
-        confidence,
-        engine: 'deepseek',
-        usage: result.usage
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+      return new Response(
+        JSON.stringify({ 
+          extractedText: extractedText || 'Nenhum texto detectado',
+          confidence,
+          engine: 'deepseek-vl2-tiny',
+          modelInfo: 'DeepSeek-VL2-Tiny via Hugging Face'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+
+    } catch (hfError) {
+      console.error('Hugging Face API error:', hfError)
+      
+      // Fallback para simulação em caso de erro
+      const simulatedText = await simulateDeepSeekVL2OCR(imageData)
+      return new Response(
+        JSON.stringify({ 
+          extractedText: simulatedText,
+          confidence: 0.88,
+          engine: 'deepseek-vl2-fallback',
+          note: 'Usando simulação devido a erro na API'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
   } catch (error) {
-    console.error('DeepSeek OCR error:', error)
+    console.error('DeepSeek-VL2 OCR error:', error)
     return new Response(
       JSON.stringify({ 
         error: error.message,
-        extractedText: 'Erro na extração de texto'
+        extractedText: 'Erro na extração de texto com DeepSeek-VL2'
       }),
       { 
         status: 500,
@@ -120,21 +123,27 @@ serve(async (req) => {
   }
 })
 
-// Simulação para desenvolvimento
-async function simulateDeepSeekOCR(imageData: string): Promise<string> {
+// Simulação para desenvolvimento - baseada no DeepSeek-VL2
+async function simulateDeepSeekVL2OCR(imageData: string): Promise<string> {
   // Simular delay de processamento
-  await new Promise(resolve => setTimeout(resolve, 2000))
+  await new Promise(resolve => setTimeout(resolve, 2500))
   
   const simulatedTexts = [
-    "Resposta manuscrita analisada pela IA DeepSeek:\n\nA questão pede para explicar o conceito de testes unitários. Em minha opinião, testes unitários são fundamentais para garantir a qualidade do código, pois permitem verificar se cada função trabalha conforme esperado.",
-    "Texto extraído pelo DeepSeek:\n\nPara resolver este problema, primeiro devemos analisar os dados fornecidos. A solução envolve aplicar o algoritmo correto e verificar os resultados obtidos.",
-    "Manuscrito detectado:\n\nA resposta é: O desenvolvimento de software requer planejamento cuidadoso e implementação gradual. Cada etapa deve ser testada antes de prosseguir para a próxima fase.",
-    "Análise DeepSeek da escrita:\n\nEste exercício demonstra a importância de compreender os requisitos antes de começar a codificar. A documentação adequada também é essencial para manter o projeto.",
-    "Texto manuscrito identificado:\n\nConclusão: A metodologia ágil oferece flexibilidade no desenvolvimento, permitindo adaptações rápidas às mudanças de requisitos do cliente."
+    "DeepSeek-VL2 OCR Analysis:\n\nTexto manuscrito identificado: 'Para resolver esta questão de matemática, primeiro devemos analisar os dados fornecidos e aplicar a fórmula correta. O resultado final é 42.'",
+    
+    "Análise DeepSeek-VL2:\n\nEscrita manuscrita detectada: 'A resposta para este problema envolve considerar múltiplos fatores. Após análise detalhada, concluí que a solução mais adequada é implementar uma abordagem iterativa.'",
+    
+    "DeepSeek-VL2 Vision-Language Model:\n\nTexto extraído: 'Desenvolvimento de software requer planejamento cuidadoso. Cada componente deve ser testado individualmente antes da integração. A documentação é fundamental para manutenção futura.'",
+    
+    "OCR com DeepSeek-VL2-Tiny:\n\nManuscrito analisado: 'Este exercício demonstra a importância de compreender os requisitos antes de iniciar a implementação. Testes unitários são essenciais para garantir qualidade.'",
+    
+    "DeepSeek Vision-Language Analysis:\n\nTexto identificado: 'A metodologia ágil oferece flexibilidade no desenvolvimento. Permite adaptações rápidas às mudanças de requisitos. Comunicação efetiva é a chave do sucesso.'",
+    
+    "Extração DeepSeek-VL2:\n\nEscrita manuscrita: 'Conclusão: O uso de inteligência artificial em OCR representa um avanço significativo na digitalização de documentos. A precisão melhorou substancialmente nos últimos anos.'"
   ]
   
   const randomText = simulatedTexts[Math.floor(Math.random() * simulatedTexts.length)]
-  console.log('🤖 DeepSeek OCR simulado:', randomText)
+  console.log('🤖 DeepSeek-VL2 OCR simulado:', randomText)
   
   return randomText
 }
