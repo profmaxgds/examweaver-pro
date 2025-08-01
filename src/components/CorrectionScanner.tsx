@@ -376,7 +376,19 @@ export function CorrectionScanner({ examId, onCorrectionComplete }: CorrectionSc
                 <Eye className="w-4 h-4 mr-2" />
                 {processing ? 'Processando...' : 'Processar Correção'}
               </Button>
-              <Button variant="outline" onClick={reset}>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setCapturedImage(null);
+                  startCamera();
+                }}
+                disabled={processing}
+                className="flex-1"
+              >
+                <Camera className="w-4 h-4 mr-2" />
+                Tentar Novamente
+              </Button>
+              <Button variant="outline" onClick={reset} disabled={processing}>
                 <X className="w-4 h-4" />
               </Button>
             </div>
@@ -426,9 +438,23 @@ export function CorrectionScanner({ examId, onCorrectionComplete }: CorrectionSc
               </div>
             </div>
 
-            <Button variant="outline" onClick={reset} className="w-full">
-              Processar Nova Correção
-            </Button>
+            <div className="flex space-x-2">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setCapturedImage(null);
+                  setResult(null);
+                  startCamera();
+                }} 
+                className="flex-1"
+              >
+                <Camera className="w-4 h-4 mr-2" />
+                Capturar Novamente
+              </Button>
+              <Button variant="outline" onClick={reset} className="flex-1">
+                Nova Correção
+              </Button>
+            </div>
           </div>
         )}
       </CardContent>
