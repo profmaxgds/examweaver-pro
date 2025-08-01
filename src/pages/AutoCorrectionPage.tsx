@@ -880,6 +880,11 @@ export default function AutoCorrectionPage() {
                        detectedAnswers[questionId] || 
                        detectedAnswers[`q${questionIndex}`];
         
+        console.log(`Questão ${questionIndex} (ID: ${questionId}):`);
+        console.log(`  Gabarito: ${correctAnswer}`);
+        console.log(`  Detectado: ${studentAnswer || 'Não detectada'}`);
+        console.log(`  Correto: ${studentAnswer === correctAnswer}`);
+        
         const isCorrect = studentAnswer && studentAnswer === correctAnswer;
         
         if (isCorrect) {
