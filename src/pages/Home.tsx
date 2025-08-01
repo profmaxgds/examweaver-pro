@@ -1,4 +1,4 @@
-// src/pages/Dashboard.tsx
+// src/pages/Home.tsx
 
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -22,7 +22,7 @@ interface Exam {
   subject: string;
 }
 
-export default function Dashboard() {
+export default function Home() {
   const { user, signOut } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({ questions: 0, exams: 0, corrections: 0 });
   const [lastExam, setLastExam] = useState<Exam | null>(null);
@@ -66,7 +66,7 @@ export default function Dashboard() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <h1 className="text-2xl font-bold">ExamCraft</h1>
+              <h1 className="text-2xl font-bold">TestifyAI</h1>
               <Badge variant="outline">Professor</Badge>
             </div>
             <div className="flex items-center space-x-4">
@@ -111,9 +111,8 @@ export default function Dashboard() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Link to="/questions/new"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><PlusCircle /> Nova Questão</CardTitle></CardHeader><CardContent><CardDescription>Adicionar uma nova questão ao seu banco de dados.</CardDescription></CardContent></Card></Link>
             <Link to="/exams/new"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><FileText /> Nova Prova</CardTitle></CardHeader><CardContent><CardDescription>Montar uma nova prova usando suas questões.</CardDescription></CardContent></Card></Link>
+            <Link to="/auto-correction"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><Upload /> Correção Automática</CardTitle></CardHeader><CardContent><CardDescription>Escaneie QR codes e corrija provas automaticamente.</CardDescription></CardContent></Card></Link>
             <Link to="/students"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><Users /> Gerenciar Alunos</CardTitle></CardHeader><CardContent><CardDescription>Adicionar e editar alunos para suas turmas.</CardDescription></CardContent></Card></Link>
-            
-            {/* NOVO CARD ADICIONADO AQUI */}
             <Link to="/classes"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><BookCopy /> Gerenciar Turmas</CardTitle></CardHeader><CardContent><CardDescription>Criar e editar suas turmas e instituições.</CardDescription></CardContent></Card></Link>
           </div>
 

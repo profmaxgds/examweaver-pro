@@ -9,7 +9,8 @@ import { AuthProvider, useAuth } from "./hooks/useAuth";
 
 // Pages
 import Auth from "./pages/Auth";
-import Dashboard from "./pages/Dashboard";
+import Home from "./pages/Home";
+import AutoCorrectionPage from "./pages/AutoCorrectionPage";
 import ProfilePage from "./pages/ProfilePage";
 import QuestionsPage from "./pages/QuestionsPage";
 import NewQuestionPage from "./pages/NewQuestionPage";
@@ -18,10 +19,11 @@ import ExamsPage from "./pages/ExamsPage";
 import NewExamPage from "./pages/NewExamPage";
 import EditExamPage from "./pages/EditExamPage";
 import ReportsPage from "./pages/ReportsPage";
-import HeadersPage from "./pages/HeadersPage";
 import CorrectionsPage from "./pages/CorrectionsPage";
+import HeadersPage from "./pages/HeadersPage";
 import StudentsPage from "./pages/StudentsPage";
 import ClassesPage from "./pages/ClassesPage";
+
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -55,7 +57,8 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             
             {/* Protected Routes */}
-            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+            <Route path="/auto-correction" element={<ProtectedRoute><AutoCorrectionPage /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
             <Route path="/questions" element={<ProtectedRoute><QuestionsPage /></ProtectedRoute>} />
             <Route path="/questions/new" element={<ProtectedRoute><NewQuestionPage /></ProtectedRoute>} />
@@ -67,8 +70,8 @@ const App = () => (
             <Route path="/headers" element={<ProtectedRoute><HeadersPage /></ProtectedRoute>} />
             <Route path="/corrections" element={<ProtectedRoute><CorrectionsPage /></ProtectedRoute>} />
             <Route path="/students" element={<ProtectedRoute><StudentsPage /></ProtectedRoute>} />
-            <Route path="/classes" element={<ProtectedRoute><ClassesPage /></ProtectedRoute>} />
 
+            <Route path="/classes" element={<ProtectedRoute><ClassesPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
