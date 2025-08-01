@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from './useAuth';
 
 type Theme = 'default' | 'ocean' | 'deep' | 'purple' | 'night';
 
@@ -11,7 +13,9 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [theme, setTheme] = useState<Theme>('default');
+  const [isLoading, setIsLoading] = useState(true);
 
   const themes = [
     { 
@@ -41,14 +45,53 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     },
   ];
 
+  // Carregar tema do perfil do usuário ou localStorage
   useEffect(() => {
-    const savedTheme = localStorage.getItem('app-theme') as Theme;
-    if (savedTheme && themes.find(t => t.value === savedTheme)) {
-      setTheme(savedTheme);
-    }
-  }, []);
+    const loadUserTheme = async () => {
+      setIsLoading(true);
+      
+      if (user) {
+        try {
+          // Carregar tema do perfil do usuário
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('user_id', user.id)
+            .single();
+          
+          if (!error && profile && (profile as any).theme_preference) {
+            const userTheme = (profile as any).theme_preference as Theme;
+            if (themes.find(t => t.value === userTheme)) {
+              setTheme(userTheme);
+              localStorage.setItem('app-theme', userTheme);
+            }
+          }
+        } catch (error) {
+          console.error('Erro ao carregar tema do perfil:', error);
+          // Fallback para localStorage
+          const savedTheme = localStorage.getItem('app-theme') as Theme;
+          if (savedTheme && themes.find(t => t.value === savedTheme)) {
+            setTheme(savedTheme);
+          }
+        }
+      } else {
+        // Usuário não logado, usar localStorage
+        const savedTheme = localStorage.getItem('app-theme') as Theme;
+        if (savedTheme && themes.find(t => t.value === savedTheme)) {
+          setTheme(savedTheme);
+        }
+      }
+      
+      setIsLoading(false);
+    };
 
+    loadUserTheme();
+  }, [user]);
+
+  // Aplicar tema ao DOM e salvar
   useEffect(() => {
+    if (isLoading) return; // Não aplicar tema enquanto carrega
+    
     const root = document.documentElement;
     
     // Remove all existing theme attributes
@@ -61,26 +104,29 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     
     // Always save to localStorage
     localStorage.setItem('app-theme', theme);
-  }, [theme]);
+    
+    // Salvar no perfil se usuário estiver logado
+    if (user) {
+      saveThemeToProfile(theme);
+    }
+  }, [theme, user, isLoading]);
 
-  // Load theme on mount and when user logs in
-  useEffect(() => {
-    const loadSavedTheme = () => {
-      const savedTheme = localStorage.getItem('app-theme') as Theme;
-      if (savedTheme && themes.find(t => t.value === savedTheme)) {
-        setTheme(savedTheme);
+  const saveThemeToProfile = async (selectedTheme: Theme) => {
+    if (!user) return;
+    
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ theme_preference: selectedTheme } as any)
+        .eq('user_id', user.id);
+      
+      if (error) {
+        console.error('Erro ao salvar tema no perfil:', error);
       }
-    };
-
-    loadSavedTheme();
-    
-    // Listen for storage changes (useful for multi-tab scenarios)
-    window.addEventListener('storage', loadSavedTheme);
-    
-    return () => {
-      window.removeEventListener('storage', loadSavedTheme);
-    };
-  }, []);
+    } catch (error) {
+      console.error('Erro ao atualizar tema:', error);
+    }
+  };
 
   const value = {
     theme,

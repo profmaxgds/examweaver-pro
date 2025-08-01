@@ -356,7 +356,13 @@ export default function ProfilePage() {
                               ? 'border-primary bg-primary/5'
                               : 'border-border hover:border-primary/50'
                           }`}
-                          onClick={() => setTheme(themeOption.value)}
+                          onClick={() => {
+                            setTheme(themeOption.value);
+                            toast({
+                              title: "Tema alterado!",
+                              description: `Tema "${themeOption.label}" aplicado com sucesso.`,
+                            });
+                          }}
                         >
                           <div className="flex items-center justify-between mb-3">
                             <span className="font-medium">{themeOption.label}</span>
