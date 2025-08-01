@@ -28,7 +28,9 @@ import {
   ArrowLeft,
   Filter,
   Users,
-  Target
+  Target,
+  GraduationCap,
+  Building
 } from 'lucide-react';
 
 interface ExamCorrection {
@@ -60,6 +62,14 @@ interface Exam {
   subject: string;
   total_points: number;
   question_ids: string[];
+  target_class_id?: string;
+  institutions?: string;
+}
+
+interface Class {
+  id: string;
+  name: string;
+  institution_header_id?: string;
 }
 
 export default function CorrectionsManagementPage() {
@@ -77,6 +87,14 @@ export default function CorrectionsManagementPage() {
   const [loading, setLoading] = useState(true);
   const [publishingAll, setPublishingAll] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'all' | 'auto' | 'manual'>('all');
+  
+  // Novos estados para filtros
+  const [exams, setExams] = useState<Exam[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [institutions, setInstitutions] = useState<string[]>([]);
+  const [selectedExamFilter, setSelectedExamFilter] = useState<string>('all');
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
+  const [selectedInstitutionFilter, setSelectedInstitutionFilter] = useState<string>('all');
 
   useEffect(() => {
     if (examId) {
@@ -88,7 +106,7 @@ export default function CorrectionsManagementPage() {
 
   useEffect(() => {
     filterCorrections();
-  }, [corrections, searchTerm, filterStatus]);
+  }, [corrections, searchTerm, filterStatus, selectedExamFilter, selectedClassFilter, selectedInstitutionFilter]);
 
   const loadExamData = async () => {
     try {
@@ -143,14 +161,47 @@ export default function CorrectionsManagementPage() {
     try {
       setLoading(true);
 
+      // Carregar correções com dados dos exames
       const { data: correctionsData, error: correctionsError } = await supabase
         .from('exam_corrections')
-        .select('*')
+        .select(`
+          *,
+          exams!inner(
+            id,
+            title,
+            subject,
+            target_class_id,
+            institutions
+          )
+        `)
         .eq('author_id', user!.id)
         .order('correction_date', { ascending: false });
 
       if (correctionsError) throw correctionsError;
-      setCorrections(correctionsData as ExamCorrection[]);
+      setCorrections(correctionsData as any[]);
+
+      // Carregar exames únicos para o filtro
+      const uniqueExams = correctionsData
+        .map((c: any) => c.exams)
+        .filter((exam, index, self) => 
+          index === self.findIndex(e => e.id === exam.id)
+        );
+      setExams(uniqueExams);
+
+      // Carregar turmas
+      const { data: classesData } = await supabase
+        .from('classes')
+        .select('*')
+        .eq('author_id', user!.id);
+      setClasses(classesData || []);
+
+      // Carregar instituições únicas
+      const uniqueInstitutions = [...new Set(
+        correctionsData
+          .map((c: any) => c.exams?.institutions)
+          .filter(Boolean)
+      )];
+      setInstitutions(uniqueInstitutions);
 
     } catch (error) {
       console.error('Erro ao carregar correções:', error);
@@ -180,6 +231,27 @@ export default function CorrectionsManagementPage() {
     if (filterStatus !== 'all') {
       filtered = filtered.filter(correction =>
         filterStatus === 'auto' ? correction.auto_corrected : !correction.auto_corrected
+      );
+    }
+
+    // Filtro por prova
+    if (selectedExamFilter !== 'all') {
+      filtered = filtered.filter(correction =>
+        (correction as any).exams?.id === selectedExamFilter
+      );
+    }
+
+    // Filtro por turma
+    if (selectedClassFilter !== 'all') {
+      filtered = filtered.filter(correction =>
+        (correction as any).exams?.target_class_id === selectedClassFilter
+      );
+    }
+
+    // Filtro por instituição
+    if (selectedInstitutionFilter !== 'all') {
+      filtered = filtered.filter(correction =>
+        (correction as any).exams?.institutions === selectedInstitutionFilter
       );
     }
 
@@ -384,34 +456,107 @@ export default function CorrectionsManagementPage() {
       {/* Search and Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex gap-4 items-center justify-between flex-wrap">
-            <div className="flex gap-4 items-center flex-1">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input
-                  placeholder={`Buscar por nome${examId ? '' : ', prova'} ou matrícula...`}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              
-              <Select value={filterStatus} onValueChange={(value: any) => setFilterStatus(value)}>
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="auto">Automáticas</SelectItem>
-                  <SelectItem value="manual">Manuais</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="space-y-4">
+            {/* Primeira linha de filtros */}
+            <div className="flex gap-4 items-center justify-between flex-wrap">
+              <div className="flex gap-4 items-center flex-1">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                  <Input
+                    placeholder={`Buscar por nome${examId ? '' : ', prova'} ou matrícula...`}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                
+                <Select value={filterStatus} onValueChange={(value: any) => setFilterStatus(value)}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    <SelectItem value="auto">Automáticas</SelectItem>
+                    <SelectItem value="manual">Manuais</SelectItem>
+                  </SelectContent>
+                </Select>
 
-              <Badge variant="outline" className="gap-2">
-                <FileText className="w-4 h-4" />
-                {filteredCorrections.length} resultados
-              </Badge>
+                <Badge variant="outline" className="gap-2">
+                  <FileText className="w-4 h-4" />
+                  {filteredCorrections.length} resultados
+                </Badge>
+              </div>
             </div>
+
+            {/* Segunda linha - Filtros por prova, turma e instituição */}
+            {!examId && (
+              <div className="flex gap-4 items-center flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Filtros:</span>
+                </div>
+                
+                <Select value={selectedExamFilter} onValueChange={setSelectedExamFilter}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Todas as provas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as provas</SelectItem>
+                    {exams.map(exam => (
+                      <SelectItem key={exam.id} value={exam.id}>
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4" />
+                          {exam.title}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={selectedClassFilter} onValueChange={setSelectedClassFilter}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Todas as turmas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as turmas</SelectItem>
+                    {classes.map(cls => (
+                      <SelectItem key={cls.id} value={cls.id}>
+                        <div className="flex items-center gap-2">
+                          <GraduationCap className="w-4 h-4" />
+                          {cls.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={selectedInstitutionFilter} onValueChange={setSelectedInstitutionFilter}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Todas as instituições" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as instituições</SelectItem>
+                    {institutions.map(institution => (
+                      <SelectItem key={institution} value={institution}>
+                        <div className="flex items-center gap-2">
+                          <Building className="w-4 h-4" />
+                          {institution}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Search and Filters - Linha de ações */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex gap-4 items-center justify-between flex-wrap">
+            <div></div>
             
             <div className="flex gap-2">
               <Button
