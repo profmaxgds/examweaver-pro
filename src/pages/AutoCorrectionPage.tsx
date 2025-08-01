@@ -1146,7 +1146,7 @@ export default function AutoCorrectionPage() {
                       </div>
                     </Card>
 
-                    {/* Botão para capturar gabarito */}
+                    {/* Botão para capturar resposta */}
                     <Card className="p-4 border-2 border-dashed border-green-300 hover:border-green-500 transition-colors cursor-pointer"
                           onClick={() => startCamera('photo')}>
                       <div className="text-center space-y-3">
@@ -1154,7 +1154,7 @@ export default function AutoCorrectionPage() {
                           <Camera className="w-6 h-6 text-green-600" />
                         </div>
                         <div>
-                          <h3 className="font-medium text-green-900">Capturar Gabarito</h3>
+                          <h3 className="font-medium text-green-900">Capturar Resposta</h3>
                           <p className="text-sm text-green-600">Tirar foto da prova respondida</p>
                         </div>
                       </div>
@@ -1446,7 +1446,7 @@ export default function AutoCorrectionPage() {
                 </Button>
               )}
 
-              {/* Após capturar gabarito ou enviar arquivo - mostrar opções */}
+              {/* Após capturar resposta ou enviar arquivo - mostrar opções */}
               {selectedFile && (step === 'need-answer-sheet' || step === 'photo-capture') && examInfo && (
                 <div className="space-y-3">
                   <Button
