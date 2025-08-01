@@ -32,7 +32,7 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
   const [isExtracting, setIsExtracting] = useState(false);
   const [useCamera, setUseCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [ocrEngine, setOcrEngine] = useState<'trocr' | 'tesseract' | 'easyocr'>('tesseract');
+  const [ocrEngine, setOcrEngine] = useState<'trocr' | 'tesseract' | 'easyocr' | 'keras' | 'doctr'>('tesseract');
   
   // Estados para pré-processamento
   const [brightness, setBrightness] = useState(100);
@@ -40,6 +40,8 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
   const [binarize, setBinarize] = useState(false);
   const [grayscale, setGrayscale] = useState(false);
   const [enhanceLines, setEnhanceLines] = useState(false);
+  const [removeBackground, setRemoveBackground] = useState(false);
+  const [denoiseImage, setDenoiseImage] = useState(false);
   const [showPreprocessing, setShowPreprocessing] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -48,7 +50,7 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
   const processCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Aplicar pré-processamento à imagem
-  const applyImageProcessing = (sourceCanvas: HTMLCanvasElement) => {
+  const applyImageProcessing = async (sourceCanvas: HTMLCanvasElement) => {
     if (!processCanvasRef.current) return null;
     
     const processCanvas = processCanvasRef.current;
@@ -68,11 +70,32 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
     ctx.filter = filters.join(' ');
     ctx.drawImage(sourceCanvas, 0, 0);
     
+    // Obter dados da imagem para processamento avançado
+    let imageData = ctx.getImageData(0, 0, processCanvas.width, processCanvas.height);
+    let data = imageData.data;
+    
+    // Remoção de ruído usando filtro mediano simples
+    if (denoiseImage) {
+      console.log('🧹 Aplicando remoção de ruído...');
+      data = applySimpleDenoising(data, processCanvas.width, processCanvas.height);
+    }
+    
+    // Remoção de fundo simples (converte pixels mais claros em branco)
+    if (removeBackground) {
+      console.log('🎭 Removendo fundo...');
+      for (let i = 0; i < data.length; i += 4) {
+        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+        if (avg > 180) { // Pixels claros viram branco
+          data[i] = 255;     // red
+          data[i + 1] = 255; // green  
+          data[i + 2] = 255; // blue
+        }
+      }
+    }
+    
     // Aplicar binarização se habilitada
     if (binarize) {
-      const imageData = ctx.getImageData(0, 0, processCanvas.width, processCanvas.height);
-      const data = imageData.data;
-      
+      console.log('⚫ Aplicando binarização...');
       for (let i = 0; i < data.length; i += 4) {
         const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
         const binary = avg > 128 ? 255 : 0;
@@ -80,16 +103,11 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
         data[i + 1] = binary; // green  
         data[i + 2] = binary; // blue
       }
-      
-      ctx.putImageData(imageData, 0, 0);
     }
     
     // Melhorar linhas se habilitado
     if (enhanceLines) {
-      const imageData = ctx.getImageData(0, 0, processCanvas.width, processCanvas.height);
-      const data = imageData.data;
-      
-      // Aplicar filtro de sharpening simples
+      console.log('✏️ Melhorando espessura das linhas...');
       for (let i = 0; i < data.length; i += 4) {
         if (data[i] < 100) { // Pixels escuros (texto)
           data[i] = Math.max(0, data[i] - 20);
@@ -97,11 +115,39 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
           data[i + 2] = Math.max(0, data[i + 2] - 20);
         }
       }
-      
-      ctx.putImageData(imageData, 0, 0);
     }
     
+    // Aplicar dados processados de volta
+    const newImageData = new ImageData(data, processCanvas.width, processCanvas.height);
+    ctx.putImageData(newImageData, 0, 0);
+    
     return processCanvas;
+  };
+
+  // Função de remoção de ruído simples
+  const applySimpleDenoising = (data: Uint8ClampedArray, width: number, height: number) => {
+    const newData = new Uint8ClampedArray(data);
+    
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = (y * width + x) * 4;
+        
+        // Calcular média dos pixels vizinhos para cada canal RGB
+        for (let channel = 0; channel < 3; channel++) {
+          const values = [];
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const neighborIdx = ((y + dy) * width + (x + dx)) * 4 + channel;
+              values.push(data[neighborIdx]);
+            }
+          }
+          values.sort((a, b) => a - b);
+          newData[idx + channel] = values[4]; // Mediana dos 9 valores
+        }
+      }
+    }
+    
+    return newData;
   };
 
   // Atualizar preview processado quando configurações mudam
@@ -109,7 +155,7 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
     if (!previewUrl) return;
     
     const img = new Image();
-    img.onload = () => {
+    img.onload = async () => {
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d');
       if (!tempCtx) return;
@@ -118,14 +164,14 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
       tempCanvas.height = img.height;
       tempCtx.drawImage(img, 0, 0);
       
-      const processedCanvas = applyImageProcessing(tempCanvas);
+      const processedCanvas = await applyImageProcessing(tempCanvas);
       if (processedCanvas) {
         const processedUrl = processedCanvas.toDataURL('image/jpeg', 0.9);
         setProcessedPreviewUrl(processedUrl);
       }
     };
     img.src = previewUrl;
-  }, [brightness, contrast, binarize, grayscale, enhanceLines, previewUrl]);
+  }, [brightness, contrast, binarize, grayscale, enhanceLines, removeBackground, denoiseImage, previewUrl]);
 
   // Iniciar câmera
   const startCamera = async () => {
@@ -370,14 +416,76 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
     }
   };
 
-  // Extrair texto usando EasyOCR (simulado via API)
-  const extractWithEasyOCR = async (imageFile: File = selectedImage!) => {
+  // Extrair texto usando Keras (via edge function)
+  const extractWithKeras = async (imageFile: File) => {
     try {
-      // Por enquanto, vamos simular com Tesseract
-      console.log('EasyOCR não implementado, usando Tesseract como fallback');
-      return await extractWithTesseract(imageFile);
+      console.log('🧠 Enviando para Keras OCR...');
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(
+        import.meta.env.VITE_SUPABASE_URL,
+        import.meta.env.VITE_SUPABASE_ANON_KEY
+      );
+
+      const fileExt = imageFile.name.split('.').pop();
+      const fileName = `${Date.now()}.${fileExt}`;
+      
+      // Upload da imagem
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('temp-images')
+        .upload(fileName, imageFile);
+
+      if (uploadError) throw uploadError;
+
+      // Chamar edge function
+      const { data, error } = await supabase.functions.invoke('keras-ocr', {
+        body: { fileName: uploadData.path }
+      });
+
+      if (error) throw error;
+
+      // Limpar arquivo temporário
+      await supabase.storage.from('temp-images').remove([uploadData.path]);
+
+      return data.text || '';
     } catch (error) {
-      console.error('Erro EasyOCR:', error);
+      console.error('Erro Keras OCR:', error);
+      throw error;
+    }
+  };
+
+  // Extrair texto usando DocTR (via edge function)  
+  const extractWithDocTR = async (imageFile: File) => {
+    try {
+      console.log('📄 Enviando para DocTR...');
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(
+        import.meta.env.VITE_SUPABASE_URL,
+        import.meta.env.VITE_SUPABASE_ANON_KEY
+      );
+
+      const fileExt = imageFile.name.split('.').pop();
+      const fileName = `${Date.now()}.${fileExt}`;
+      
+      // Upload da imagem
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('temp-images')
+        .upload(fileName, imageFile);
+
+      if (uploadError) throw uploadError;
+
+      // Chamar edge function
+      const { data, error } = await supabase.functions.invoke('doctr-ocr', {
+        body: { fileName: uploadData.path }
+      });
+
+      if (error) throw error;
+
+      // Limpar arquivo temporário
+      await supabase.storage.from('temp-images').remove([uploadData.path]);
+
+      return data.text || '';
+    } catch (error) {
+      console.error('Erro DocTR:', error);
       throw error;
     }
   };
@@ -402,7 +510,7 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
       let imageToProcess = selectedImage;
       
       // Se há pré-processamento, usar a imagem processada
-      if (processedPreviewUrl && (brightness !== 100 || contrast !== 100 || binarize || grayscale || enhanceLines)) {
+      if (processedPreviewUrl && (brightness !== 100 || contrast !== 100 || binarize || grayscale || enhanceLines || removeBackground || denoiseImage)) {
         // Converter a imagem processada em blob
         const response = await fetch(processedPreviewUrl);
         const blob = await response.blob();
@@ -437,7 +545,25 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
             description: "Usando EasyOCR",
           });
           engineName = 'EasyOCR';
-          text = await extractWithEasyOCR(imageToProcess);
+          text = await extractWithTesseract(imageToProcess); // Fallback para Tesseract
+          break;
+
+        case 'keras':
+          toast({
+            title: "🧠 Processando...",
+            description: "Usando Keras OCR",
+          });
+          engineName = 'Keras OCR';
+          text = await extractWithKeras(imageToProcess);
+          break;
+
+        case 'doctr':
+          toast({
+            title: "📄 Processando...",
+            description: "Usando DocTR",
+          });
+          engineName = 'DocTR';
+          text = await extractWithDocTR(imageToProcess);
           break;
       }
       
@@ -545,21 +671,33 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="trocr">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-purple-600" />
-                  Microsoft TrOCR (IA especializada em manuscrito)
-                </div>
-              </SelectItem>
               <SelectItem value="tesseract">
                 <div className="flex items-center gap-2">
                   <Eye className="h-4 w-4 text-blue-600" />
                   Tesseract (OCR tradicional, mais rápido)
                 </div>
               </SelectItem>
-              <SelectItem value="easyocr">
+              <SelectItem value="trocr">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-purple-600" />
+                  Microsoft TrOCR (IA especializada em manuscrito)
+                </div>
+              </SelectItem>
+              <SelectItem value="keras">
+                <div className="flex items-center gap-2">
+                  <PenTool className="h-4 w-4 text-orange-600" />
+                  Keras OCR (Deep Learning, muito preciso)
+                </div>
+              </SelectItem>
+              <SelectItem value="doctr">
                 <div className="flex items-center gap-2">
                   <FileImage className="h-4 w-4 text-green-600" />
+                  DocTR (Análise avançada de documentos)
+                </div>
+              </SelectItem>
+              <SelectItem value="easyocr">
+                <div className="flex items-center gap-2">
+                  <Settings className="h-4 w-4 text-red-600" />
                   EasyOCR (Versatil, múltiplos idiomas)
                 </div>
               </SelectItem>
@@ -766,6 +904,16 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
                       <Label className="text-xs">Melhorar Espessura das Linhas</Label>
                       <Switch checked={enhanceLines} onCheckedChange={setEnhanceLines} />
                     </div>
+
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Remover Fundo</Label>
+                      <Switch checked={removeBackground} onCheckedChange={setRemoveBackground} />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Remover Ruído</Label>
+                      <Switch checked={denoiseImage} onCheckedChange={setDenoiseImage} />
+                    </div>
                   </div>
 
                   {/* Botão de reset */}
@@ -778,6 +926,8 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
                       setBinarize(false);
                       setGrayscale(false);
                       setEnhanceLines(false);
+                      setRemoveBackground(false);
+                      setDenoiseImage(false);
                     }}
                     className="w-full"
                   >
@@ -841,6 +991,12 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
           )}
           {ocrEngine === 'tesseract' && (
             <p>🔍 <strong>Tesseract:</strong> OCR tradicional, rápido e confiável</p>
+          )}
+          {ocrEngine === 'keras' && (
+            <p>🧠 <strong>Keras OCR:</strong> Deep Learning, muito preciso para manuscritos</p>
+          )}
+          {ocrEngine === 'doctr' && (
+            <p>📄 <strong>DocTR:</strong> Análise avançada de documentos e layout</p>
           )}
           {ocrEngine === 'easyocr' && (
             <p>⚡ <strong>EasyOCR:</strong> Versatil, suporte a múltiplos idiomas</p>

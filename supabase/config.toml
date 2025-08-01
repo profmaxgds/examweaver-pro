@@ -1,1 +1,7 @@
 project_id = "wmiqfkdgvixdmcqckihm"
+
+[functions.keras-ocr]
+verify_jwt = false
+
+[functions.doctr-ocr]
+verify_jwt = false
