@@ -84,7 +84,7 @@ function EditExamPageContent() {
 
   const proceedWithPdfGeneration = () => {
     if (pdfParams) {
-        previewExam(pdfParams.id);
+        previewExam(typeof pdfParams.id === 'string' ? pdfParams.id : Number(pdfParams.id));
     }
   };
 
@@ -190,8 +190,11 @@ export default function EditExamPage() {
       
       const currentQuestions = (allQs || []).map(q => ({
         ...q,
-        options: Array.isArray(q.options) ? q.options : (q.options ? [q.options] : null)
-      }));
+        options: Array.isArray(q.options) ? q.options.map((opt: any) => ({
+          id: opt.id || opt,
+          text: opt.text || opt
+        })) : (q.options ? [q.options] : null)
+      })) as Question[];
       setAllQuestions(currentQuestions);
 
       const selectedQs = currentQuestions
@@ -211,7 +214,7 @@ export default function EditExamPage() {
         header_id: exam.header_id,
         qr_enabled: exam.qr_enabled !== false,
         time_limit: exam.time_limit,
-        generation_mode: exam.generation_mode || 'versions',
+        generation_mode: (exam.generation_mode as 'versions' | 'class') || 'versions',
         target_class_id: exam.target_class_id,
       });
 
@@ -414,7 +417,7 @@ export default function EditExamPage() {
     }
   };
 
-  const previewExam = async (id: string | number, includeAnswers = false) => {
+  const previewExam = async (id: string | number = 1, includeAnswers = false) => {
     if (!examData) return;
     setLoading(true);
     try {

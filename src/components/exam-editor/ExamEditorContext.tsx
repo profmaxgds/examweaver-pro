@@ -29,6 +29,8 @@ interface ExamData {
   header_id?: string;
   qr_enabled: boolean;
   time_limit?: number;
+  generation_mode?: 'versions' | 'class';
+  target_class_id?: string;
 }
 
 interface ExamEditorContextType {
@@ -38,11 +40,13 @@ interface ExamEditorContextType {
   toggleQuestionSelection: (question: Question) => void;
   removeSelectedQuestion: (questionId: string) => void;
   loading: boolean;
+  isPreparing: boolean;
   setPreviewQuestion: (question: Question | null) => void;
   setEditQuestion: (question: Question | null) => void;
   handleSave: () => Promise<void>;
-  previewExam: (version?: number) => Promise<void>;
-  generatePDF: (version?: number, includeAnswers?: boolean) => Promise<void>;
+  handlePrepareExams: () => Promise<void>;
+  previewExam: (version?: number | string, includeAnswers?: boolean) => Promise<void>;
+  generatePDF: (version?: number | string, includeAnswers?: boolean) => Promise<void>;
   generateAllPDFs: () => Promise<void>;
   toast: (options: any) => void;
 }

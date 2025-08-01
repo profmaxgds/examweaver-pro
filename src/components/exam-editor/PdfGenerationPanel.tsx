@@ -18,7 +18,7 @@ interface PreparedExam {
 }
 
 export function PdfGenerationPanel() {
-  const { examData, loading, isPreparing, previewExam, generatePDF, generateAllPDFs } = useExamEditor();
+  const { examData, loading, previewExam, generatePDF, generateAllPDFs, toast } = useExamEditor();
   const [preparedExams, setPreparedExams] = useState<PreparedExam[]>([]);
   const [isListLoading, setListLoading] = useState(false);
 
@@ -26,29 +26,43 @@ export function PdfGenerationPanel() {
     const fetchPreparedExams = async () => {
       if (examData?.generation_mode === 'class' && examData.id) {
         setListLoading(true);
-        const { data, error } = await supabase
+        const { data: studentExams, error } = await supabase
           .from('student_exams')
-          .select('id, student:students ( name, student_id )')
-          .eq('exam_id', examData.id)
-          .order('created_at', { ascending: true });
+          .select('id, student_id')
+          .eq('exam_id', examData.id);
         
         if (error) {
-          console.error("Erro ao buscar provas preparadas:", error);
-        } else {
-          setPreparedExams(data as PreparedExam[] || []);
+          console.error("Erro ao buscar student_exams:", error);
+          return;
         }
+        
+        // Buscar dados dos estudantes separadamente
+        const preparedExamsData = await Promise.all(
+          (studentExams || []).map(async (se) => {
+            const { data: student } = await supabase
+              .from('students')
+              .select('name, student_id')
+              .eq('id', se.student_id)
+              .single();
+            return {
+              id: se.id,
+              student: student || { name: 'Nome não encontrado', student_id: null }
+            };
+          })
+        );
+        
+        setPreparedExams(preparedExamsData as PreparedExam[]);
         setListLoading(false);
       } else {
         setPreparedExams([]);
       }
     };
-    // Recarrega a lista quando o modo de geração ou a prova mudam, ou quando a preparação termina
     fetchPreparedExams();
-  }, [examData?.generation_mode, examData?.id, isPreparing]);
+  }, [examData?.generation_mode, examData?.id]);
 
   if (!examData) return null;
 
-  const isLoading = loading || isPreparing;
+  const isLoading = loading;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

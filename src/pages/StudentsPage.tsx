@@ -65,7 +65,7 @@ export default function StudentsPage() {
     try {
       const { data, error } = await supabase
         .from('classes')
-        .select('id, name, year, semester')
+        .select('*')
         .eq('author_id', user.id)
         .order('name', { ascending: true });
 

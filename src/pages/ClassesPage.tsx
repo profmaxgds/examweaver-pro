@@ -46,12 +46,26 @@ export default function ClassesPage() {
     try {
       const { data, error } = await supabase
         .from('classes')
-        .select(`*, exam_headers:institution_header_id ( institution )`)
+        .select('*')
         .eq('author_id', user.id)
         .order('name', { ascending: true });
 
       if (error) throw new Error(error.message);
-      setClasses(data || []);
+      
+      // Buscar cabeçalhos separadamente para cada turma
+      const classesWithInstitution = await Promise.all((data || []).map(async (cls) => {
+        if (cls.institution_header_id) {
+          const { data: header } = await supabase
+            .from('exam_headers')
+            .select('institution')
+            .eq('id', cls.institution_header_id)
+            .single();
+          return { ...cls, exam_headers: header };
+        }
+        return { ...cls, exam_headers: null };
+      }));
+      
+      setClasses(classesWithInstitution as ClassWithInstitution[]);
     } catch (error) {
       console.error('Erro ao buscar turmas:', error);
       toast({
@@ -216,7 +230,6 @@ export default function ClassesPage() {
           </DialogHeader>
           <ClassForm
             loading={loading}
-            initialData={editingClass || undefined}
             onSave={handleSaveClass}
             onCancel={() => { setClassDialogOpen(false); setEditingClass(null); }}
           />

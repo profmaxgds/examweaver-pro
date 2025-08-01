@@ -48,7 +48,15 @@ export type Database = {
           updated_at?: string
           year?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "classes_institution_header_id_fkey"
+            columns: ["institution_header_id"]
+            isOneToOne: false
+            referencedRelation: "exam_headers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       corrections: {
         Row: {
@@ -220,6 +228,7 @@ export type Database = {
           correction_template: Json | null
           created_at: string
           exam_date: string | null
+          generation_mode: string | null
           grade_scale: Json | null
           header: Json | null
           header_id: string | null
@@ -234,6 +243,7 @@ export type Database = {
           shuffle_questions: boolean | null
           students: Json | null
           subject: string
+          target_class_id: string | null
           time_limit: number | null
           title: string
           total_points: number
@@ -246,6 +256,7 @@ export type Database = {
           correction_template?: Json | null
           created_at?: string
           exam_date?: string | null
+          generation_mode?: string | null
           grade_scale?: Json | null
           header?: Json | null
           header_id?: string | null
@@ -260,6 +271,7 @@ export type Database = {
           shuffle_questions?: boolean | null
           students?: Json | null
           subject: string
+          target_class_id?: string | null
           time_limit?: number | null
           title: string
           total_points?: number
@@ -272,6 +284,7 @@ export type Database = {
           correction_template?: Json | null
           created_at?: string
           exam_date?: string | null
+          generation_mode?: string | null
           grade_scale?: Json | null
           header?: Json | null
           header_id?: string | null
@@ -286,13 +299,22 @@ export type Database = {
           shuffle_questions?: boolean | null
           students?: Json | null
           subject?: string
+          target_class_id?: string | null
           time_limit?: number | null
           title?: string
           total_points?: number
           updated_at?: string
           versions?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "exams_target_class_id_fkey"
+            columns: ["target_class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       file_uploads: {
         Row: {
@@ -456,6 +478,54 @@ export type Database = {
         }
         Relationships: []
       }
+      student_exams: {
+        Row: {
+          answer_key: Json
+          author_id: string
+          created_at: string
+          exam_id: string
+          id: string
+          shuffled_options_map: Json
+          shuffled_question_ids: string[]
+          student_id: string
+        }
+        Insert: {
+          answer_key: Json
+          author_id: string
+          created_at?: string
+          exam_id: string
+          id?: string
+          shuffled_options_map: Json
+          shuffled_question_ids: string[]
+          student_id: string
+        }
+        Update: {
+          answer_key?: Json
+          author_id?: string
+          created_at?: string
+          exam_id?: string
+          id?: string
+          shuffled_options_map?: Json
+          shuffled_question_ids?: string[]
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_exams_exam_id_fkey"
+            columns: ["exam_id"]
+            isOneToOne: false
+            referencedRelation: "exams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_exams_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       students: {
         Row: {
           author_id: string
@@ -512,6 +582,13 @@ export type Database = {
             columns: ["exam_id"]
             isOneToOne: false
             referencedRelation: "exams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "students_institution_header_id_fkey"
+            columns: ["institution_header_id"]
+            isOneToOne: false
+            referencedRelation: "exam_headers"
             referencedColumns: ["id"]
           },
         ]
