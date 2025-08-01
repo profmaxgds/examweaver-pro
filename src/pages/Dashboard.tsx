@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, BookCopy, Users } from 'lucide-react';
+import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, BookCopy, Users, User } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface DashboardStats {
@@ -71,6 +71,12 @@ export default function Dashboard() {
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-muted-foreground">{user?.email}</span>
+              <Link to="/profile">
+                <Button variant="outline" size="sm">
+                  <User className="w-4 h-4 mr-2" />
+                  Perfil
+                </Button>
+              </Link>
               <Button variant="outline" onClick={signOut}><LogOut className="w-4 h-4 mr-2" />Sair</Button>
             </div>
           </div>

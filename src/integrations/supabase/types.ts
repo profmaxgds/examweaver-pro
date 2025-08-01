@@ -358,28 +358,34 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string
+          credits: number | null
           id: string
           institution: string | null
           name: string
           subjects: string[] | null
+          total_corrections: number | null
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          credits?: number | null
           id?: string
           institution?: string | null
           name: string
           subjects?: string[] | null
+          total_corrections?: number | null
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
+          credits?: number | null
           id?: string
           institution?: string | null
           name?: string
           subjects?: string[] | null
+          total_corrections?: number | null
           updated_at?: string
           user_id?: string
         }

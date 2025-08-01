@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from "./hooks/useAuth";
 // Pages
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
+import ProfilePage from "./pages/ProfilePage";
 import QuestionsPage from "./pages/QuestionsPage";
 import NewQuestionPage from "./pages/NewQuestionPage";
 import EditQuestionPage from "./pages/EditQuestionPage";
@@ -55,6 +56,7 @@ const App = () => (
             
             {/* Protected Routes */}
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
             <Route path="/questions" element={<ProtectedRoute><QuestionsPage /></ProtectedRoute>} />
             <Route path="/questions/new" element={<ProtectedRoute><NewQuestionPage /></ProtectedRoute>} />
             <Route path="/questions/:id/edit" element={<ProtectedRoute><EditQuestionPage /></ProtectedRoute>} />
@@ -65,7 +67,7 @@ const App = () => (
             <Route path="/headers" element={<ProtectedRoute><HeadersPage /></ProtectedRoute>} />
             <Route path="/corrections" element={<ProtectedRoute><CorrectionsPage /></ProtectedRoute>} />
             <Route path="/students" element={<ProtectedRoute><StudentsPage /></ProtectedRoute>} />
-            <Route path="/classes" element={<ProtectedRoute><ClassesPage /></ProtectedRoute>} /> {/* <-- 2. ROTA ADICIONADA AQUI */}
+            <Route path="/classes" element={<ProtectedRoute><ClassesPage /></ProtectedRoute>} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>
