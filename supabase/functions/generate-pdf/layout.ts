@@ -21,13 +21,22 @@ interface ExamData {
   instructions?: string;
   layout?: string;
   exam_headers?: any; // Cabeçalho associado
+  header?: any; // Alternativa para cabeçalho
+}
+
+interface StudentInfo {
+  name?: string;
+  id?: string;
+  course?: string;
+  class?: string;
+  qrId?: string;
 }
 
 /**
  * Gera o HTML final da prova com base nos dados fornecidos.
  */
-export function generateExamHTML(exam: ExamData, questions: Question[], version: number, includeAnswers: boolean): string {
-    const header = exam.exam_headers;
+export function generateExamHTML(exam: ExamData, questions: Question[], version: number, includeAnswers: boolean, studentInfo?: StudentInfo): string {
+    const header = exam.exam_headers || exam.header;
     const isDoubleColumn = exam.layout === 'double_column';
     const totalQuestions = questions.length;
 
@@ -162,8 +171,8 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         <div class="page-container">
             <div class="answer-sheet-container">
                 <div class="qr-code-section">
-                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=examId:${exam.id},version:${version}" alt="QR Code" />
-                    <p>Prova: ${exam.id.split('-')[0]}.${version}</p>
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${studentInfo?.qrId ? `studentExamId:${studentInfo.qrId}` : `examId:${exam.id},version:${version}`}" alt="QR Code" />
+                    <p>Prova: ${exam.id.split('-')[0]}.${studentInfo?.qrId ? 'IND' : version}</p>
                 </div>
                 <div class="answer-grid-section">${generateAnswerGrid()}</div>
             </div>
@@ -176,11 +185,11 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
                     <p class="institution-name">${header?.institution || 'Instituição de Ensino'}</p>
                     <p>Professor: ${header?.content?.professor || '_____________________'}</p>
                     <p>Disciplina: ${exam.subject}</p>
-                    <p>Curso: ___________________________________</p>
-                    <p>Aluno: ______________________________________________________</p>
+                    <p>Curso: ${studentInfo?.course || '___________________________________'}</p>
+                    <p>Aluno: ${studentInfo?.name || '______________________________________________________'}</p>
                     <div class="student-details">
-                        <span>Matrícula: _________________</span>
-                        <span>Turma: ${header?.content?.turma || '__'}</span>
+                        <span>Matrícula: ${studentInfo?.id || '_________________'}</span>
+                        <span>Turma: ${studentInfo?.class || header?.content?.turma || '__'}</span>
                     </div>
                 </div>
                 <div class="grade-container">
