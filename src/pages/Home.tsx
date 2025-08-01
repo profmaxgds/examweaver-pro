@@ -66,7 +66,7 @@ export default function Home() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <img src="/favicon.png" alt="TestifyAI" className="w-8 h-8" />
+              <img src="/logos/icone.png" alt="TestifyAI" className="w-8 h-8" />
               <h1 className="text-2xl font-bold">TestifyAI</h1>
               <Badge variant="outline">Professor</Badge>
             </div>
