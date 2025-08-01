@@ -32,11 +32,22 @@ interface CorrectionResult {
   }>;
 }
 
+interface ExamInfo {
+  examId: string;
+  studentId: string;
+  examTitle: string;
+  studentName: string;
+  answerKey: Record<string, string>;
+  version?: number;
+}
+
 export default function AutoCorrectionPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [step, setStep] = useState<'capture' | 'qr-detected' | 'correcting' | 'results'>('capture');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [examInfo, setExamInfo] = useState<ExamInfo | null>(null);
   const [correctionResult, setCorrectionResult] = useState<CorrectionResult | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -213,25 +224,23 @@ export default function AutoCorrectionPage() {
     }
   };
 
-  const processCorrection = async () => {
+  // Etapa 1: Detectar QR Code e carregar informações da prova
+  const detectQRCode = async () => {
     if (!selectedFile || !user) {
       toast({
         title: "Erro",
-        description: "Selecione uma imagem da prova para processar.",
+        description: "Selecione uma imagem da prova primeiro.",
         variant: "destructive",
       });
       return;
     }
 
     setIsProcessing(true);
+    setStep('qr-detected');
 
     try {
-      // Simular OCR e extração de QR code
-      // Em um ambiente real, você usaria uma biblioteca de OCR como Tesseract.js
-      // e uma biblioteca de QR code como jsqr
-      
       // Upload da imagem
-      const fileName = `correction_${Date.now()}_${selectedFile.name}`;
+      const fileName = `qr_scan_${Date.now()}_${selectedFile.name}`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('correction-scans')
         .upload(fileName, selectedFile);
@@ -240,20 +249,20 @@ export default function AutoCorrectionPage() {
         throw new Error(`Erro no upload: ${uploadError.message}`);
       }
 
-      // Simular chamada para edge function de OCR
-      const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('ocr-correction', {
+      // Chamar edge function para detectar QR code
+      const { data: qrResult, error: qrError } = await supabase.functions.invoke('ocr-correction', {
         body: {
           fileName: fileName,
-          examMode: 'qr_scan'
+          mode: 'qr_only' // Apenas detectar QR code
         }
       });
 
-      if (ocrError) {
-        throw new Error(`Erro na correção: ${ocrError.message}`);
+      if (qrError) {
+        throw new Error(`Erro ao detectar QR code: ${qrError.message}`);
       }
 
       // Extrair dados do QR code
-      const qrData = extractQRCodeData(ocrResult.qrCodeText || '');
+      const qrData = extractQRCodeData(qrResult.qrCodeText || '');
       if (!qrData) {
         throw new Error('QR Code não encontrado ou inválido na imagem');
       }
@@ -288,11 +297,78 @@ export default function AutoCorrectionPage() {
         .eq('id', qrData.studentId)
         .single();
 
-      // Simular respostas detectadas (em um caso real, viria do OCR)
+      const examInfo: ExamInfo = {
+        examId: qrData.examId,
+        studentId: qrData.studentId,
+        examTitle: examData.title,
+        studentName: studentData?.name || 'Aluno não identificado',
+        answerKey: studentExam.answer_key as Record<string, string>,
+        version: qrData.version
+      };
+
+      setExamInfo(examInfo);
+      
+      toast({
+        title: "QR Code detectado!",
+        description: `Prova: ${examInfo.examTitle} | Aluno: ${examInfo.studentName}`,
+      });
+
+    } catch (error) {
+      console.error('Erro ao detectar QR Code:', error);
+      setStep('capture');
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : 'Erro desconhecido ao detectar QR Code',
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Etapa 2: Processar marcações e fazer correção
+  const processCorrection = async () => {
+    if (!selectedFile || !examInfo || !user) {
+      toast({
+        title: "Erro",
+        description: "Informações da prova não encontradas.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+    setStep('correcting');
+
+    try {
+      // Upload da imagem (se não foi feito antes)
+      const fileName = `correction_${Date.now()}_${selectedFile.name}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('correction-scans')
+        .upload(fileName, selectedFile);
+
+      if (uploadError) {
+        throw new Error(`Erro no upload: ${uploadError.message}`);
+      }
+
+      // Chamar edge function para detectar marcações
+      const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('ocr-correction', {
+        body: {
+          fileName: fileName,
+          mode: 'detect_marks', // Apenas detectar marcações
+          examInfo: examInfo
+        }
+      });
+
+      if (ocrError) {
+        throw new Error(`Erro na detecção de marcações: ${ocrError.message}`);
+      }
+
+      // Processar respostas detectadas
       const detectedAnswers = ocrResult.detectedAnswers || {};
       
       // Comparar com gabarito
-      const correctAnswers = studentExam.answer_key as Record<string, string>;
+      const correctAnswers = examInfo.answerKey;
       let score = 0;
       const feedback = [];
 
@@ -316,9 +392,9 @@ export default function AutoCorrectionPage() {
       const percentage = (score / maxScore) * 100;
 
       const result: CorrectionResult = {
-        examId: qrData.examId,
-        studentId: qrData.studentId,
-        studentName: studentData?.name || 'Aluno não identificado',
+        examId: examInfo.examId,
+        studentId: examInfo.studentId,
+        studentName: examInfo.studentName,
         answers: detectedAnswers,
         score,
         maxScore,
@@ -328,6 +404,7 @@ export default function AutoCorrectionPage() {
       };
 
       setCorrectionResult(result);
+      setStep('results');
       
       toast({
         title: "Correção realizada!",
@@ -343,6 +420,18 @@ export default function AutoCorrectionPage() {
       });
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const resetProcess = () => {
+    setStep('capture');
+    setExamInfo(null);
+    setCorrectionResult(null);
+    setSelectedFile(null);
+    setUseCamera(false);
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
     }
   };
 
@@ -481,28 +570,97 @@ export default function AutoCorrectionPage() {
               )}
 
               <div className="text-sm text-muted-foreground text-center space-y-1">
-                <p>📱 Escaneie o QR code da prova para correção automática</p>
-                <p>✅ O sistema identificará o aluno e aplicará o gabarito correto</p>
-                <p>⚡ Correção em tempo real com resultados instantâneos</p>
-              </div>
-
-              <Button
-                onClick={processCorrection}
-                disabled={!selectedFile || isProcessing}
-                className="w-full"
-              >
-                {isProcessing ? (
+                {step === 'capture' && (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processando...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Processar Correção
+                    <p>🎯 <strong>Etapa 1:</strong> Escaneie o QR code da prova</p>
+                    <p>📋 O sistema identificará a prova e carregará o gabarito</p>
                   </>
                 )}
-              </Button>
+                {step === 'qr-detected' && examInfo && (
+                  <>
+                    <p>✅ <strong>QR Code detectado!</strong></p>
+                    <p>📋 Prova: {examInfo.examTitle}</p>
+                    <p>👤 Aluno: {examInfo.studentName}</p>
+                    <p>🎯 <strong>Etapa 2:</strong> Agora detecte as marcações</p>
+                  </>
+                )}
+                {step === 'correcting' && (
+                  <p>⚡ Processando marcações e comparando com gabarito...</p>
+                )}
+              </div>
+
+              {/* Botões baseados no estado */}
+              {step === 'capture' && (
+                <Button
+                  onClick={detectQRCode}
+                  disabled={!selectedFile || isProcessing}
+                  className="w-full"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Lendo QR Code...
+                    </>
+                  ) : (
+                    <>
+                      <QrCode className="mr-2 h-4 w-4" />
+                      1. Detectar QR Code
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {step === 'qr-detected' && examInfo && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                      <span className="font-semibold">QR Code Detectado!</span>
+                    </div>
+                    <div className="text-sm space-y-1">
+                      <p><strong>Prova:</strong> {examInfo.examTitle}</p>
+                      <p><strong>Aluno:</strong> {examInfo.studentName}</p>
+                      <p><strong>Questões:</strong> {Object.keys(examInfo.answerKey).length}</p>
+                    </div>
+                  </div>
+                  
+                  <Button
+                    onClick={processCorrection}
+                    disabled={isProcessing}
+                    className="w-full"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Detectando marcações...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        2. Processar Marcações
+                      </>
+                    )}
+                  </Button>
+                  
+                  <Button
+                    onClick={resetProcess}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    Recomeçar Processo
+                  </Button>
+                </div>
+              )}
+
+              {step === 'results' && (
+                <Button
+                  onClick={resetProcess}
+                  variant="outline"
+                  className="w-full"
+                >
+                  Nova Correção
+                </Button>
+              )}
             </CardContent>
           </Card>
 
