@@ -230,9 +230,14 @@ export default function AutoCorrectionPage() {
   const startAutoScan = () => {
     if (scanIntervalRef.current) return; // Já está escaneando
     
+    console.log('Iniciando escaneamento automático de QR codes...');
     scanIntervalRef.current = setInterval(() => {
-      scanVideoForQR();
-    }, 500); // Escanear a cada 500ms
+      if (videoRef.current && videoRef.current.readyState >= 2) {
+        scanVideoForQR();
+      } else {
+        console.log('Vídeo não está pronto ainda...');
+      }
+    }, 200); // Escanear mais frequentemente para melhor detecção
   };
 
   // Função para escanear vídeo em busca de QR code
@@ -245,12 +250,21 @@ export default function AutoCorrectionPage() {
 
     if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
 
+    // Debug: verificar se o vídeo está sendo renderizado
+    console.log('Escaneando frame:', { 
+      videoWidth: video.videoWidth, 
+      videoHeight: video.videoHeight,
+      readyState: video.readyState 
+    });
+
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(imageData.data, imageData.width, imageData.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: "dontInvert" // Melhorar detecção
+    });
 
     if (code) {
       // QR code detectado!
@@ -793,26 +807,40 @@ export default function AutoCorrectionPage() {
                       muted
                       controls={false}
                       className="w-full max-w-md mx-auto rounded-lg border bg-black"
-                      style={{ aspectRatio: '16/9' }}
-                    />
+                       style={{ aspectRatio: '16/9' }}
+                     />
+                     
+                     {/* Canvas invisível para processamento de QR codes */}
+                     <canvas
+                       ref={canvasRef}
+                       style={{ display: 'none' }}
+                     />
+                     
                      <div className="flex gap-2 justify-center">
                        {isScanning ? (
                          <div className="text-center space-y-2">
                            <div className="inline-flex items-center gap-2 text-green-600">
                              <div className="animate-pulse w-2 h-2 bg-green-600 rounded-full"></div>
-                             Escaneando QR Code automaticamente...
+                             <span className="text-sm">🔍 Escaneando QR Code automaticamente...</span>
                            </div>
-                           <Button variant="outline" onClick={stopCamera}>
-                             Cancelar
+                           <Button variant="outline" onClick={stopCamera} size="sm">
+                             Parar Escaneamento
                            </Button>
+                         </div>
+                       ) : isProcessing ? (
+                         <div className="text-center">
+                           <div className="inline-flex items-center gap-2 text-blue-600">
+                             <Loader2 className="w-4 h-4 animate-spin" />
+                             <span className="text-sm">Processando QR Code...</span>
+                           </div>
                          </div>
                        ) : (
                          <>
-                           <Button onClick={capturePhoto}>
+                           <Button onClick={capturePhoto} size="sm">
                              <Camera className="w-4 h-4 mr-2" />
                              Capturar Foto
                            </Button>
-                           <Button variant="outline" onClick={stopCamera}>
+                           <Button variant="outline" onClick={stopCamera} size="sm">
                              Cancelar
                            </Button>
                          </>
@@ -835,6 +863,7 @@ export default function AutoCorrectionPage() {
                      <p>🎯 <strong>Etapa 1:</strong> Posicione o QR code da prova na câmera</p>
                      <p>📋 O sistema detectará automaticamente e carregará o gabarito</p>
                      <p>🔊 Você ouvirá um "bip" quando o QR code for detectado</p>
+                     <p className="text-xs text-muted-foreground">💡 Os marcadores âncora no gabarito ajudam na correção por posição</p>
                    </>
                  )}
                 {step === 'qr-detected' && examInfo && (

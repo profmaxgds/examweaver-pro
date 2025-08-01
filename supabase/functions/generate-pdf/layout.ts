@@ -115,6 +115,57 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
             font-size: 10pt;
         }
         
+        /* Marcadores âncora para referência de posição */
+        .anchor-marker {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background-color: #000;
+            border-radius: 50%;
+        }
+        
+        .top-left-anchor {
+            top: 10px;
+            left: 10px;
+        }
+        
+        .top-right-anchor {
+            top: 10px;
+            right: 10px;
+        }
+        
+        .bottom-left-anchor {
+            bottom: 10px;
+            left: 10px;
+        }
+        
+        .bottom-right-anchor {
+            bottom: 10px;
+            right: 10px;
+        }
+
+        /* Marcadores de referência na área do gabarito */
+        .grid-reference {
+            position: absolute;
+            background-color: #000;
+        }
+        
+        .grid-ref-top {
+            width: 12px;
+            height: 3px;
+            top: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        
+        .grid-ref-left {
+            width: 3px;
+            height: 12px;
+            left: -5px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        
         .page-footer { display: flex; justify-content: space-between; font-size: 10pt; margin-top: 20px; border-top: 1px solid #ccc; padding-top: 5px; }
         @media print { body { -webkit-print-color-adjust: exact; } }
     `;
@@ -168,6 +219,12 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         <style>${styles}</style>
     </head>
     <body>
+        <!-- Marcadores âncora nas bordas da página -->
+        <div class="anchor-marker top-left-anchor"></div>
+        <div class="anchor-marker top-right-anchor"></div>
+        <div class="anchor-marker bottom-left-anchor"></div>
+        <div class="anchor-marker bottom-right-anchor"></div>
+        
         <div class="page-container">
             <div class="answer-sheet-container">
                 <div class="qr-code-section">
@@ -179,7 +236,12 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
                     }))}" alt="QR Code" />
                     <p>Prova: ${exam.id.split('-')[0]}.${studentInfo?.id || version}</p>
                 </div>
-                <div class="answer-grid-section">${generateAnswerGrid()}</div>
+                <div class="answer-grid-section" style="position: relative;">
+                    <!-- Marcadores de referência na grade -->
+                    <div class="grid-reference grid-ref-top"></div>
+                    <div class="grid-reference grid-ref-left"></div>
+                    ${generateAnswerGrid()}
+                </div>
             </div>
             
             <div class="custom-header">
