@@ -39,20 +39,173 @@ All colors MUST be HSL.
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 98%;
-
     --sidebar-foreground: 240 5.3% 26.1%;
-
     --sidebar-primary: 240 5.9% 10%;
-
     --sidebar-primary-foreground: 0 0% 98%;
-
     --sidebar-accent: 240 4.8% 95.9%;
-
     --sidebar-accent-foreground: 240 5.9% 10%;
-
     --sidebar-border: 220 13% 91%;
-
     --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  /* Tema Oceano (Teal/Azul) */
+  [data-theme="ocean"] {
+    --background: 196 47% 94%;
+    --foreground: 203 34% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 203 34% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 203 34% 15%;
+
+    --primary: 180 39% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 180 39% 85%;
+    --secondary-foreground: 203 34% 15%;
+
+    --muted: 180 39% 85%;
+    --muted-foreground: 203 34% 45%;
+
+    --accent: 180 50% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 180 39% 75%;
+    --input: 180 39% 75%;
+    --ring: 180 39% 50%;
+
+    --sidebar-background: 180 39% 92%;
+    --sidebar-foreground: 203 34% 15%;
+    --sidebar-primary: 180 39% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 180 39% 85%;
+    --sidebar-accent-foreground: 203 34% 15%;
+    --sidebar-border: 180 39% 75%;
+    --sidebar-ring: 180 39% 50%;
+  }
+
+  /* Tema Profundo (Azul Escuro) */
+  [data-theme="deep"] {
+    --background: 225 100% 97%;
+    --foreground: 234 47% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 234 47% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 234 47% 15%;
+
+    --primary: 215 35% 40%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 215 35% 85%;
+    --secondary-foreground: 234 47% 15%;
+
+    --muted: 215 35% 85%;
+    --muted-foreground: 234 47% 45%;
+
+    --accent: 215 45% 55%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 215 35% 75%;
+    --input: 215 35% 75%;
+    --ring: 215 35% 40%;
+
+    --sidebar-background: 215 35% 92%;
+    --sidebar-foreground: 234 47% 15%;
+    --sidebar-primary: 215 35% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 35% 85%;
+    --sidebar-accent-foreground: 234 47% 15%;
+    --sidebar-border: 215 35% 75%;
+    --sidebar-ring: 215 35% 40%;
+  }
+
+  /* Tema Roxo */
+  [data-theme="purple"] {
+    --background: 255 20% 97%;
+    --foreground: 260 47% 20%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 260 47% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 260 47% 20%;
+
+    --primary: 260 30% 40%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 260 30% 85%;
+    --secondary-foreground: 260 47% 20%;
+
+    --muted: 260 30% 85%;
+    --muted-foreground: 260 47% 45%;
+
+    --accent: 260 40% 55%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 260 30% 75%;
+    --input: 260 30% 75%;
+    --ring: 260 30% 40%;
+
+    --sidebar-background: 260 30% 92%;
+    --sidebar-foreground: 260 47% 20%;
+    --sidebar-primary: 260 30% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 260 30% 85%;
+    --sidebar-accent-foreground: 260 47% 20%;
+    --sidebar-border: 260 30% 75%;
+    --sidebar-ring: 260 30% 40%;
+  }
+
+  /* Tema Noturno */
+  [data-theme="night"] {
+    --background: 237 47% 8%;
+    --foreground: 0 0% 95%;
+
+    --card: 237 47% 10%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 237 47% 10%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 180 39% 50%;
+    --primary-foreground: 237 47% 8%;
+
+    --secondary: 237 47% 15%;
+    --secondary-foreground: 0 0% 95%;
+
+    --muted: 237 47% 15%;
+    --muted-foreground: 0 0% 65%;
+
+    --accent: 180 50% 60%;
+    --accent-foreground: 237 47% 8%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 95%;
+
+    --border: 237 47% 20%;
+    --input: 237 47% 20%;
+    --ring: 180 39% 50%;
+
+    --sidebar-background: 237 47% 6%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 180 39% 50%;
+    --sidebar-primary-foreground: 237 47% 8%;
+    --sidebar-accent: 237 47% 15%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 237 47% 20%;
+    --sidebar-ring: 180 39% 50%;
   }
 
   .dark {

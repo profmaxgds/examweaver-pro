@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useTheme } from '@/hooks/useTheme';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, User, CreditCard, Lock, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { ArrowLeft, User, CreditCard, Lock, Eye, EyeOff, CheckCircle, Palette } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface Profile {
@@ -28,6 +29,7 @@ interface Profile {
 export default function ProfilePage() {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
+  const { theme, setTheme, themes } = useTheme();
   
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,7 +38,6 @@ export default function ProfilePage() {
   // Form states
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [institution, setInstitution] = useState('');
   const [subjects, setSubjects] = useState('');
   
   // Password change states
@@ -69,7 +70,6 @@ export default function ProfilePage() {
       
       setProfile(data);
       setName(data.name || '');
-      setInstitution(data.institution || '');
       setSubjects(data.subjects?.join(', ') || '');
     } catch (error) {
       console.error('Erro ao buscar perfil:', error);
@@ -98,7 +98,6 @@ export default function ProfilePage() {
         .from('profiles')
         .update({
           name,
-          institution: institution || null,
           subjects: subjectsArray.length > 0 ? subjectsArray : null,
         })
         .eq('user_id', user.id);
@@ -279,8 +278,9 @@ export default function ProfilePage() {
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="profile" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
+                <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="profile">Dados Pessoais</TabsTrigger>
+                  <TabsTrigger value="theme">Tema</TabsTrigger>
                   <TabsTrigger value="password">Alterar Senha</TabsTrigger>
                 </TabsList>
                 
@@ -306,16 +306,6 @@ export default function ProfilePage() {
                         placeholder="seu@email.com"
                       />
                     </div>
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="institution">Instituição</Label>
-                    <Input
-                      id="institution"
-                      value={institution}
-                      onChange={(e) => setInstitution(e.target.value)}
-                      placeholder="Nome da sua instituição de ensino"
-                    />
                   </div>
                   
                   <div>
@@ -348,6 +338,50 @@ export default function ProfilePage() {
                       </>
                     )}
                   </Button>
+                </TabsContent>
+                
+                <TabsContent value="theme" className="space-y-4 mt-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Palette className="w-5 h-5" />
+                      <h3 className="text-lg font-semibold">Escolha o Tema</h3>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {themes.map((themeOption) => (
+                        <div
+                          key={themeOption.value}
+                          className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                            theme === themeOption.value
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border hover:border-primary/50'
+                          }`}
+                          onClick={() => setTheme(themeOption.value)}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="font-medium">{themeOption.label}</span>
+                            {theme === themeOption.value && (
+                              <CheckCircle className="w-5 h-5 text-primary" />
+                            )}
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            {themeOption.colors.map((color, index) => (
+                              <div
+                                key={index}
+                                className="w-8 h-8 rounded-full border border-border"
+                                style={{ backgroundColor: color }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <div className="text-sm text-muted-foreground">
+                      <p>O tema será aplicado imediatamente em todo o aplicativo.</p>
+                    </div>
+                  </div>
                 </TabsContent>
                 
                 <TabsContent value="password" className="space-y-4 mt-6">
