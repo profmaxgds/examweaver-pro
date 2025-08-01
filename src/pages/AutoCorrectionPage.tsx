@@ -57,6 +57,7 @@ export default function AutoCorrectionPage() {
   
   // Estados principais
   const [step, setStep] = useState<'upload' | 'qr-scan' | 'photo-capture' | 'qr-detected' | 'scan-marks' | 'corrected' | 'need-answer-sheet' | 'essay-correction'>('upload');
+  const [processedImage, setProcessedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [examInfo, setExamInfo] = useState<ExamInfo | null>(null);
@@ -669,6 +670,11 @@ export default function AutoCorrectionPage() {
       setStep('need-answer-sheet'); // Novo step: precisa da imagem da prova respondida
       stopCamera(); // Parar a câmera após detectar
       
+      // Automaticamente iniciar captura do gabarito após 2 segundos
+      setTimeout(() => {
+        startCamera('photo');
+      }, 2000);
+      
       // Alertar sobre questões abertas
       if (essayQuestionsFound.length > 0) {
         toast({
@@ -807,6 +813,14 @@ export default function AutoCorrectionPage() {
         }
       });
 
+      // Salvar URL da imagem processada
+      if (ocrResult && ocrResult.fileName) {
+        const { data: imageUrl } = supabase.storage
+          .from('correction-scans')
+          .getPublicUrl(ocrResult.fileName);
+        setProcessedImage(imageUrl.publicUrl);
+      }
+
       if (ocrError) {
         throw new Error(`Erro na detecção de marcações: ${ocrError.message}`);
       }
@@ -918,6 +932,7 @@ export default function AutoCorrectionPage() {
     setSelectedFile(null);
     setUseCamera(false);
     setScanMode('qr');
+    setProcessedImage(null);
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
@@ -1291,9 +1306,10 @@ export default function AutoCorrectionPage() {
                 {step === 'need-answer-sheet' && examInfo && (
                   <>
                     <p>✅ <strong>QR Code detectado!</strong></p>
-                    <p>📋 Prova: {examInfo.examTitle}</p>
-                    <p>👤 Aluno: {examInfo.studentName}</p>
-                    <p>📷 <strong>Próximo passo:</strong> Capture ou envie a prova respondida</p>
+                     <p>📋 Prova: {examInfo.examTitle}</p>
+                     <p>👤 Aluno: {examInfo.studentName}</p>
+                     <p>📷 <strong>Próximo passo:</strong> Capture a prova respondida (QR + gabarito)</p>
+                     <p className="text-xs text-blue-600 mt-1">⏰ A câmera será aberta automaticamente em alguns segundos</p>
                   </>
                 )}
                 {step === 'qr-detected' && examInfo && (
@@ -1486,7 +1502,7 @@ export default function AutoCorrectionPage() {
             </Card>
           )}
 
-          {/* Resultado da correção */}
+                {/* Resultado da correção */}
           {correctionResult && step === 'corrected' && (
             <Card>
               <CardHeader>
@@ -1496,6 +1512,22 @@ export default function AutoCorrectionPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* Exibir imagem processada */}
+                {processedImage && (
+                  <div className="p-4 bg-muted/50 rounded-lg">
+                    <h4 className="font-semibold mb-3">Imagem Processada</h4>
+                    <div className="max-w-md mx-auto">
+                      <img 
+                        src={processedImage} 
+                        alt="Gabarito processado" 
+                        className="w-full rounded-lg border shadow-sm"
+                      />
+                      <p className="text-xs text-muted-foreground mt-2 text-center">
+                        Imagem utilizada para detecção das marcações
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {/* Informações do aluno */}
                 <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
                   <h4 className="font-semibold mb-2">Informações do Aluno</h4>
@@ -1575,25 +1607,40 @@ export default function AutoCorrectionPage() {
                       
                       <div className="space-y-3">
                         {correctionResult.openQuestions.map((question: any, index: number) => (
-                          <div key={question.id} className="flex items-center justify-between p-3 bg-white/50 dark:bg-black/20 rounded border">
-                            <div>
-                              <p className="font-medium">Questão {index + 1}</p>
-                              <p className="text-sm text-muted-foreground">{question.title}</p>
-                              <p className="text-xs text-blue-600">{question.points} pontos</p>
+                          <Card key={question.id} className="p-4 border-2 border-dashed border-orange-300 hover:border-orange-500 transition-colors">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                                    <PenTool className="w-4 h-4 text-orange-600" />
+                                  </div>
+                                  <div>
+                                    <p className="font-medium text-orange-900 dark:text-orange-100">Questão Aberta {index + 1}</p>
+                                    <p className="text-xs text-orange-600">{question.points} pontos</p>
+                                  </div>
+                                </div>
+                                <p className="text-sm text-muted-foreground mb-2">{question.title}</p>
+                                <div className="text-xs text-orange-700 dark:text-orange-300">
+                                  💡 Pode ser corrigida posteriormente na gestão de correções
+                                </div>
+                              </div>
+                              <Button
+                                onClick={() => {
+                                  setEssayQuestions(correctionResult.openQuestions);
+                                  setCurrentEssayIndex(index);
+                                  setStep('essay-correction');
+                                }}
+                                size="lg"
+                                className="ml-4 bg-orange-600 hover:bg-orange-700 h-auto py-3 px-4"
+                              >
+                                <div className="text-center">
+                                  <Camera className="w-5 h-5 mx-auto mb-1" />
+                                  <div className="text-sm font-medium">Capturar</div>
+                                  <div className="text-xs opacity-90">Resposta Aberta</div>
+                                </div>
+                              </Button>
                             </div>
-                            <Button
-                              onClick={() => {
-                                setEssayQuestions(correctionResult.openQuestions);
-                                setCurrentEssayIndex(index);
-                                setStep('essay-correction');
-                              }}
-                              size="sm"
-                              className="bg-orange-600 hover:bg-orange-700"
-                            >
-                              <Camera className="w-4 h-4 mr-2" />
-                              Capturar Resposta
-                            </Button>
-                          </div>
+                          </Card>
                         ))}
                       </div>
                     </div>
