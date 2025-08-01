@@ -55,20 +55,62 @@ export default function AutoCorrectionPage() {
 
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } // Câmera traseira no celular
-      });
+      // Verificar se getUserMedia está disponível
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Camera API não suportada neste navegador');
+      }
+
+      console.log('Tentando acessar a câmera...');
+      
+      // Configurações para desktop e mobile
+      const constraints = {
+        video: {
+          // Usar câmera traseira no mobile, qualquer câmera no desktop
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('Câmera acessada com sucesso');
+      
       setCameraStream(stream);
       setUseCamera(true);
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // Garantir que o vídeo seja reproduzido
+        videoRef.current.play().catch(err => {
+          console.error('Erro ao reproduzir vídeo:', err);
+        });
       }
+
+      toast({
+        title: "Sucesso!",
+        description: "Câmera ativada com sucesso.",
+      });
+
     } catch (error) {
       console.error('Erro ao acessar câmera:', error);
+      
+      let errorMessage = "Não foi possível acessar a câmera.";
+      
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          errorMessage = "Permissão negada. Permita o acesso à câmera e tente novamente.";
+        } else if (error.name === 'NotFoundError') {
+          errorMessage = "Nenhuma câmera encontrada no dispositivo.";
+        } else if (error.name === 'NotSupportedError') {
+          errorMessage = "Câmera não suportada neste navegador.";
+        } else if (error.name === 'NotReadableError') {
+          errorMessage = "Câmera está sendo usada por outro aplicativo.";
+        }
+      }
+      
       toast({
-        title: "Erro",
-        description: "Não foi possível acessar a câmera. Verifique as permissões.",
+        title: "Erro de Câmera",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -381,7 +423,10 @@ export default function AutoCorrectionPage() {
                       ref={videoRef}
                       autoPlay
                       playsInline
-                      className="w-full max-w-md mx-auto rounded-lg border"
+                      muted
+                      controls={false}
+                      className="w-full max-w-md mx-auto rounded-lg border bg-black"
+                      style={{ aspectRatio: '16/9' }}
                     />
                     <div className="flex gap-2 justify-center">
                       <Button onClick={capturePhoto}>
