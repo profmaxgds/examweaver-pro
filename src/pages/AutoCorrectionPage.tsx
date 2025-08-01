@@ -54,6 +54,8 @@ export default function AutoCorrectionPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [useCamera, setUseCamera] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -85,6 +87,25 @@ export default function AutoCorrectionPage() {
     }
   }, [useCamera, cameraStream]);
 
+  // Som de bip para quando detectar QR code
+  const playBeep = () => {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 800; // Frequência agradável
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.5);
+  };
+
   const startCamera = async () => {
     try {
       // Verificar se getUserMedia está disponível
@@ -109,8 +130,12 @@ export default function AutoCorrectionPage() {
       
       setCameraStream(stream);
       setUseCamera(true);
+      setIsScanning(true); // Iniciar escaneamento automático
       
-      // Aguardar um pouco para garantir que o estado foi atualizado
+      // Aguardar um pouco para o vídeo inicializar e então começar o scan
+      setTimeout(() => {
+        startAutoScan();
+      }, 1000);
       setTimeout(() => {
         if (videoRef.current) {
           console.log('Configurando srcObject do vídeo...');
@@ -162,6 +187,11 @@ export default function AutoCorrectionPage() {
   };
 
   const stopCamera = () => {
+    setIsScanning(false);
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
@@ -196,11 +226,143 @@ export default function AutoCorrectionPage() {
     }
   };
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      setCorrectionResult(null);
+  // Função para escaneamento automático contínuo
+  const startAutoScan = () => {
+    if (scanIntervalRef.current) return; // Já está escaneando
+    
+    scanIntervalRef.current = setInterval(() => {
+      scanVideoForQR();
+    }, 500); // Escanear a cada 500ms
+  };
+
+  // Função para escanear vídeo em busca de QR code
+  const scanVideoForQR = () => {
+    if (!videoRef.current || !canvasRef.current || !isScanning || !cameraStream) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+
+    if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+    if (code) {
+      // QR code detectado!
+      console.log('QR code detectado automaticamente:', code.data);
+      playBeep(); // Fazer o som de bip
+      setIsScanning(false);
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+      processQRCodeData(code.data);
+    }
+  };
+
+  const processQRCodeData = async (qrCodeText: string) => {
+    setIsProcessing(true);
+    try {
+      console.log('Texto do QR Code:', qrCodeText);
+      
+      // Extrair dados do QR code
+      const qrData = extractQRCodeData(qrCodeText);
+      if (!qrData) {
+        throw new Error('QR Code inválido. Verifique se é um QR code de prova válido.');
+      }
+
+      console.log('Dados extraídos do QR:', qrData);
+
+      // Buscar dados da prova
+      const { data: examData, error: examError } = await supabase
+        .from('exams')
+        .select('*')
+        .eq('id', qrData.examId)
+        .eq('author_id', user!.id)
+        .single();
+
+      if (examError || !examData) {
+        throw new Error('Prova não encontrada no sistema');
+      }
+
+      let studentExam;
+      let studentData;
+
+      // Verificar se temos studentExamId no QR code (prova individual)
+      if (qrData.studentExamId) {
+        // Buscar direto pelo student_exam ID
+        const { data: examInstance, error: examInstanceError } = await supabase
+          .from('student_exams')
+          .select(`
+            *,
+            students!inner(*)
+          `)
+          .eq('id', qrData.studentExamId)
+          .eq('author_id', user!.id)
+          .single();
+
+        if (examInstanceError || !examInstance) {
+          throw new Error('Gabarito específico do aluno não encontrado');
+        }
+
+        studentExam = examInstance;
+        studentData = examInstance.students;
+      } else {
+        // Para provas por versão, buscar gabarito da versão
+        const versionStudentId = typeof qrData.studentId === 'string' && qrData.studentId.startsWith('version-') 
+          ? qrData.studentId 
+          : `version-${qrData.version}`;
+
+        const { data: versionExam, error: versionError } = await supabase
+          .from('student_exams')
+          .select('*')
+          .eq('exam_id', qrData.examId)
+          .eq('student_id', versionStudentId)
+          .eq('author_id', user!.id)
+          .single();
+
+        if (versionError || !versionExam) {
+          throw new Error('Gabarito da versão não encontrado');
+        }
+
+        studentExam = versionExam;
+        studentData = { name: `Versão ${qrData.version}`, student_id: versionStudentId };
+      }
+
+      const examInfo: ExamInfo = {
+        examId: qrData.examId,
+        studentId: qrData.studentId,
+        examTitle: examData.title,
+        studentName: studentData?.name || 'Aluno não identificado',
+        answerKey: studentExam.answer_key as Record<string, string>,
+        version: qrData.version || 1
+      };
+
+      setExamInfo(examInfo);
+      setStep('qr-detected');
+      stopCamera(); // Parar a câmera após detectar
+      
+      toast({
+        title: "✅ QR Code detectado!",
+        description: `Prova: ${examInfo.examTitle} | ${examInfo.studentName}`,
+      });
+
+    } catch (error) {
+      console.error('Erro ao processar QR Code:', error);
+      setIsScanning(true); // Continuar escaneando em caso de erro
+      startAutoScan(); // Reiniciar escaneamento
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : 'Erro desconhecido ao processar QR Code',
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -606,7 +768,10 @@ export default function AutoCorrectionPage() {
                         ref={fileInputRef}
                         type="file"
                         accept="image/*"
-                        onChange={handleFileSelect}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) setSelectedFile(file);
+                        }}
                         className="hidden"
                       />
                       <Button 
@@ -630,15 +795,29 @@ export default function AutoCorrectionPage() {
                       className="w-full max-w-md mx-auto rounded-lg border bg-black"
                       style={{ aspectRatio: '16/9' }}
                     />
-                    <div className="flex gap-2 justify-center">
-                      <Button onClick={capturePhoto}>
-                        <Camera className="w-4 h-4 mr-2" />
-                        Capturar
-                      </Button>
-                      <Button variant="outline" onClick={stopCamera}>
-                        Cancelar
-                      </Button>
-                    </div>
+                     <div className="flex gap-2 justify-center">
+                       {isScanning ? (
+                         <div className="text-center space-y-2">
+                           <div className="inline-flex items-center gap-2 text-green-600">
+                             <div className="animate-pulse w-2 h-2 bg-green-600 rounded-full"></div>
+                             Escaneando QR Code automaticamente...
+                           </div>
+                           <Button variant="outline" onClick={stopCamera}>
+                             Cancelar
+                           </Button>
+                         </div>
+                       ) : (
+                         <>
+                           <Button onClick={capturePhoto}>
+                             <Camera className="w-4 h-4 mr-2" />
+                             Capturar Foto
+                           </Button>
+                           <Button variant="outline" onClick={stopCamera}>
+                             Cancelar
+                           </Button>
+                         </>
+                       )}
+                     </div>
                   </div>
                 )}
               </div>
@@ -651,12 +830,13 @@ export default function AutoCorrectionPage() {
               )}
 
               <div className="text-sm text-muted-foreground text-center space-y-1">
-                {step === 'capture' && (
-                  <>
-                    <p>🎯 <strong>Etapa 1:</strong> Escaneie o QR code da prova</p>
-                    <p>📋 O sistema identificará a prova e carregará o gabarito</p>
-                  </>
-                )}
+                 {step === 'capture' && (
+                   <>
+                     <p>🎯 <strong>Etapa 1:</strong> Posicione o QR code da prova na câmera</p>
+                     <p>📋 O sistema detectará automaticamente e carregará o gabarito</p>
+                     <p>🔊 Você ouvirá um "bip" quando o QR code for detectado</p>
+                   </>
+                 )}
                 {step === 'qr-detected' && examInfo && (
                   <>
                     <p>✅ <strong>QR Code detectado!</strong></p>

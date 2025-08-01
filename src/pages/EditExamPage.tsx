@@ -330,6 +330,48 @@ export default function EditExamPage() {
     }
   };
 
+  // Função para criar gabarito de versão se não existir
+  const createVersionAnswerKey = async (version: number) => {
+    if (!examData || !user) return;
+
+    // Verificar se já existe gabarito para esta versão
+    const { data: existing } = await supabase
+      .from('student_exams')
+      .select('id')
+      .eq('exam_id', examData.id)
+      .eq('student_id', `version-${version}`)
+      .eq('author_id', user.id)
+      .single();
+
+    if (existing) return; // Já existe
+
+    // Criar gabarito para a versão
+    const versionSeed = `${examData.id}-version-${version}`;
+    const shuffledQuestions = examData.shuffleQuestions ? seededShuffle(examData.selectedQuestions, versionSeed) : examData.selectedQuestions;
+    const shuffled_question_ids = shuffledQuestions.map(q => q.id);
+
+    const shuffled_options_map: { [key: string]: string[] } = {};
+    const answer_key: { [key: string]: any } = {};
+
+    shuffledQuestions.forEach(q => {
+      if (q.type === 'multiple_choice' && q.options) {
+        const questionSeed = `${versionSeed}-${q.id}`;
+        const shuffledOpts = examData.shuffleOptions ? seededShuffle(q.options, questionSeed) : q.options;
+        shuffled_options_map[q.id] = shuffledOpts.map(opt => opt.id);
+        answer_key[q.id] = q.correct_answer;
+      }
+    });
+
+    await supabase.from('student_exams').insert({
+      exam_id: examData.id,
+      student_id: `version-${version}`, // ID especial para versões
+      author_id: user.id,
+      shuffled_question_ids,
+      shuffled_options_map,
+      answer_key
+    });
+  };
+
 
   const openPrintDialog = (htmlContent: string) => {
     const printWindow = window.open('', '_blank');
@@ -360,6 +402,11 @@ export default function EditExamPage() {
     if (!examData) return;
     setLoading(true);
     try {
+        // Criar gabarito para versão se não existir
+        if (typeof id === 'number' && !includeAnswers) {
+            await createVersionAnswerKey(id);
+        }
+
         const payload = typeof id === 'string'
             ? { studentExamId: id, includeAnswers } // Para turma, 'id' é o student_exam_id
             : { examId: examData.id, version: id, includeAnswers }; // Para versões, 'id' é o número da versão
@@ -393,7 +440,9 @@ export default function EditExamPage() {
                 zip.file(`${pExam.student.name.replace(/\s/g, '_')}_prova.html`, html);
             }
         } else {
+            // Para provas por versão, criar gabaritos e gerar PDFs
             for (let version = 1; version <= examData.versions; version++) {
+                await createVersionAnswerKey(version);
                 const htmlProva = await callGeneratePdfFunction({ examId: examData.id, version: version, includeAnswers: false });
                 const htmlGabarito = await callGeneratePdfFunction({ examId: examData.id, version: version, includeAnswers: true });
                 zip.file(`Versao_${version}_Prova.html`, htmlProva);
