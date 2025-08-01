@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+// @deno-types="https://deno.land/x/canvas@v1.4.1/mod.ts"
+import { createCanvas, loadImage } from "https://deno.land/x/canvas@v1.4.1/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -190,65 +192,198 @@ async function extractQRCode(imageData: string): Promise<string | null> {
 
 async function processOCR(imageData: string): Promise<any> {
   try {
-    // Remove data URL prefix if present
-    const base64Data = imageData.replace(/^data:image\/[a-z]+;base64,/, '');
+    console.log('Iniciando detecção simples de marcações...');
     
-    // Convert base64 to binary
-    const binaryData = atob(base64Data);
-    const uint8Array = new Uint8Array(binaryData.length);
-    for (let i = 0; i < binaryData.length; i++) {
-      uint8Array[i] = binaryData.charCodeAt(i);
-    }
-
-    // Create form data for OpenAI Vision API
-    const formData = new FormData();
-    const blob = new Blob([uint8Array], { type: 'image/jpeg' });
-    formData.append('file', blob, 'scan.jpg');
-
-    // Use OpenAI Vision API for OCR
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Analise esta folha de respostas e extraia: 1) Nome do aluno, 2) Matrícula (se houver), 3) Respostas marcadas para cada questão (A, B, C, D, E ou em branco). Retorne em formato JSON."
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: imageData
-                }
-              }
-            ]
-          }
-        ],
-        max_tokens: 1000
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`OpenAI API error: ${await response.text()}`);
-    }
-
-    const result = await response.json();
+    // Carregar a imagem usando canvas
+    const image = await loadImage(imageData);
+    const canvas = createCanvas(image.width, image.height);
+    const ctx = canvas.getContext('2d');
+    
+    ctx.drawImage(image, 0, 0);
+    const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    
+    // Detectar marcadores âncora e região das questões
+    const anchorMarkers = detectAnchorMarkers(imageDataObj);
+    console.log('Marcadores âncora detectados:', anchorMarkers.length);
+    
+    // Detectar marcações das alternativas
+    const detectedMarks = detectAnswerMarks(imageDataObj, anchorMarkers);
+    console.log('Marcações detectadas:', detectedMarks);
+    
     return {
-      text: result.choices[0].message.content,
-      confidence: 0.9 // Simulated confidence
+      detectedMarks,
+      anchorMarkers,
+      confidence: 0.85,
+      imageSize: { width: image.width, height: image.height }
     };
 
   } catch (error) {
-    console.error('OCR processing failed:', error);
+    console.error('Detecção de marcações falhou:', error);
     throw error;
   }
+}
+
+// Detectar marcadores âncora (pequenos quadrados pretos nos cantos)
+function detectAnchorMarkers(imageData: ImageData): Array<{x: number, y: number, size: number}> {
+  const { data, width, height } = imageData;
+  const markers: Array<{x: number, y: number, size: number}> = [];
+  
+  // Procurar nas regiões dos cantos (primeiros 20% da imagem)
+  const searchRegions = [
+    { startX: 0, endX: Math.floor(width * 0.2), startY: 0, endY: Math.floor(height * 0.2) }, // Canto superior esquerdo
+    { startX: Math.floor(width * 0.8), endX: width, startY: 0, endY: Math.floor(height * 0.2) }, // Canto superior direito
+    { startX: 0, endX: Math.floor(width * 0.2), startY: Math.floor(height * 0.8), endY: height }, // Canto inferior esquerdo
+    { startX: Math.floor(width * 0.8), endX: width, startY: Math.floor(height * 0.8), endY: height } // Canto inferior direito
+  ];
+  
+  for (const region of searchRegions) {
+    const marker = findSquareMarker(data, width, height, region);
+    if (marker) {
+      markers.push(marker);
+    }
+  }
+  
+  return markers;
+}
+
+// Encontrar marcador quadrado em uma região específica
+function findSquareMarker(
+  data: Uint8ClampedArray, 
+  width: number, 
+  height: number, 
+  region: {startX: number, endX: number, startY: number, endY: number}
+): {x: number, y: number, size: number} | null {
+  
+  for (let y = region.startY; y < region.endY - 10; y += 2) {
+    for (let x = region.startX; x < region.endX - 10; x += 2) {
+      
+      // Testar diferentes tamanhos de marcadores (5x5 até 20x20)
+      for (let size = 5; size <= 20; size += 2) {
+        if (x + size >= region.endX || y + size >= region.endY) continue;
+        
+        let blackPixels = 0;
+        let totalPixels = 0;
+        
+        // Verificar se é um quadrado predominantemente preto
+        for (let dy = 0; dy < size; dy++) {
+          for (let dx = 0; dx < size; dx++) {
+            const pixelIndex = ((y + dy) * width + (x + dx)) * 4;
+            const r = data[pixelIndex];
+            const g = data[pixelIndex + 1];
+            const b = data[pixelIndex + 2];
+            
+            // Pixel escuro se a média RGB for baixa
+            const brightness = (r + g + b) / 3;
+            if (brightness < 80) {
+              blackPixels++;
+            }
+            totalPixels++;
+          }
+        }
+        
+        // Se mais de 70% dos pixels são escuros, é provavelmente um marcador
+        if (blackPixels / totalPixels > 0.7) {
+          return { x: x + size/2, y: y + size/2, size };
+        }
+      }
+    }
+  }
+  
+  return null;
+}
+
+// Detectar marcações das alternativas baseado na posição dos marcadores
+function detectAnswerMarks(
+  imageData: ImageData, 
+  anchorMarkers: Array<{x: number, y: number, size: number}>
+): Record<string, string> {
+  
+  if (anchorMarkers.length < 2) {
+    console.log('Marcadores âncora insuficientes para detecção precisa');
+    return {};
+  }
+  
+  const { data, width, height } = imageData;
+  const answers: Record<string, string> = {};
+  
+  // Estimar região das questões baseado nos marcadores
+  const minX = Math.min(...anchorMarkers.map(m => m.x));
+  const maxX = Math.max(...anchorMarkers.map(m => m.x));
+  const minY = Math.min(...anchorMarkers.map(m => m.y));
+  const maxY = Math.max(...anchorMarkers.map(m => m.y));
+  
+  // Assumir que as questões estão em uma grade regular
+  const questionsPerRow = 1; // Assumindo uma questão por linha
+  const optionsPerQuestion = 5; // A, B, C, D, E
+  
+  // Estimar espaçamento entre questões e opções
+  const questionHeight = (maxY - minY) / 20; // Assumindo até 20 questões
+  const optionWidth = (maxX - minX) / (optionsPerQuestion + 1);
+  
+  // Procurar por marcações em cada posição esperada
+  for (let questionNum = 1; questionNum <= 20; questionNum++) {
+    const questionY = minY + (questionNum - 1) * questionHeight;
+    
+    if (questionY > maxY) break;
+    
+    let bestOption = '';
+    let maxDarkness = 0;
+    
+    // Verificar cada opção (A, B, C, D, E)
+    for (let optionIndex = 0; optionIndex < optionsPerQuestion; optionIndex++) {
+      const optionX = minX + (optionIndex + 1) * optionWidth;
+      
+      // Verificar escuridão em uma área pequena ao redor da posição esperada
+      const darkness = checkMarkDarkness(data, width, height, optionX, questionY, 15);
+      
+      if (darkness > maxDarkness && darkness > 0.4) { // Threshold para considerar marcado
+        maxDarkness = darkness;
+        bestOption = String.fromCharCode(65 + optionIndex); // A, B, C, D, E
+      }
+    }
+    
+    if (bestOption) {
+      answers[questionNum.toString()] = bestOption;
+    }
+  }
+  
+  return answers;
+}
+
+// Verificar escuridão em uma área específica (indicativo de marcação)
+function checkMarkDarkness(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  centerX: number,
+  centerY: number,
+  radius: number
+): number {
+  
+  let darkPixels = 0;
+  let totalPixels = 0;
+  
+  const startX = Math.max(0, centerX - radius);
+  const endX = Math.min(width, centerX + radius);
+  const startY = Math.max(0, centerY - radius);
+  const endY = Math.min(height, centerY + radius);
+  
+  for (let y = startY; y < endY; y++) {
+    for (let x = startX; x < endX; x++) {
+      const pixelIndex = (y * width + x) * 4;
+      const r = data[pixelIndex];
+      const g = data[pixelIndex + 1];
+      const b = data[pixelIndex + 2];
+      
+      const brightness = (r + g + b) / 3;
+      if (brightness < 120) { // Pixel relativamente escuro
+        darkPixels++;
+      }
+      totalPixels++;
+    }
+  }
+  
+  return totalPixels > 0 ? darkPixels / totalPixels : 0;
 }
 
 function extractStudentInfo(ocrResults: any): { name?: string; id?: string } {
@@ -281,22 +416,33 @@ function extractStudentInfo(ocrResults: any): { name?: string; id?: string } {
 
 function extractAnswers(ocrResults: any, questionCount: number): Record<string, string> {
   try {
-    const text = ocrResults.text;
+    // Se já temos marcações detectadas diretamente, usar elas
+    if (ocrResults.detectedMarks) {
+      console.log('Usando marcações detectadas diretamente:', ocrResults.detectedMarks);
+      return ocrResults.detectedMarks;
+    }
+    
+    // Fallback para compatibilidade com formato antigo
+    const text = ocrResults.text || '';
     const answers: Record<string, string> = {};
 
-    // Try to parse JSON response from OCR
+    // Tentar parsear resposta JSON do OCR (compatibilidade)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (parsed.respostas || parsed.answers) {
-        const responseData = parsed.respostas || parsed.answers;
-        
-        for (let i = 1; i <= questionCount; i++) {
-          const answer = responseData[i.toString()] || responseData[`questao_${i}`];
-          if (answer && ['A', 'B', 'C', 'D', 'E'].includes(answer.toUpperCase())) {
-            answers[i.toString()] = answer.toUpperCase();
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.respostas || parsed.answers) {
+          const responseData = parsed.respostas || parsed.answers;
+          
+          for (let i = 1; i <= questionCount; i++) {
+            const answer = responseData[i.toString()] || responseData[`questao_${i}`];
+            if (answer && ['A', 'B', 'C', 'D', 'E'].includes(answer.toUpperCase())) {
+              answers[i.toString()] = answer.toUpperCase();
+            }
           }
         }
+      } catch (e) {
+        console.error('Erro ao parsear JSON:', e);
       }
     }
 
