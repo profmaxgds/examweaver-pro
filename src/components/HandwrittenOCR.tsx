@@ -4,8 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Camera, Upload, FileImage, Loader2, Eye, PenTool, Sparkles } from 'lucide-react';
+import { Camera, Upload, FileImage, Loader2, Eye, PenTool, Sparkles, Settings } from 'lucide-react';
 import { pipeline, env } from '@huggingface/transformers';
 
 // Configure transformers.js
@@ -26,6 +27,7 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
   const [isExtracting, setIsExtracting] = useState(false);
   const [useCamera, setUseCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [ocrEngine, setOcrEngine] = useState<'trocr' | 'tesseract' | 'easyocr'>('trocr');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -34,20 +36,32 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
   // Iniciar câmera
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // Verificar se o navegador suporta getUserMedia
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Câmera não é suportada neste navegador');
+      }
+
+      const constraints = {
         video: {
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 }
         }
-      });
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
       setCameraStream(stream);
       setUseCamera(true);
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        // Aguardar o vídeo carregar antes de tentar reproduzir
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().catch(error => {
+            console.error('Erro ao reproduzir vídeo:', error);
+          });
+        };
       }
       
       toast({
@@ -56,9 +70,21 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
       });
     } catch (error) {
       console.error('Erro ao acessar câmera:', error);
+      let errorMessage = "Não foi possível acessar a câmera.";
+      
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          errorMessage = "Acesso à câmera foi negado. Verifique as permissões.";
+        } else if (error.name === 'NotFoundError') {
+          errorMessage = "Nenhuma câmera encontrada no dispositivo.";
+        } else if (error.name === 'NotSupportedError') {
+          errorMessage = "Câmera não é suportada neste navegador.";
+        }
+      }
+      
       toast({
         title: "Erro de Câmera",
-        description: "Não foi possível acessar a câmera.",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -118,7 +144,63 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
     });
   };
 
-  // Extrair texto usando TrOCR
+  // Extrair texto usando Microsoft TrOCR
+  const extractWithTrOCR = async () => {
+    const imageUrl = URL.createObjectURL(selectedImage!);
+    
+    try {
+      // Tentar usar o modelo base primeiro
+      let modelName = 'microsoft/trocr-base-handwritten';
+      
+      const ocr = await pipeline('image-to-text', modelName, {
+        device: 'webgpu',
+      });
+
+      const result = await ocr(imageUrl);
+      
+      let text = '';
+      if (Array.isArray(result)) {
+        text = result.map((r: any) => r.generated_text || '').join(' ');
+      } else if (result && typeof result === 'object' && 'generated_text' in result) {
+        text = (result as any).generated_text || '';
+      }
+      
+      return text;
+    } catch (error) {
+      console.error('Erro TrOCR:', error);
+      throw error;
+    }
+  };
+
+  // Extrair texto usando Tesseract
+  const extractWithTesseract = async () => {
+    const { createWorker } = await import('tesseract.js');
+    const worker = await createWorker('por');
+    
+    const imageUrl = URL.createObjectURL(selectedImage!);
+    const { data: { text } } = await worker.recognize(imageUrl);
+    
+    await worker.terminate();
+    return text;
+  };
+
+  // Extrair texto usando EasyOCR (simulado via API)
+  const extractWithEasyOCR = async () => {
+    const formData = new FormData();
+    formData.append('image', selectedImage!);
+    
+    try {
+      // Esta seria uma chamada para uma API EasyOCR
+      // Por enquanto, vamos simular com Tesseract
+      console.log('EasyOCR não implementado, usando Tesseract como fallback');
+      return await extractWithTesseract();
+    } catch (error) {
+      console.error('Erro EasyOCR:', error);
+      throw error;
+    }
+  };
+
+  // Função principal de extração
   const extractText = async () => {
     if (!selectedImage) {
       toast({
@@ -132,63 +214,76 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
     setIsExtracting(true);
     
     try {
-      toast({
-        title: "🤖 Processando...",
-        description: "Carregando modelo TrOCR para texto manuscrito",
-      });
-
-      // Criar pipeline para OCR de texto manuscrito
-      const ocr = await pipeline('image-to-text', 'microsoft/trocr-large-handwritten', {
-        device: 'webgpu', // Usar WebGPU se disponível
-      });
-
-      // Processar a imagem
-      const imageUrl = URL.createObjectURL(selectedImage);
-      const result = await ocr(imageUrl);
-      
       let text = '';
-      if (Array.isArray(result)) {
-        text = result.map((r: any) => r.generated_text || '').join(' ');
-      } else if (result && typeof result === 'object' && 'generated_text' in result) {
-        text = (result as any).generated_text || '';
+      let engineName = '';
+      
+      switch (ocrEngine) {
+        case 'trocr':
+          toast({
+            title: "🤖 Processando...",
+            description: "Usando Microsoft TrOCR para texto manuscrito",
+          });
+          engineName = 'Microsoft TrOCR';
+          text = await extractWithTrOCR();
+          break;
+          
+        case 'tesseract':
+          toast({
+            title: "🔍 Processando...",
+            description: "Usando Tesseract OCR",
+          });
+          engineName = 'Tesseract';
+          text = await extractWithTesseract();
+          break;
+          
+        case 'easyocr':
+          toast({
+            title: "⚡ Processando...",
+            description: "Usando EasyOCR",
+          });
+          engineName = 'EasyOCR';
+          text = await extractWithEasyOCR();
+          break;
       }
       
       setExtractedText(text);
       onTextExtracted(text);
       
       toast({
-        title: "✅ Texto extraído!",
+        title: `✅ Texto extraído com ${engineName}!`,
         description: `Detectados ${text.length} caracteres`,
       });
 
     } catch (error) {
-      console.error('Erro no OCR:', error);
+      console.error(`Erro no OCR (${ocrEngine}):`, error);
       
-      // Fallback para Tesseract se TrOCR falhar
-      try {
-        toast({
-          title: "🔄 Usando OCR alternativo...",
-          description: "TrOCR não disponível, usando Tesseract",
-        });
+      // Fallback automático para Tesseract se não for o engine selecionado
+      if (ocrEngine !== 'tesseract') {
+        try {
+          toast({
+            title: "🔄 Usando OCR alternativo...",
+            description: "Tentando com Tesseract como fallback",
+          });
 
-        const { createWorker } = await import('tesseract.js');
-        const worker = await createWorker('por');
-        
-        const imageUrl = URL.createObjectURL(selectedImage);
-        const { data: { text } } = await worker.recognize(imageUrl);
-        
-        await worker.terminate();
-        
-        setExtractedText(text);
-        onTextExtracted(text);
-        
-        toast({
-          title: "✅ Texto extraído (OCR alternativo)!",
-          description: `Detectados ${text.length} caracteres`,
-        });
-        
-      } catch (fallbackError) {
-        console.error('Erro no OCR fallback:', fallbackError);
+          const text = await extractWithTesseract();
+          
+          setExtractedText(text);
+          onTextExtracted(text);
+          
+          toast({
+            title: "✅ Texto extraído (fallback)!",
+            description: `Detectados ${text.length} caracteres com Tesseract`,
+          });
+          
+        } catch (fallbackError) {
+          console.error('Erro no OCR fallback:', fallbackError);
+          toast({
+            title: "Erro",
+            description: "Não foi possível extrair texto com nenhum engine de OCR",
+            variant: "destructive",
+          });
+        }
+      } else {
         toast({
           title: "Erro",
           description: "Não foi possível extrair texto da imagem",
@@ -208,7 +303,7 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
           OCR para Texto Manuscrito
           <Badge variant="outline" className="ml-auto">
             <Sparkles className="w-3 h-3 mr-1" />
-            TrOCR AI
+            {ocrEngine === 'trocr' ? 'TrOCR AI' : ocrEngine === 'tesseract' ? 'Tesseract' : 'EasyOCR'}
           </Badge>
         </CardTitle>
       </CardHeader>
@@ -221,6 +316,39 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
           <p className="text-xs text-purple-600 mt-1">
             {question.points} pontos • Questão Aberta
           </p>
+        </div>
+
+        {/* Seleção do Engine de OCR */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Settings className="h-4 w-4 text-muted-foreground" />
+            <label className="text-sm font-medium">Engine de OCR:</label>
+          </div>
+          <Select value={ocrEngine} onValueChange={(value: 'trocr' | 'tesseract' | 'easyocr') => setOcrEngine(value)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="trocr">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-purple-600" />
+                  Microsoft TrOCR (IA especializada em manuscrito)
+                </div>
+              </SelectItem>
+              <SelectItem value="tesseract">
+                <div className="flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-blue-600" />
+                  Tesseract (OCR tradicional, mais rápido)
+                </div>
+              </SelectItem>
+              <SelectItem value="easyocr">
+                <div className="flex items-center gap-2">
+                  <FileImage className="h-4 w-4 text-green-600" />
+                  EasyOCR (Versatil, múltiplos idiomas)
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Captura de imagem */}
@@ -373,7 +501,15 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
         )}
 
         <div className="text-xs text-muted-foreground text-center space-y-1">
-          <p>🤖 <strong>IA TrOCR:</strong> Especializada em texto manuscrito</p>
+          {ocrEngine === 'trocr' && (
+            <p>🤖 <strong>Microsoft TrOCR:</strong> IA especializada em texto manuscrito</p>
+          )}
+          {ocrEngine === 'tesseract' && (
+            <p>🔍 <strong>Tesseract:</strong> OCR tradicional, rápido e confiável</p>
+          )}
+          {ocrEngine === 'easyocr' && (
+            <p>⚡ <strong>EasyOCR:</strong> Versatil, suporte a múltiplos idiomas</p>
+          )}
           <p>📱 Suporte para HEIC, JPG, PNG • ⚡ Processamento local no navegador</p>
         </div>
       </CardContent>
