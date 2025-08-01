@@ -77,9 +77,11 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
     let grid = `<div class="answer-grid-container">`;
     grid += `<div class="answer-grid-header">Marque o gabarito preenchendo completamente a região de cada alternativa.</div>`;
     grid += `<div class="answer-options-header">${['a', 'b', 'c', 'd', 'e'].map(l => `<span>${l}</span>`).join('')}</div>`;
-    grid += `<div class="bubbles-area">`;
-    grid += `<div class="anchor-corner anchor-top-left"></div>`;
-    grid += `<div class="anchor-corner anchor-top-right"></div>`;
+    
+    // Área com âncoras apenas ao redor das bolinhas
+    grid += `<div class="bubbles-detection-area">`;
+    grid += `<div class="detection-anchor detection-top-left"></div>`;
+    grid += `<div class="detection-anchor detection-top-right"></div>`;
     
     multipleChoiceQuestions.forEach((_, index) => {
         const questionNumber = index + 1;
@@ -92,8 +94,8 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
         </div>`;
     });
     
-    grid += `<div class="anchor-corner anchor-bottom-left"></div>`;
-    grid += `<div class="anchor-corner anchor-bottom-right"></div>`;
+    grid += `<div class="detection-anchor detection-bottom-left"></div>`;
+    grid += `<div class="detection-anchor detection-bottom-right"></div>`;
     grid += `</div>`;
     grid += `</div>`;
     return grid;
@@ -122,12 +124,12 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
           .qr-code-section p { font-size: 9pt; text-align: center; margin-top: 5px; }
           .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding: 10px; display: flex; flex-direction: column; position: relative; }
           .answer-grid-container { position: relative; padding: 20px; border: 2px solid #000; margin: 5px; }
-          .bubbles-area { position: relative; padding: 10px; }
-          .anchor-corner { position: absolute; width: 20px; height: 20px; background-color: #000; border: 2px solid #000; }
-          .anchor-top-left { top: -2px; left: -2px; }
-          .anchor-top-right { top: -2px; right: -2px; }
-          .anchor-bottom-left { bottom: -2px; left: -2px; }
-          .anchor-bottom-right { bottom: -2px; right: -2px; }
+          .bubbles-detection-area { position: relative; padding: 15px; margin: 10px 0; }
+          .detection-anchor { position: absolute; width: 25px; height: 25px; background-color: #000; border: 3px solid #000; }
+          .detection-top-left { top: -3px; left: -3px; }
+          .detection-top-right { top: -3px; right: -3px; }
+          .detection-bottom-left { bottom: -3px; left: -3px; }
+          .detection-bottom-right { bottom: -3px; right: -3px; }
           .answer-grid-header { text-align: center; margin: 10px 0; font-size: 9pt; font-weight: bold; }
           .answer-options-header { display: flex; margin-left: 40px; margin-bottom: 8px; gap: 6px; }
           .answer-options-header span { width: 14px; text-align: center; font-size: 9pt; font-weight: bold; }
@@ -136,8 +138,8 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
           .answer-row .options-bubbles { display: flex; gap: 6px; }
           .bubble-outer { width: 14px; height: 14px; border: 2px solid #000; border-radius: 50%; display: flex; justify-content: center; align-items: center; background-color: white; }
           .bubble-inner { width: 6px; height: 6px; border: 1px solid #000; border-radius: 50%; background-color: white; }
-          .essay-lines { margin-top: 10px; width: 100%; }
-          .essay-line { border-bottom: 1px solid #333; height: 18px; margin-bottom: 4px; width: 100%; }
+          .essay-lines { margin-top: 15px; width: 100%; }
+          .essay-line { border-bottom: 1px solid #333; height: 20px; margin-bottom: 3px; width: 100%; min-height: 20px; }
           .instructions { margin-bottom: 25px; text-align: justify; font-size: 10pt; color: #444; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
           .questions-container { column-count: ${isDoubleColumn ? 2 : 1}; column-gap: 1.5cm; }
           .question { margin-bottom: 18px; page-break-inside: avoid; -webkit-column-break-inside: avoid; break-inside: avoid; }
