@@ -139,7 +139,20 @@ async function analyzeImageForCircularMarks(imageBytes: Uint8Array, questionsInf
       totalQuestions,
       detectedAnswers: Object.keys(detectedAnswers).length,
       averageConfidence: overallConfidence,
-      usedAnchorDetection: true
+      usedAnchorDetection: anchorPoints.length >= 2,
+      anchorsFound: anchorPoints.length,
+      imageSize: { width: imageData.width, height: imageData.height }
+    },
+    anchorAnalysis: {
+      totalAnchorsExpected: 4,
+      anchorsDetected: anchorPoints.length,
+      anchorsDetails: anchorPoints.map(anchor => ({
+        position: anchor.type,
+        coordinates: `(${anchor.x}, ${anchor.y})`,
+        confidence: anchor.confidence?.toFixed(2) || '0.00',
+        radius: anchor.radius || 'indefinido'
+      })),
+      anchorQuality: anchorPoints.length >= 3 ? 'boa' : anchorPoints.length >= 2 ? 'média' : 'baixa'
     }
   };
 }
@@ -168,37 +181,150 @@ async function decodeImage(imageBytes: Uint8Array): Promise<ImageData> {
 
 // FUNÇÃO REAL: Detectar marcadores âncora na imagem usando análise de pixels
 async function detectAnchorMarkers(imageData: ImageData): Promise<any[]> {
-  console.log('Procurando marcadores âncora na imagem...');
+  console.log('Procurando marcadores âncora nos 4 cantos da folha...');
   
   const { data, width, height } = imageData;
   const anchorMarkers: any[] = [];
   
-  // Definir regiões de busca para os marcadores âncora (cantos da imagem)
+  // Definir regiões de busca mais precisas para os marcadores âncora (cantos da imagem)
+  // Baseado na imagem da folha de respostas, as âncoras são círculos pretos nos cantos
+  const margin = 50; // Margem das bordas
+  const searchSize = 100; // Tamanho da área de busca
+  
   const searchRegions = [
-    { name: 'top-left', x: 0, y: 0, w: width * 0.3, h: height * 0.3 },
-    { name: 'top-right', x: width * 0.7, y: 0, w: width * 0.3, h: height * 0.3 },
-    { name: 'bottom-left', x: 0, y: height * 0.7, w: width * 0.3, h: height * 0.3 },
-    { name: 'bottom-right', x: width * 0.7, y: height * 0.7, w: width * 0.3, h: height * 0.3 }
+    { 
+      name: 'top-left', 
+      x: margin, 
+      y: margin, 
+      w: searchSize, 
+      h: searchSize,
+      expectedX: margin + 25,
+      expectedY: margin + 25
+    },
+    { 
+      name: 'top-right', 
+      x: width - margin - searchSize, 
+      y: margin, 
+      w: searchSize, 
+      h: searchSize,
+      expectedX: width - margin - 25,
+      expectedY: margin + 25
+    },
+    { 
+      name: 'bottom-left', 
+      x: margin, 
+      y: height - margin - searchSize, 
+      w: searchSize, 
+      h: searchSize,
+      expectedX: margin + 25,
+      expectedY: height - margin - 25
+    },
+    { 
+      name: 'bottom-right', 
+      x: width - margin - searchSize, 
+      y: height - margin - searchSize, 
+      w: searchSize, 
+      h: searchSize,
+      expectedX: width - margin - 25,
+      expectedY: height - margin - 25
+    }
   ];
   
+  console.log(`Dimensões da imagem: ${width}x${height}`);
+  console.log('Regiões de busca para âncoras:');
+  
   for (const region of searchRegions) {
-    const anchor = detectCircleInRegion(data, width, height, region);
+    console.log(`  ${region.name}: (${region.x}, ${region.y}) ${region.w}x${region.h}`);
+    
+    // Buscar círculos preenchidos (âncoras são círculos pretos sólidos)
+    const anchor = detectAnchorInRegion(data, width, height, region);
     if (anchor) {
       anchorMarkers.push({
         type: region.name,
         x: anchor.x,
         y: anchor.y,
-        confidence: anchor.confidence
+        confidence: anchor.confidence,
+        radius: anchor.radius
       });
-      console.log(`Âncora ${region.name} detectada em (${anchor.x}, ${anchor.y}) com confiança ${anchor.confidence.toFixed(2)}`);
+      console.log(`✓ Âncora ${region.name} detectada em (${anchor.x}, ${anchor.y}) com confiança ${anchor.confidence.toFixed(2)}`);
+    } else {
+      console.log(`✗ Âncora ${region.name} não encontrada`);
     }
   }
   
-  console.log(`Marcadores âncora detectados: ${anchorMarkers.length}/4`);
+  console.log(`Total de marcadores âncora detectados: ${anchorMarkers.length}/4`);
   return anchorMarkers;
 }
 
-// FUNÇÃO REAL: Detectar círculo preenchido em uma região específica
+// FUNÇÃO ESPECÍFICA: Detectar âncora em uma região (círculo preto sólido)
+function detectAnchorInRegion(data: Uint8ClampedArray, width: number, height: number, region: any): any | null {
+  const { x: regionX, y: regionY, w: regionW, h: regionH } = region;
+  
+  let bestAnchor = null;
+  let maxScore = 0;
+  
+  // Procurar por círculos âncora (raios específicos para âncoras - tipicamente 8-15 pixels)
+  for (let radius = 8; radius <= 15; radius++) {
+    for (let centerY = regionY + radius; centerY < regionY + regionH - radius; centerY += 2) {
+      for (let centerX = regionX + radius; centerX < regionX + regionW - radius; centerX += 2) {
+        
+        // Analisar se há um círculo preenchido nesta posição
+        const fillRatio = analyzeCircularRegion(data, width, height, centerX, centerY, radius);
+        
+        // Âncoras devem estar bem preenchidas (> 0.8) e ter forma circular consistente
+        if (fillRatio > 0.8) {
+          // Verificar se é realmente circular analisando bordas
+          const circularityScore = analyzeCircularity(data, width, height, centerX, centerY, radius);
+          const combinedScore = fillRatio * circularityScore;
+          
+          if (combinedScore > maxScore && combinedScore > 0.7) {
+            maxScore = combinedScore;
+            bestAnchor = {
+              x: centerX,
+              y: centerY,
+              radius,
+              confidence: combinedScore,
+              fillRatio
+            };
+          }
+        }
+      }
+    }
+  }
+  
+  return bestAnchor;
+}
+
+// FUNÇÃO AUXILIAR: Verificar circularidade da marca
+function analyzeCircularity(data: Uint8ClampedArray, width: number, height: number, centerX: number, centerY: number, radius: number): number {
+  let borderScore = 0;
+  let borderPoints = 0;
+  
+  // Analisar pontos na borda do círculo
+  for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 8) {
+    const x = Math.round(centerX + radius * Math.cos(angle));
+    const y = Math.round(centerY + radius * Math.sin(angle));
+    
+    if (x >= 0 && x < width && y >= 0 && y < height) {
+      const pixelIndex = (y * width + x) * 4;
+      const r = data[pixelIndex];
+      const g = data[pixelIndex + 1];
+      const b = data[pixelIndex + 2];
+      const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+      
+      borderPoints++;
+      
+      // Pontos da borda devem ser escuros para âncoras
+      if (luminance < 120) {
+        borderScore++;
+      }
+    }
+  }
+  
+  return borderPoints > 0 ? borderScore / borderPoints : 0;
+}
+
+// FUNÇÃO REAL: Detectar círculo preenchido em uma região específica  
 function detectCircleInRegion(data: Uint8ClampedArray, width: number, height: number, region: any): any | null {
   const { x: regionX, y: regionY, w: regionW, h: regionH } = region;
   
