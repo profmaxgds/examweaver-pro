@@ -925,11 +925,11 @@ export default function AutoCorrectionPage() {
       if (openQuestions.length > 0) {
         setEssayQuestions(openQuestions);
         setCurrentEssayIndex(0);
-        setStep('corrected'); // Mostrar resultado parcial com opção para questões abertas
+        setStep('essay-correction'); // Ir direto para correção das questões abertas
         
         toast({
           title: "✅ Questões fechadas corrigidas!",
-          description: `${score}/${totalPoints} pontos. ${openQuestions.length} questões abertas pendentes.`,
+          description: `${score}/${totalPoints} pontos. Agora corrija as ${openQuestions.length} questões abertas.`,
         });
       } else {
         // Se não há questões abertas, finalizar processo mas ainda mostrar detalhes
