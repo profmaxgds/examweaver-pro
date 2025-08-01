@@ -218,7 +218,7 @@ export default function AutoCorrectionPage() {
       const detectedAnswers = ocrResult.detectedAnswers || {};
       
       // Comparar com gabarito
-      const correctAnswers = studentExam.answer_key;
+      const correctAnswers = studentExam.answer_key as Record<string, string>;
       let score = 0;
       const feedback = [];
 
@@ -284,7 +284,7 @@ export default function AutoCorrectionPage() {
           exam_id: correctionResult.examId,
           student_id: correctionResult.studentId,
           student_name: correctionResult.studentName,
-          answers: JSON.stringify(correctionResult.answers),
+          answers: correctionResult.answers,
           score: correctionResult.score,
           max_score: correctionResult.maxScore,
           percentage: correctionResult.percentage,
