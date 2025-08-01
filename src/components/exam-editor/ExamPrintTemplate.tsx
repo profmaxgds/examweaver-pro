@@ -111,16 +111,16 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
           .qr-code-section p { font-size: 9pt; text-align: center; margin-top: 5px; }
           .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding-left: 15px; display: flex; flex-direction: column; }
           .answer-grid-header { text-align: center; margin-bottom: 8px; font-size: 9pt; font-weight: bold; }
-          .answer-options-header { display: flex; margin-left: 38px; margin-bottom: 4px; gap: 2px; }
-          .answer-options-header span { width: 16px; text-align: center; font-size: 9pt; font-weight: bold; }
+          .answer-options-header { display: flex; margin-left: 40px; margin-bottom: 4px; gap: 4px; }
+          .answer-options-header span { width: 14px; text-align: center; font-size: 9pt; font-weight: bold; }
           .answer-row { display: flex; align-items: center; margin-bottom: 3px; }
-          .answer-row .q-number { font-weight: bold; margin-right: 8px; font-size: 10pt; width: 30px; }
-          .answer-row .options-bubbles { display: flex; gap: 2px; }
-          .bubble-container { width: 16px; display: flex; justify-content: center; align-items: center; }
-          .bubble-outer { width: 14px; height: 14px; border: 2px solid #000; border-radius: 50%; display: flex; justify-content: center; align-items: center; }
-          .bubble-inner { width: 8px; height: 8px; border: 1px solid #333; border-radius: 50%; }
-          .essay-lines { margin-top: 8px; }
-          .essay-line { border-bottom: 1px solid #999; height: 20px; margin-bottom: 2px; width: 100%; }
+          .answer-row .q-number { font-weight: bold; margin-right: 10px; font-size: 10pt; width: 30px; }
+          .answer-row .options-bubbles { display: flex; gap: 4px; }
+          .bubble-container { width: 14px; display: flex; justify-content: center; align-items: center; }
+          .bubble-outer { width: 14px; height: 14px; border: 2px solid #000; border-radius: 50%; display: flex; justify-content: center; align-items: center; background-color: white; }
+          .bubble-inner { width: 6px; height: 6px; border: 1px solid #000; border-radius: 50%; background-color: white; }
+          .essay-lines { margin-top: 10px; width: 100%; }
+          .essay-line { border-bottom: 1px solid #333; height: 18px; margin-bottom: 4px; width: 100%; }
           .instructions { margin-bottom: 25px; text-align: justify; font-size: 10pt; color: #444; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
           .questions-container { column-count: ${isDoubleColumn ? 2 : 1}; column-gap: 1.5cm; }
           .question { margin-bottom: 18px; page-break-inside: avoid; -webkit-column-break-inside: avoid; break-inside: avoid; }
