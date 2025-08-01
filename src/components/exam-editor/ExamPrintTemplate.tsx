@@ -10,6 +10,8 @@ interface Question {
   points: number;
   options?: any[];
   correct_answer?: any;
+  essayLines?: number;
+  essay_lines?: number;
 }
 
 interface ExamHeader {
@@ -117,13 +119,13 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
           .qr-code-section img { width: 120px; height: 120px; }
           .qr-code-section p { font-size: 9pt; text-align: center; margin-top: 5px; }
           .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding: 10px; display: flex; flex-direction: column; position: relative; }
-          .answer-grid-container { position: relative; padding: 15px; border: 2px solid #000; }
-          .anchor-corner { position: absolute; width: 12px; height: 12px; background-color: #000; }
-          .anchor-top-left { top: 0; left: 0; }
-          .anchor-top-right { top: 0; right: 0; }
-          .anchor-bottom-left { bottom: 0; left: 0; }
-          .anchor-bottom-right { bottom: 0; right: 0; }
-          .answer-grid-header { text-align: center; margin: 15px 0 10px 0; font-size: 9pt; font-weight: bold; }
+          .answer-grid-container { position: relative; padding: 20px; border: 2px solid #000; margin: 5px; }
+          .anchor-corner { position: absolute; width: 20px; height: 20px; background-color: #000; border: 2px solid #000; }
+          .anchor-top-left { top: -2px; left: -2px; }
+          .anchor-top-right { top: -2px; right: -2px; }
+          .anchor-bottom-left { bottom: -2px; left: -2px; }
+          .anchor-bottom-right { bottom: -2px; right: -2px; }
+          .answer-grid-header { text-align: center; margin: 10px 0; font-size: 9pt; font-weight: bold; }
           .answer-options-header { display: flex; margin-left: 40px; margin-bottom: 8px; gap: 6px; }
           .answer-options-header span { width: 14px; text-align: center; font-size: 9pt; font-weight: bold; }
           .answer-row { display: flex; align-items: center; margin-bottom: 5px; }
@@ -189,7 +191,7 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
                         )}
                         {q.type === 'essay' && (
                             <div className="essay-lines">
-                                {Array.from({ length: (q as any).essay_lines || (q as any).essayLines || 5 }, (_, i) => (
+                                {Array.from({ length: q.essayLines || q.essay_lines || 5 }, (_, i) => (
                                     <div key={i} className="essay-line"></div>
                                 ))}
                             </div>
