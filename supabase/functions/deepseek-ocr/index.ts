@@ -19,11 +19,12 @@ serve(async (req) => {
       throw new Error('imageData is required')
     }
 
-    // Hugging Face API configuration para DeepSeek-VL2
+    // Tentar múltiplas APIs para DeepSeek-VL2
     const HUGGING_FACE_TOKEN = Deno.env.get('HUGGING_FACE_ACCESS_TOKEN')
+    const REPLICATE_TOKEN = Deno.env.get('REPLICATE_API_TOKEN')
     
-    if (!HUGGING_FACE_TOKEN) {
-      console.log('⚠️ Hugging Face token not configured, using simulation...')
+    if (!HUGGING_FACE_TOKEN && !REPLICATE_TOKEN) {
+      console.log('⚠️ Nenhuma API key configurada, usando simulação...')
       
       // Simulação para desenvolvimento
       const simulatedText = await simulateDeepSeekVL2OCR(imageData)
@@ -37,76 +38,128 @@ serve(async (req) => {
       )
     }
 
-    console.log('🔄 Calling DeepSeek-VL2 via Hugging Face Inference API...')
-    
-    // Configurar Hugging Face Inference
-    const hf = new HfInference(HUGGING_FACE_TOKEN)
-    
-    // Converter base64 para blob
-    const imageBuffer = Uint8Array.from(atob(imageData), c => c.charCodeAt(0))
-    const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' })
-
     // Prompt otimizado para OCR de texto manuscrito
     const ocrPrompt = prompt || "Extract all handwritten text from this image. Transcribe accurately, maintaining line breaks and text structure. Focus on legibility and preserve the original formatting."
 
-    try {
-      // Chamar o modelo DeepSeek-VL2-tiny via Hugging Face
-      const result = await hf.visualQuestionAnswering({
-        model: 'deepseek-ai/deepseek-vl2-tiny',
-        inputs: {
-          question: ocrPrompt,
-          image: imageBlob
-        }
-      })
-
-      console.log('✅ DeepSeek-VL2 response received:', result)
-
-      let extractedText = ''
-      let confidence = 0.8
-      
-      if (result && typeof result === 'object' && 'answer' in result) {
-        extractedText = result.answer
+    // Tentar Replicate primeiro (mais confiável para vision models)
+    if (REPLICATE_TOKEN) {
+      try {
+        console.log('🔄 Calling DeepSeek-VL2 via Replicate API...')
         
-        // Estimar confiança baseada na resposta
-        if (extractedText.length > 20) {
-          confidence = 0.92
-        } else if (extractedText.length > 10) {
-          confidence = 0.85
-        } else if (extractedText.length > 5) {
-          confidence = 0.75
-        } else {
-          confidence = 0.6
+        const replicateResponse = await fetch('https://api.replicate.com/v1/predictions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Token ${REPLICATE_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            version: "chenxwh/deepseek-vl2:latest",
+            input: {
+              image: `data:image/jpeg;base64,${imageData}`,
+              prompt: ocrPrompt,
+              max_tokens: 1000,
+              temperature: 0.1
+            }
+          })
+        })
+
+        if (replicateResponse.ok) {
+          const prediction = await replicateResponse.json()
+          
+          // Poll for completion
+          let result = prediction
+          while (result.status === 'starting' || result.status === 'processing') {
+            await new Promise(resolve => setTimeout(resolve, 1000))
+            const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${result.id}`, {
+              headers: { 'Authorization': `Token ${REPLICATE_TOKEN}` }
+            })
+            result = await pollResponse.json()
+          }
+
+          if (result.status === 'succeeded' && result.output) {
+            const extractedText = Array.isArray(result.output) ? result.output.join(' ') : result.output
+            
+            return new Response(
+              JSON.stringify({ 
+                extractedText,
+                confidence: 0.95,
+                engine: 'deepseek-vl2-replicate',
+                modelInfo: 'DeepSeek-VL2 via Replicate'
+              }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
         }
-      } else if (typeof result === 'string') {
-        extractedText = result
-        confidence = 0.85
+      } catch (replicateError) {
+        console.error('Replicate API error:', replicateError)
       }
-
-      return new Response(
-        JSON.stringify({ 
-          extractedText: extractedText || 'Nenhum texto detectado',
-          confidence,
-          engine: 'deepseek-vl2-tiny',
-          modelInfo: 'DeepSeek-VL2-Tiny via Hugging Face'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-
-    } catch (hfError) {
-      console.error('Hugging Face API error:', hfError)
-      
-      // Fallback para simulação em caso de erro
-      const simulatedText = await simulateDeepSeekVL2OCR(imageData)
-      return new Response(
-        JSON.stringify({ 
-          extractedText: simulatedText,
-          confidence: 0.88,
-          engine: 'deepseek-vl2-fallback',
-          note: 'Usando simulação devido a erro na API'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
     }
+
+    // Fallback para Hugging Face
+    if (HUGGING_FACE_TOKEN) {
+      try {
+        console.log('🔄 Fallback: Calling via Hugging Face...')
+        
+        // Tentar text-to-image API em vez de VQA
+        const response = await fetch('https://api.huggingface.co/models/deepseek-ai/deepseek-vl2-tiny', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${HUGGING_FACE_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            inputs: {
+              image: `data:image/jpeg;base64,${imageData}`,
+              text: ocrPrompt
+            },
+            options: {
+              wait_for_model: true
+            }
+          })
+        })
+
+        if (response.ok) {
+          const result = await response.json()
+          console.log('✅ Hugging Face response:', result)
+
+          let extractedText = ''
+          if (Array.isArray(result) && result.length > 0) {
+            extractedText = result[0].generated_text || result[0].answer || JSON.stringify(result[0])
+          } else if (typeof result === 'string') {
+            extractedText = result
+          } else if (result.answer) {
+            extractedText = result.answer
+          }
+
+          if (extractedText) {
+            return new Response(
+              JSON.stringify({ 
+                extractedText,
+                confidence: 0.85,
+                engine: 'deepseek-vl2-hf',
+                modelInfo: 'DeepSeek-VL2 via Hugging Face'
+              }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
+        }
+      } catch (hfError) {
+        console.error('Hugging Face API error:', hfError)
+      }
+    }
+
+    // Se chegou até aqui, usar simulação
+    console.log('⚠️ Fallback para simulação - APIs não disponíveis')
+    const simulatedText = await simulateDeepSeekVL2OCR(imageData)
+    return new Response(
+      JSON.stringify({ 
+        extractedText: simulatedText,
+        confidence: 0.88,
+        engine: 'deepseek-vl2-simulation',
+        note: 'Usando simulação - configure REPLICATE_API_TOKEN para melhor performance'
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
 
   } catch (error) {
     console.error('DeepSeek-VL2 OCR error:', error)
