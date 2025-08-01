@@ -90,11 +90,13 @@ export default function AdminPage() {
 
       if (profilesError) throw profilesError;
 
-      // Para cada usuário, buscar créditos e simular roles básicos
+      // Para cada usuário, buscar créditos reais
       const usersWithCredits = await Promise.all(
         profilesData.map(async (profile) => {
-          // Simular créditos (será implementado quando os tipos estiverem prontos)
-          const credits = 30; // Valor padrão temporário
+          // Buscar créditos reais da função
+          const { data: creditsData } = await supabase
+            .rpc('get_user_credits' as any, { user_uuid: profile.user_id });
+          const credits = creditsData || 0;
 
           // Verificar se é admin (temporário)
           const isAdminUser = profile.user_id === (await supabase.auth.getUser()).data.user?.id;
@@ -196,12 +198,30 @@ export default function AdminPage() {
 
   const adjustCredits = async (userId: string, amount: number, description: string) => {
     try {
-      // Temporariamente desabilitado até os tipos serem atualizados
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // Executar query SQL diretamente usando raw query
+      const { error } = await supabase
+        .from('credit_transactions' as any)
+        .insert({
+          user_id: userId,
+          amount: amount,
+          transaction_type: amount > 0 ? 'admin_bonus' : 'admin_deduction',
+          description: description,
+          admin_id: user?.id
+        });
+
+      if (error) throw error;
+
       toast({
-        title: "Funcionalidade em desenvolvimento",
-        description: "Ajuste de créditos será implementado em breve",
-        variant: "destructive",
+        title: "Créditos ajustados",
+        description: `${amount > 0 ? 'Adicionados' : 'Removidos'} ${Math.abs(amount)} créditos`,
       });
+
+      // Recarregar dados
+      loadUsers();
+      setCreditAmount('');
+      setCreditDescription('');
     } catch (error) {
       console.error('Erro ao ajustar créditos:', error);
       toast({
