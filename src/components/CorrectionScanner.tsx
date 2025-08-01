@@ -137,28 +137,71 @@ export function CorrectionScanner({ examId, onCorrectionComplete }: CorrectionSc
 
   const takePictureWithCamera = async () => {
     try {
-      // Verificar se estamos em dispositivo móvel
-      if (!Capacitor.isNativePlatform()) {
-        // Fallback para web
-        await startCamera();
-        return;
-      }
-
-      const image = await CapacitorCamera.getPhoto({
-        quality: 90,
-        allowEditing: false,
-        resultType: CameraResultType.DataUrl,
-        source: CameraSource.Camera,
-        width: 1920,
-        height: 1920
-      });
-
-      if (image.dataUrl) {
-        setCapturedImage(image.dataUrl);
-        toast({
-          title: "Sucesso",
-          description: "Foto capturada com sucesso!",
+      // Se é app nativo, usar Capacitor Camera
+      if (Capacitor.isNativePlatform()) {
+        const image = await CapacitorCamera.getPhoto({
+          quality: 90,
+          allowEditing: false,
+          resultType: CameraResultType.DataUrl,
+          source: CameraSource.Camera,
+          width: 1920,
+          height: 1920
         });
+
+        if (image.dataUrl) {
+          setCapturedImage(image.dataUrl);
+          toast({
+            title: "Sucesso",
+            description: "Foto capturada com sucesso!",
+          });
+        }
+      } else {
+        // Para browsers, usar getUserMedia para captura instantânea
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'environment', // Câmera traseira
+            width: { ideal: 1920 },
+            height: { ideal: 1920 }
+          } 
+        });
+        
+        // Criar canvas para capturar frame
+        const video = document.createElement('video');
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        
+        video.srcObject = stream;
+        video.play();
+        
+        // Aguardar video carregar
+        await new Promise(resolve => {
+          video.onloadedmetadata = () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            resolve(true);
+          };
+        });
+        
+        // Capturar frame
+        context?.drawImage(video, 0, 0);
+        
+        // Parar stream
+        stream.getTracks().forEach(track => track.stop());
+        
+        // Converter para blob e setCapturedImage
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const reader = new FileReader();
+            reader.onload = () => {
+              setCapturedImage(reader.result as string);
+              toast({
+                title: "Sucesso",
+                description: "Foto capturada com sucesso!",
+              });
+            };
+            reader.readAsDataURL(blob);
+          }
+        }, 'image/jpeg', 0.9);
       }
     } catch (error) {
       console.error('Erro ao capturar foto:', error);

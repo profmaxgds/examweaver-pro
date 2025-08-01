@@ -40,30 +40,69 @@ export function AutoCorrectionScanner() {
 
   const takePictureWithCamera = async () => {
     try {
-      // Verificar se estamos em dispositivo móvel
-      if (!Capacitor.isNativePlatform()) {
-        toast.error('Câmera nativa disponível apenas em dispositivos móveis');
-        return;
-      }
+      // Se é app nativo, usar Capacitor Camera
+      if (Capacitor.isNativePlatform()) {
+        const image = await CapacitorCamera.getPhoto({
+          quality: 90,
+          allowEditing: false,
+          resultType: CameraResultType.DataUrl,
+          source: CameraSource.Camera,
+          width: 1920,
+          height: 1920
+        });
 
-      const image = await CapacitorCamera.getPhoto({
-        quality: 90,
-        allowEditing: false,
-        resultType: CameraResultType.DataUrl,
-        source: CameraSource.Camera,
-        width: 1920,
-        height: 1920
-      });
-
-      if (image.dataUrl) {
-        // Converter dataURL para File
-        const response = await fetch(image.dataUrl);
-        const blob = await response.blob();
-        const file = new File([blob], `camera_capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        if (image.dataUrl) {
+          // Converter dataURL para File
+          const response = await fetch(image.dataUrl);
+          const blob = await response.blob();
+          const file = new File([blob], `camera_capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+          
+          setSelectedFile(file);
+          setCorrectionResult(null);
+          toast.success('Foto capturada com sucesso!');
+        }
+      } else {
+        // Para browsers, usar getUserMedia
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'environment', // Câmera traseira
+            width: { ideal: 1920 },
+            height: { ideal: 1920 }
+          } 
+        });
         
-        setSelectedFile(file);
-        setCorrectionResult(null);
-        toast.success('Foto capturada com sucesso!');
+        // Criar canvas para capturar frame
+        const video = document.createElement('video');
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        
+        video.srcObject = stream;
+        video.play();
+        
+        // Aguardar video carregar
+        await new Promise(resolve => {
+          video.onloadedmetadata = () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            resolve(true);
+          };
+        });
+        
+        // Capturar frame
+        context?.drawImage(video, 0, 0);
+        
+        // Parar stream
+        stream.getTracks().forEach(track => track.stop());
+        
+        // Converter para blob e file
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const file = new File([blob], `camera_web_${Date.now()}.jpg`, { type: 'image/jpeg' });
+            setSelectedFile(file);
+            setCorrectionResult(null);
+            toast.success('Foto capturada com sucesso!');
+          }
+        }, 'image/jpeg', 0.9);
       }
     } catch (error) {
       console.error('Erro ao capturar foto:', error);
