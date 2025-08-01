@@ -101,35 +101,67 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
 
   // Capturar foto da câmera
   const capturePhoto = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current) {
+      toast({
+        title: "Erro",
+        description: "Câmera não está disponível",
+        variant: "destructive",
+      });
+      return;
+    }
 
     const canvas = canvasRef.current;
     const video = videoRef.current;
     const context = canvas.getContext('2d');
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    
-    if (context) {
-      context.drawImage(video, 0, 0);
-      
-      canvas.toBlob(async (blob) => {
-        if (blob) {
-          const file = new File([blob], `handwritten_${Date.now()}.jpg`, { type: 'image/jpeg' });
-          setSelectedImage(file);
-          
-          const previewUrl = URL.createObjectURL(blob);
-          setPreviewUrl(previewUrl);
-          
-          stopCamera();
-          
-          toast({
-            title: "Foto capturada!",
-            description: "Agora clique em 'Extrair Texto' para processar",
-          });
-        }
-      }, 'image/jpeg', 0.8);
+    if (!context) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível acessar o canvas",
+        variant: "destructive",
+      });
+      return;
     }
+
+    // Aguardar o vídeo estar carregado
+    if (video.readyState < 2) {
+      toast({
+        title: "Aguarde",
+        description: "Câmera ainda está carregando...",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    
+    // Desenhar o frame atual do vídeo no canvas
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Converter para blob
+    canvas.toBlob(async (blob) => {
+      if (blob) {
+        const file = new File([blob], `handwritten_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        setSelectedImage(file);
+        
+        const previewUrl = URL.createObjectURL(blob);
+        setPreviewUrl(previewUrl);
+        
+        stopCamera();
+        
+        toast({
+          title: "✅ Foto capturada!",
+          description: "Agora clique em 'Extrair Texto' para processar",
+        });
+      } else {
+        toast({
+          title: "Erro",
+          description: "Não foi possível capturar a imagem",
+          variant: "destructive",
+        });
+      }
+    }, 'image/jpeg', 0.9);
   };
 
   // Processar arquivo selecionado
@@ -149,48 +181,66 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
     const imageUrl = URL.createObjectURL(selectedImage!);
     
     try {
-      // Tentar usar o modelo base primeiro
-      let modelName = 'microsoft/trocr-base-handwritten';
+      // Usar modelo menor e mais estável
+      const modelName = 'Xenova/trocr-small-printed';
+      
+      console.log('Carregando TrOCR:', modelName);
       
       const ocr = await pipeline('image-to-text', modelName, {
         device: 'webgpu',
       });
 
+      console.log('TrOCR carregado, processando imagem...');
       const result = await ocr(imageUrl);
+      console.log('Resultado TrOCR:', result);
       
       let text = '';
       if (Array.isArray(result)) {
         text = result.map((r: any) => r.generated_text || '').join(' ');
       } else if (result && typeof result === 'object' && 'generated_text' in result) {
         text = (result as any).generated_text || '';
+      } else if (typeof result === 'string') {
+        text = result;
       }
       
-      return text;
+      console.log('Texto extraído pelo TrOCR:', text);
+      return text.trim();
     } catch (error) {
       console.error('Erro TrOCR:', error);
       throw error;
+    } finally {
+      // Limpar URL do objeto
+      URL.revokeObjectURL(imageUrl);
     }
   };
 
   // Extrair texto usando Tesseract
   const extractWithTesseract = async () => {
-    const { createWorker } = await import('tesseract.js');
-    const worker = await createWorker('por');
-    
     const imageUrl = URL.createObjectURL(selectedImage!);
-    const { data: { text } } = await worker.recognize(imageUrl);
     
-    await worker.terminate();
-    return text;
+    try {
+      console.log('Carregando Tesseract...');
+      const { createWorker } = await import('tesseract.js');
+      const worker = await createWorker('por');
+      
+      console.log('Tesseract carregado, processando imagem...');
+      const { data: { text } } = await worker.recognize(imageUrl);
+      console.log('Resultado Tesseract:', text);
+      
+      await worker.terminate();
+      return text.trim();
+    } catch (error) {
+      console.error('Erro Tesseract:', error);
+      throw error;
+    } finally {
+      // Limpar URL do objeto
+      URL.revokeObjectURL(imageUrl);
+    }
   };
 
   // Extrair texto usando EasyOCR (simulado via API)
   const extractWithEasyOCR = async () => {
-    const formData = new FormData();
-    formData.append('image', selectedImage!);
-    
     try {
-      // Esta seria uma chamada para uma API EasyOCR
       // Por enquanto, vamos simular com Tesseract
       console.log('EasyOCR não implementado, usando Tesseract como fallback');
       return await extractWithTesseract();
@@ -212,10 +262,13 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
     }
 
     setIsExtracting(true);
+    setExtractedText(''); // Limpar texto anterior
     
     try {
       let text = '';
       let engineName = '';
+      
+      console.log(`Iniciando extração com engine: ${ocrEngine}`);
       
       switch (ocrEngine) {
         case 'trocr':
@@ -246,13 +299,24 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
           break;
       }
       
-      setExtractedText(text);
-      onTextExtracted(text);
+      console.log(`Texto final extraído (${engineName}):`, text);
       
-      toast({
-        title: `✅ Texto extraído com ${engineName}!`,
-        description: `Detectados ${text.length} caracteres`,
-      });
+      // Sempre atualizar, mesmo se o texto estiver vazio
+      setExtractedText(text || 'Nenhum texto foi detectado na imagem.');
+      onTextExtracted(text || '');
+      
+      if (text && text.trim()) {
+        toast({
+          title: `✅ Texto extraído com ${engineName}!`,
+          description: `Detectados ${text.length} caracteres`,
+        });
+      } else {
+        toast({
+          title: `⚠️ ${engineName} concluído`,
+          description: "Nenhum texto foi detectado na imagem",
+          variant: "default",
+        });
+      }
 
     } catch (error) {
       console.error(`Erro no OCR (${ocrEngine}):`, error);
@@ -266,17 +330,26 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
           });
 
           const text = await extractWithTesseract();
+          console.log('Texto do fallback Tesseract:', text);
           
-          setExtractedText(text);
-          onTextExtracted(text);
+          setExtractedText(text || 'Nenhum texto foi detectado na imagem.');
+          onTextExtracted(text || '');
           
-          toast({
-            title: "✅ Texto extraído (fallback)!",
-            description: `Detectados ${text.length} caracteres com Tesseract`,
-          });
+          if (text && text.trim()) {
+            toast({
+              title: "✅ Texto extraído (fallback)!",
+              description: `Detectados ${text.length} caracteres com Tesseract`,
+            });
+          } else {
+            toast({
+              title: "⚠️ Fallback concluído",
+              description: "Nenhum texto foi detectado na imagem",
+            });
+          }
           
         } catch (fallbackError) {
           console.error('Erro no OCR fallback:', fallbackError);
+          setExtractedText('Erro ao processar imagem. Tente novamente.');
           toast({
             title: "Erro",
             description: "Não foi possível extrair texto com nenhum engine de OCR",
@@ -284,6 +357,7 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
           });
         }
       } else {
+        setExtractedText('Erro ao processar imagem. Tente novamente.');
         toast({
           title: "Erro",
           description: "Não foi possível extrair texto da imagem",
@@ -404,6 +478,17 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
                 muted
                 className="w-full rounded-lg border bg-black"
                 style={{ aspectRatio: '16/9' }}
+                onLoadedMetadata={() => {
+                  console.log('Vídeo carregado, dimensões:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+                }}
+                onError={(e) => {
+                  console.error('Erro no vídeo:', e);
+                  toast({
+                    title: "Erro no vídeo",
+                    description: "Problema ao exibir câmera",
+                    variant: "destructive",
+                  });
+                }}
               />
               
               {/* Guia visual para texto manuscrito */}
