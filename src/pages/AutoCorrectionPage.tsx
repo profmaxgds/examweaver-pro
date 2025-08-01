@@ -909,8 +909,7 @@ export default function AutoCorrectionPage() {
           description: `${score}/${totalPoints} pontos. ${openQuestions.length} questões abertas pendentes.`,
         });
       } else {
-        // Se não há questões abertas, finalizar processo
-        await saveCorrection(closedQuestionsResult);
+        // Se não há questões abertas, finalizar processo mas ainda mostrar detalhes
         setStep('corrected');
         
         toast({
