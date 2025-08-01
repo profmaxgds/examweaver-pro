@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { ArrowLeft, Camera, Upload, CheckCircle, Loader2, Save, QrCode } from 'lucide-react';
+import jsQR from 'jsqr';
 
 interface QRCodeData {
   examId: string;
@@ -224,7 +225,37 @@ export default function AutoCorrectionPage() {
     }
   };
 
-  // Etapa 1: Detectar QR Code e carregar informações da prova
+  // Função para ler QR code localmente da imagem
+  const readQRCodeFromImage = (file: File): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          
+          if (!context) {
+            resolve(null);
+            return;
+          }
+
+          canvas.width = img.width;
+          canvas.height = img.height;
+          context.drawImage(img, 0, 0);
+          
+          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height);
+          
+          resolve(code ? code.data : null);
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Etapa 1: Detectar QR Code localmente e carregar informações da prova
   const detectQRCode = async () => {
     if (!selectedFile || !user) {
       toast({
@@ -236,36 +267,26 @@ export default function AutoCorrectionPage() {
     }
 
     setIsProcessing(true);
-    setStep('qr-detected');
 
     try {
-      // Upload da imagem
-      const fileName = `qr_scan_${Date.now()}_${selectedFile.name}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('correction-scans')
-        .upload(fileName, selectedFile);
-
-      if (uploadError) {
-        throw new Error(`Erro no upload: ${uploadError.message}`);
+      console.log('Lendo QR Code da imagem...');
+      
+      // Ler QR code localmente (sem upload)
+      const qrCodeText = await readQRCodeFromImage(selectedFile);
+      
+      if (!qrCodeText) {
+        throw new Error('QR Code não encontrado na imagem. Verifique se a imagem contém um QR code válido.');
       }
 
-      // Chamar edge function para detectar QR code
-      const { data: qrResult, error: qrError } = await supabase.functions.invoke('ocr-correction', {
-        body: {
-          fileName: fileName,
-          mode: 'qr_only' // Apenas detectar QR code
-        }
-      });
-
-      if (qrError) {
-        throw new Error(`Erro ao detectar QR code: ${qrError.message}`);
-      }
+      console.log('QR Code detectado:', qrCodeText);
 
       // Extrair dados do QR code
-      const qrData = extractQRCodeData(qrResult.qrCodeText || '');
+      const qrData = extractQRCodeData(qrCodeText);
       if (!qrData) {
-        throw new Error('QR Code não encontrado ou inválido na imagem');
+        throw new Error('QR Code inválido. Verifique se é um QR code de prova válido.');
       }
+
+      console.log('Dados extraídos do QR:', qrData);
 
       // Buscar dados da prova
       const { data: examData, error: examError } = await supabase
@@ -275,7 +296,7 @@ export default function AutoCorrectionPage() {
         .single();
 
       if (examError || !examData) {
-        throw new Error('Prova não encontrada');
+        throw new Error('Prova não encontrada no sistema');
       }
 
       // Buscar gabarito específico do aluno
@@ -307,6 +328,7 @@ export default function AutoCorrectionPage() {
       };
 
       setExamInfo(examInfo);
+      setStep('qr-detected');
       
       toast({
         title: "QR Code detectado!",
@@ -341,8 +363,8 @@ export default function AutoCorrectionPage() {
     setStep('correcting');
 
     try {
-      // Upload da imagem (se não foi feito antes)
-      const fileName = `correction_${Date.now()}_${selectedFile.name}`;
+      // Upload da imagem com user ID no caminho para seguir políticas RLS
+      const fileName = `${user.id}/correction_${Date.now()}_${selectedFile.name}`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('correction-scans')
         .upload(fileName, selectedFile);
