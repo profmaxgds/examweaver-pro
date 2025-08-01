@@ -812,10 +812,11 @@ export default function AutoCorrectionPage() {
         q.type === 'multiple_choice' || q.type === 'true_false'
       ) || [];
       
-      const openQuestions = examQuestions?.filter(q => q.type === 'essay') || [];
+      const openQuestions = essayQuestions || []; // Usar o state essayQuestions já setado no QR
       
       console.log('Questões fechadas:', closedQuestions.length);
       console.log('Questões abertas:', openQuestions.length);
+      console.log('EssayQuestions state:', essayQuestions);
 
       // Chamar edge function para detectar marcações APENAS das questões fechadas
       const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('ocr-correction', {
