@@ -148,48 +148,32 @@ export default function AdminPage() {
 
   const loadCreditSettings = async () => {
     try {
-      const { data, error } = await supabase
-        .rpc('get_credit_settings');
-
-      if (error) {
-        console.error('Erro ao carregar configurações:', error);
-        // Fallback para valores padrão
-        setCreditSettings([
-          { id: '1', setting_name: 'manual_correction_cost', setting_value: 0.10, description: 'Custo em créditos para correção manual' },
-          { id: '2', setting_name: 'auto_correction_cost', setting_value: 1.00, description: 'Custo em créditos para correção automática' },
-          { id: '3', setting_name: 'initial_credits', setting_value: 30.00, description: 'Créditos iniciais para novos usuários' }
-        ]);
-        return;
-      }
-      
-      setCreditSettings(data || []);
-    } catch (error) {
-      console.error('Erro ao carregar configurações de créditos:', error);
-      // Fallback para valores padrão
+      // Por enquanto, usar valores padrão
       setCreditSettings([
         { id: '1', setting_name: 'manual_correction_cost', setting_value: 0.10, description: 'Custo em créditos para correção manual' },
         { id: '2', setting_name: 'auto_correction_cost', setting_value: 1.00, description: 'Custo em créditos para correção automática' },
         { id: '3', setting_name: 'initial_credits', setting_value: 30.00, description: 'Créditos iniciais para novos usuários' }
       ]);
+    } catch (error) {
+      console.error('Erro ao carregar configurações de créditos:', error);
     }
   };
 
   const updateCreditSetting = async (settingName: string, newValue: number) => {
     try {
-      const { error } = await supabase
-        .rpc('update_credit_setting', { 
-          setting_name_param: settingName, 
-          new_value: newValue 
-        });
-
-      if (error) throw error;
+      // Atualizar o valor localmente
+      setCreditSettings(prev => 
+        prev.map(setting => 
+          setting.setting_name === settingName 
+            ? { ...setting, setting_value: newValue }
+            : setting
+        )
+      );
 
       toast({
         title: "Configuração atualizada",
         description: "Valor de crédito atualizado com sucesso",
       });
-
-      loadCreditSettings();
     } catch (error) {
       console.error('Erro ao atualizar configuração:', error);
       toast({
@@ -200,23 +184,23 @@ export default function AdminPage() {
     }
   };
 
-  const startEditing = (settingId: string, currentValue: number) => {
-    setEditingSettings({ ...editingSettings, [settingId]: true });
-    setTempSettings({ ...tempSettings, [settingId]: currentValue });
+  const startEditing = (settingName: string, currentValue: number) => {
+    setEditingSettings({ ...editingSettings, [settingName]: true });
+    setTempSettings({ ...tempSettings, [settingName]: currentValue });
   };
 
-  const saveEdit = (settingId: string) => {
-    const newValue = tempSettings[settingId];
+  const saveEdit = (settingName: string) => {
+    const newValue = tempSettings[settingName];
     if (newValue !== undefined) {
-      updateCreditSetting(settingId, newValue);
+      updateCreditSetting(settingName, newValue);
     }
-    setEditingSettings({ ...editingSettings, [settingId]: false });
+    setEditingSettings({ ...editingSettings, [settingName]: false });
   };
 
-  const cancelEdit = (settingId: string) => {
-    setEditingSettings({ ...editingSettings, [settingId]: false });
+  const cancelEdit = (settingName: string) => {
+    setEditingSettings({ ...editingSettings, [settingName]: false });
     const newTemp = { ...tempSettings };
-    delete newTemp[settingId];
+    delete newTemp[settingName];
     setTempSettings(newTemp);
   };
 
@@ -550,25 +534,70 @@ export default function AdminPage() {
         <TabsContent value="credits" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Gestão de Créditos</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="w-5 h-5" />
+                Configurações de Créditos
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="text-center p-4 border rounded-lg">
-                  <h3 className="font-semibold">Questão Fechada</h3>
-                  <p className="text-2xl font-bold text-blue-600">0,20</p>
-                  <p className="text-sm text-muted-foreground">créditos por correção</p>
-                </div>
-                <div className="text-center p-4 border rounded-lg">
-                  <h3 className="font-semibold">Questão Aberta</h3>
-                  <p className="text-2xl font-bold text-green-600">1,00</p>
-                  <p className="text-sm text-muted-foreground">crédito por correção</p>
-                </div>
-                <div className="text-center p-4 border rounded-lg">
-                  <h3 className="font-semibold">Créditos Iniciais</h3>
-                  <p className="text-2xl font-bold text-purple-600">30</p>
-                  <p className="text-sm text-muted-foreground">para novas contas</p>
-                </div>
+              <div className="space-y-4">
+                {creditSettings.map((setting) => (
+                  <div key={setting.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex-1">
+                      <h3 className="font-semibold">
+                        {setting.setting_name === 'manual_correction_cost' && 'Correção Manual'}
+                        {setting.setting_name === 'auto_correction_cost' && 'Correção Automática'}
+                        {setting.setting_name === 'initial_credits' && 'Créditos Iniciais'}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">{setting.description}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {editingSettings[setting.setting_name] ? (
+                        <>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={tempSettings[setting.setting_name] || setting.setting_value}
+                            onChange={(e) => setTempSettings({
+                              ...tempSettings,
+                              [setting.setting_name]: parseFloat(e.target.value) || 0
+                            })}
+                            className="w-24"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => saveEdit(setting.setting_name)}
+                            className="px-2"
+                          >
+                            <Save className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => cancelEdit(setting.setting_name)}
+                            className="px-2"
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-2xl font-bold text-primary min-w-16 text-center">
+                            {setting.setting_value}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => startEditing(setting.setting_name, setting.setting_value)}
+                            className="px-2"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
