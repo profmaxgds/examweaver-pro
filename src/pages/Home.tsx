@@ -159,20 +159,20 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Link to="/auto-correction">
-                  <Button className="gap-2">
+                <Link to="/auto-correction" className="no-underline">
+                  <Button className="gap-2 w-full">
                     <Camera className="w-4 h-4" />
                     Iniciar Correção
                   </Button>
                 </Link>
-                <Link to="/corrections-management">
-                  <Button variant="outline" className="gap-2">
+                <Link to="/corrections-management" className="no-underline">
+                  <Button variant="outline" className="gap-2 w-full">
                     <ClipboardList className="w-4 h-4" />
                     Gestão de Gabaritos
                   </Button>
                 </Link>
-                <Link to="/reports">
-                  <Button variant="outline" className="gap-2">
+                <Link to="/reports" className="no-underline">
+                  <Button variant="outline" className="gap-2 w-full">
                     <BarChart3 className="w-4 h-4" />
                     Relatórios
                   </Button>
