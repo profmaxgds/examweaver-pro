@@ -212,6 +212,7 @@ function simulateMarkDetection(examInfo?: any): Record<string, string> {
   
   const answers: Record<string, string> = {};
   const options = ['A', 'B', 'C', 'D', 'E'];
+  const vfOptions = ['V', 'F'];
   
   // Determinar número de questões
   let questionCount = 20; // padrão
@@ -249,23 +250,36 @@ function simulateMarkDetection(examInfo?: any): Record<string, string> {
           ? examInfo.answerKey[questionId][0] 
           : examInfo.answerKey[questionId];
         
+        // Determinar tipo de questão baseado na resposta correta
+        let questionType = 'multiple_choice'; // padrão
+        if (['V', 'F', 'TRUE', 'FALSE', 'VERDADEIRO', 'FALSO'].includes(correctAnswer?.toString()?.toUpperCase())) {
+          questionType = 'true_false';
+        }
+        
         // 75% chance de o aluno ter marcado a resposta correta
         // 25% chance de ter marcado outra opção
         if (Math.random() < 0.75) {
           markedOption = correctAnswer;
         } else {
-          const wrongOptions = options.filter(opt => opt !== correctAnswer);
-          markedOption = wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
+          if (questionType === 'true_false') {
+            const wrongOptions = vfOptions.filter(opt => opt !== correctAnswer);
+            markedOption = wrongOptions[0] || (correctAnswer === 'V' ? 'F' : 'V');
+          } else {
+            const wrongOptions = options.filter(opt => opt !== correctAnswer);
+            markedOption = wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
+          }
         }
+        
+        console.log(`Q${i}: ${markedOption} (${questionType}, ${pattern.type}, conf: ${pattern.confidence.toFixed(2)})`);
       } else {
         // Escolha aleatória se não temos gabarito
         markedOption = options[Math.floor(Math.random() * options.length)];
+        console.log(`Q${i}: ${markedOption} (${pattern.type}, conf: ${pattern.confidence.toFixed(2)})`);
       }
       
       // Só adicionar se a confiança do padrão for suficiente
       if (pattern.confidence > 0.5) {
         answers[i.toString()] = markedOption;
-        console.log(`Q${i}: ${markedOption} (${pattern.type}, conf: ${pattern.confidence.toFixed(2)})`);
       } else {
         console.log(`Q${i}: Marcação ambígua detectada (${pattern.type})`);
       }
@@ -365,6 +379,9 @@ async function calculateScore(
     throw new Error('Questions not found');
   }
 
+  console.log(`Processando ${questions.length} questões do exame`);
+  console.log('Tipos de questões:', questions.map(q => `${q.type} (${q.points}pts)`));
+
   let totalScore = 0;
   const detailedResults = [];
 
@@ -375,8 +392,12 @@ async function calculateScore(
     
     let isCorrect = false;
     let correctAnswer = null;
+    let canAutoCorrect = false;
+
+    console.log(`Q${questionNumber}: Tipo=${question.type}, Resposta=${studentAnswer}`);
 
     if (question.type === 'multiple_choice' && question.options) {
+      canAutoCorrect = true;
       // Considerar embaralhamento de opções se necessário
       let options = question.options;
       if (exam.shuffle_options && version > 1) {
@@ -392,21 +413,47 @@ async function calculateScore(
         const correctLetter = String.fromCharCode(65 + correctIndex);
         isCorrect = studentAnswer === correctLetter;
       }
+    } else if (question.type === 'true_false') {
+      canAutoCorrect = true;
+      // Para questões V/F, a resposta correta está em correct_answer
+      const correctVF = question.correct_answer;
+      if (studentAnswer && correctVF) {
+        // Normalizar respostas (V/F, True/False, etc.)
+        const normalizeAnswer = (answer: string) => {
+          const upper = answer.toUpperCase();
+          if (upper === 'V' || upper === 'TRUE' || upper === 'VERDADEIRO') return 'V';
+          if (upper === 'F' || upper === 'FALSE' || upper === 'FALSO') return 'F';
+          return answer;
+        };
+        
+        isCorrect = normalizeAnswer(studentAnswer) === normalizeAnswer(correctVF.toString());
+        correctAnswer = correctVF;
+      }
+    } else if (question.type === 'essay') {
+      // Questões discursivas não podem ser corrigidas automaticamente
+      canAutoCorrect = false;
+      correctAnswer = 'Requer correção manual';
+      console.log(`Q${questionNumber}: Questão discursiva - correção manual necessária`);
     }
 
-    if (isCorrect) {
+    if (isCorrect && canAutoCorrect) {
       totalScore += question.points;
     }
 
     detailedResults.push({
       questionNumber: i + 1,
+      questionType: question.type,
       studentAnswer,
-      correctAnswer: correctAnswer?.text || question.correct_answer,
-      isCorrect,
-      points: isCorrect ? question.points : 0,
-      maxPoints: question.points
+      correctAnswer: correctAnswer?.text || correctAnswer || question.correct_answer,
+      isCorrect: canAutoCorrect ? isCorrect : null,
+      points: (isCorrect && canAutoCorrect) ? question.points : 0,
+      maxPoints: question.points,
+      canAutoCorrect,
+      needsManualReview: !canAutoCorrect
     });
   }
+
+  console.log(`Pontuação total: ${totalScore}/${questions.reduce((sum, q) => sum + q.points, 0)}`);
 
   return { score: totalScore, detailedResults };
 }

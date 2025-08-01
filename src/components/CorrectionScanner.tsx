@@ -428,11 +428,31 @@ export function CorrectionScanner({ examId, onCorrectionComplete }: CorrectionSc
                   <div 
                     key={index}
                     className={`text-xs p-2 rounded ${
-                      item.isCorrect ? 'bg-green-50' : 'bg-red-50'
+                      item.needsManualReview 
+                        ? 'bg-yellow-50 border border-yellow-200' 
+                        : item.isCorrect 
+                          ? 'bg-green-50 border border-green-200' 
+                          : 'bg-red-50 border border-red-200'
                     }`}
                   >
-                    Questão {item.questionNumber}: {item.studentAnswer || 'Sem resposta'} 
-                    {item.isCorrect ? ' ✓' : ' ✗'} ({item.points}/{item.maxPoints} pts)
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">
+                        Questão {item.questionNumber} ({item.questionType})
+                      </span>
+                      <span className="text-xs">
+                        {item.points}/{item.maxPoints} pts
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {item.needsManualReview ? (
+                        <span className="text-yellow-600">⚠️ Requer correção manual</span>
+                      ) : (
+                        <>
+                          Resposta: {item.studentAnswer || 'Sem resposta'} 
+                          {item.canAutoCorrect && (item.isCorrect ? ' ✓' : ' ✗')}
+                        </>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
