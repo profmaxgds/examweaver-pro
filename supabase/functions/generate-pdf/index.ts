@@ -21,12 +21,25 @@ async function fetchPreparedExamData(supabase: SupabaseClient, studentExamId: st
             id,
             shuffled_question_ids,
             shuffled_options_map,
-            exam:exams(*, header:header_id(*)),
+            exam:exams(*),
             student:students(*, class:classes(name))
         `)
         .eq('id', studentExamId)
         .single();
     if (error) throw new Error(`Prova preparada não encontrada: ${error.message}`);
+    
+    // Buscar o cabeçalho separadamente se existir
+    if (data.exam.header_id) {
+        const { data: headerData, error: headerError } = await supabase
+            .from('exam_headers')
+            .select('*')
+            .eq('id', data.exam.header_id)
+            .single();
+        
+        if (!headerError && headerData) {
+            data.exam.header = headerData;
+        }
+    }
     
     const { data: qData, error: qError } = await supabase
         .from('questions')
