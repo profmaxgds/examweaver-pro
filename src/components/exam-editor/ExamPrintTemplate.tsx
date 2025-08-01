@@ -67,12 +67,15 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
   const header = exam.exam_headers;
   const isDoubleColumn = exam.layout === 'double_column';
 
-  // Função para gerar o gabarito de bolhas
+  // Função para gerar o gabarito de bolhas com âncoras
   const generateAnswerGrid = () => {
     const multipleChoiceQuestions = questions.filter(q => q.type === 'multiple_choice');
     if (multipleChoiceQuestions.length === 0) return '';
     
-    let grid = `<div class="answer-grid-header">Marque o gabarito preenchendo completamente a região de cada alternativa.</div>`;
+    let grid = `<div class="answer-grid-container">`;
+    grid += `<div class="anchor-corner anchor-top-left"></div>`;
+    grid += `<div class="anchor-corner anchor-top-right"></div>`;
+    grid += `<div class="answer-grid-header">Marque o gabarito preenchendo completamente a região de cada alternativa.</div>`;
     grid += `<div class="answer-options-header">${['a', 'b', 'c', 'd', 'e'].map(l => `<span>${l}</span>`).join('')}</div>`;
     
     multipleChoiceQuestions.forEach((_, index) => {
@@ -81,10 +84,14 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
         <div class="answer-row">
             <span class="q-number">Q.${questionNumber}:</span>
             <div class="options-bubbles">
-                ${Array(5).fill(0).map(() => `<div class="bubble-container"><div class="bubble-outer"><div class="bubble-inner"></div></div></div>`).join('')}
+                ${Array(5).fill(0).map(() => `<div class="bubble-outer"><div class="bubble-inner"></div></div>`).join('')}
             </div>
         </div>`;
     });
+    
+    grid += `<div class="anchor-corner anchor-bottom-left"></div>`;
+    grid += `<div class="anchor-corner anchor-bottom-right"></div>`;
+    grid += `</div>`;
     return grid;
   };
 
@@ -109,14 +116,19 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
           .qr-code-section { flex: 0 0 140px; padding: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
           .qr-code-section img { width: 120px; height: 120px; }
           .qr-code-section p { font-size: 9pt; text-align: center; margin-top: 5px; }
-          .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding-left: 15px; display: flex; flex-direction: column; }
-          .answer-grid-header { text-align: center; margin-bottom: 8px; font-size: 9pt; font-weight: bold; }
-          .answer-options-header { display: flex; margin-left: 40px; margin-bottom: 4px; gap: 4px; }
+          .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding: 10px; display: flex; flex-direction: column; position: relative; }
+          .answer-grid-container { position: relative; padding: 15px; border: 2px solid #000; }
+          .anchor-corner { position: absolute; width: 12px; height: 12px; background-color: #000; }
+          .anchor-top-left { top: 0; left: 0; }
+          .anchor-top-right { top: 0; right: 0; }
+          .anchor-bottom-left { bottom: 0; left: 0; }
+          .anchor-bottom-right { bottom: 0; right: 0; }
+          .answer-grid-header { text-align: center; margin: 15px 0 10px 0; font-size: 9pt; font-weight: bold; }
+          .answer-options-header { display: flex; margin-left: 40px; margin-bottom: 8px; gap: 6px; }
           .answer-options-header span { width: 14px; text-align: center; font-size: 9pt; font-weight: bold; }
-          .answer-row { display: flex; align-items: center; margin-bottom: 3px; }
+          .answer-row { display: flex; align-items: center; margin-bottom: 5px; }
           .answer-row .q-number { font-weight: bold; margin-right: 10px; font-size: 10pt; width: 30px; }
-          .answer-row .options-bubbles { display: flex; gap: 4px; }
-          .bubble-container { width: 14px; display: flex; justify-content: center; align-items: center; }
+          .answer-row .options-bubbles { display: flex; gap: 6px; }
           .bubble-outer { width: 14px; height: 14px; border: 2px solid #000; border-radius: 50%; display: flex; justify-content: center; align-items: center; background-color: white; }
           .bubble-inner { width: 6px; height: 6px; border: 1px solid #000; border-radius: 50%; background-color: white; }
           .essay-lines { margin-top: 10px; width: 100%; }
@@ -177,7 +189,7 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
                         )}
                         {q.type === 'essay' && (
                             <div className="essay-lines">
-                                {Array.from({ length: (q as any).essay_lines || 5 }, (_, i) => (
+                                {Array.from({ length: (q as any).essay_lines || (q as any).essayLines || 5 }, (_, i) => (
                                     <div key={i} className="essay-line"></div>
                                 ))}
                             </div>
