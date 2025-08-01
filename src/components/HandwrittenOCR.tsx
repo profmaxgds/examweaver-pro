@@ -35,11 +35,16 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
 
   // Iniciar câmera
   const startCamera = async () => {
+    console.log('🎥 Iniciando câmera...');
+    
     try {
       // Verificar se o navegador suporta getUserMedia
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('❌ getUserMedia não suportado');
         throw new Error('Câmera não é suportada neste navegador');
       }
+
+      console.log('✅ getUserMedia disponível');
 
       const constraints = {
         video: {
@@ -49,30 +54,50 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
         }
       };
 
+      console.log('📱 Solicitando acesso à câmera com constraints:', constraints);
+
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      console.log('✅ Stream obtido:', stream);
+      console.log('📹 Tracks de vídeo:', stream.getVideoTracks());
       
       setCameraStream(stream);
       setUseCamera(true);
       
+      console.log('🔄 Estado useCamera atualizado para true');
+      
       if (videoRef.current) {
+        console.log('📺 Conectando stream ao elemento video');
         videoRef.current.srcObject = stream;
-        // Aguardar o vídeo carregar antes de tentar reproduzir
+        
+        // Aguardar o vídeo carregar e reproduzir
         videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play().catch(error => {
-            console.error('Erro ao reproduzir vídeo:', error);
+          console.log('📽️ Metadata do vídeo carregada');
+          videoRef.current?.play().then(() => {
+            console.log('▶️ Vídeo reproduzindo');
+          }).catch(error => {
+            console.error('❌ Erro ao reproduzir vídeo:', error);
           });
         };
+        
+        videoRef.current.onerror = (error) => {
+          console.error('❌ Erro no elemento video:', error);
+        };
+      } else {
+        console.error('❌ videoRef.current é null');
       }
       
       toast({
         title: "📷 Câmera ativa!",
         description: "Posicione a resposta manuscrita para capturar",
       });
+      
     } catch (error) {
-      console.error('Erro ao acessar câmera:', error);
+      console.error('❌ Erro ao acessar câmera:', error);
       let errorMessage = "Não foi possível acessar a câmera.";
       
       if (error instanceof Error) {
+        console.log('🔍 Tipo de erro:', error.name);
         if (error.name === 'NotAllowedError') {
           errorMessage = "Acesso à câmera foi negado. Verifique as permissões.";
         } else if (error.name === 'NotFoundError') {
@@ -431,7 +456,10 @@ export function HandwrittenOCR({ onTextExtracted, question, isProcessing = false
             {/* Botões de captura */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Button
-                onClick={startCamera}
+                onClick={() => {
+                  console.log('🔘 Botão da câmera clicado');
+                  startCamera();
+                }}
                 variant="outline"
                 className="h-auto p-4"
                 disabled={isProcessing}
