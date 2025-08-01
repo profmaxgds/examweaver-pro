@@ -36,16 +36,16 @@ serve(async (req) => {
       )
     }
 
-    // Preparar request para DeepSeek API
+    // Preparar request para DeepSeek API (Compatível com OpenAI Chat Completions)
     const deepseekRequest = {
-      model: "deepseek-vl-7b-chat", // Modelo de visão do DeepSeek
+      model: "deepseek-chat", // Modelo principal do DeepSeek com suporte a visão
       messages: [
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: prompt || "Extract all handwritten text from this image. Return only the text content, maintaining line breaks and structure."
+              text: prompt || "Extract all handwritten text from this image. Recognize and transcribe all text accurately, maintaining line breaks and structure."
             },
             {
               type: "image_url",
@@ -57,10 +57,13 @@ serve(async (req) => {
         }
       ],
       max_tokens: 1000,
-      temperature: 0.1 // Baixa temperatura para maior precisão
+      temperature: 0.1, // Baixa temperatura para maior precisão
+      stream: false
     }
 
-    // Chamar DeepSeek API
+    console.log('🔄 Calling DeepSeek API...')
+    
+    // Chamar DeepSeek API (compatível com OpenAI)
     const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
       method: 'POST',
       headers: {
