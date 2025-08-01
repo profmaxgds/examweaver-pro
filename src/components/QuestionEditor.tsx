@@ -28,11 +28,9 @@ interface QuestionData {
   correctAnswer: any;
   category: string;
   subject: string;
-  institution: string;
-  difficulty: 'easy' | 'medium' | 'hard' | 'custom';
+  difficulty: 'easy' | 'medium' | 'hard';
   tags: string[];
   points: number;
-  language: string;
 }
 
 interface QuestionEditorProps {
@@ -57,11 +55,9 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
     correctAnswer: initialData?.correctAnswer ?? null,
     category: initialData?.category || '',
     subject: initialData?.subject || '',
-    institution: initialData?.institution || '',
     difficulty: initialData?.difficulty || 'medium',
     tags: initialData?.tags || [],
     points: initialData?.points || 1.0,
-    language: initialData?.language || 'pt',
   });
 
   const [newTag, setNewTag] = useState('');
@@ -396,16 +392,17 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
                   <Input id="subject" value={question.subject} onChange={(e) => setQuestion(prev => ({ ...prev, subject: e.target.value }))} placeholder="Ex: Teoria Geral dos Sistemas" />
                 </div>
                 <div>
-                  <Label htmlFor="category">Categoria</Label>
-                  <Input id="category" value={question.category} onChange={(e) => setQuestion(prev => ({ ...prev, category: e.target.value }))} placeholder="Ex: Sistemas Abertos" />
-                </div>
-                <div>
-                  <Label htmlFor="institution">Instituição</Label>
-                  <Input id="institution" value={question.institution} onChange={(e) => setQuestion(prev => ({ ...prev, institution: e.target.value }))} placeholder="Ex: UNIUBE" />
+                  <Label htmlFor="category">Categoria (opcional)</Label>
+                  <Input 
+                    id="category" 
+                    value={question.category} 
+                    onChange={(e) => setQuestion(prev => ({ ...prev, category: e.target.value }))} 
+                    placeholder="Ex: Sistemas Abertos, Conceitos Básicos" 
+                  />
                 </div>
                 <div>
                   <Label htmlFor="difficulty">Dificuldade</Label>
-                  <Select value={question.difficulty} onValueChange={(value: 'easy' | 'medium' | 'hard' | 'custom') => setQuestion(prev => ({ ...prev, difficulty: value }))}>
+                  <Select value={question.difficulty} onValueChange={(value: 'easy' | 'medium' | 'hard') => setQuestion(prev => ({ ...prev, difficulty: value }))}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -413,13 +410,20 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
                       <SelectItem value="easy">Fácil</SelectItem>
                       <SelectItem value="medium">Médio</SelectItem>
                       <SelectItem value="hard">Difícil</SelectItem>
-                      <SelectItem value="custom">Personalizado</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label htmlFor="points">Pontuação</Label>
-                  <Input id="points" type="number" step="0.25" min="0" value={question.points} onChange={(e) => setQuestion(prev => ({ ...prev, points: parseFloat(e.target.value) || 0 }))} />
+                  <Input 
+                    id="points" 
+                    type="number" 
+                    step="0.5" 
+                    min="0.5" 
+                    max="10" 
+                    value={question.points} 
+                    onChange={(e) => setQuestion(prev => ({ ...prev, points: parseFloat(e.target.value) || 1 }))} 
+                  />
                 </div>
               </CardContent>
             </Card>

@@ -25,11 +25,9 @@ interface QuestionData {
   correctAnswer: any;
   category: string;
   subject: string;
-  institution: string;
-  difficulty: 'easy' | 'medium' | 'hard' | 'custom';
+  difficulty: 'easy' | 'medium' | 'hard';
   tags: string[];
   points: number;
-  language: string;
 }
 
 export default function EditQuestionPage() {
@@ -64,11 +62,9 @@ export default function EditQuestionPage() {
           type: data.type as 'multiple_choice' | 'true_false' | 'essay',
           category: data.category || '',
           subject: data.subject,
-          institution: data.institution || '',
-          difficulty: data.difficulty,
+          difficulty: data.difficulty === 'custom' ? 'medium' : data.difficulty,
           tags: data.tags || [],
           points: data.points,
-          language: data.language || 'pt',
           options: data.options ? (Array.isArray(data.options) ? data.options.map((opt: any) => ({
             id: opt.id,
             text: opt.text,
@@ -110,11 +106,12 @@ export default function EditQuestionPage() {
           : questionData.correctAnswer,
         category: questionData.category || null,
         subject: questionData.subject,
-        institution: questionData.institution || null,
         difficulty: questionData.difficulty,
         tags: questionData.tags,
         points: questionData.points,
-        language: questionData.language,
+        // Remove campos desnecessários
+        institution: null,
+        language: 'pt',
       };
 
       const { error } = await supabase
