@@ -996,7 +996,8 @@ export default function AutoCorrectionPage() {
       // Preparar dados incluindo questões abertas
       const correctionData = {
         exam_id: resultToSave.examId,
-        student_id: resultToSave.studentId,
+        student_id: null, // Deixar null pois não temos UUID do estudante
+        student_identification: resultToSave.studentId, // Usar o ID textual aqui
         student_name: resultToSave.studentName,
         answers: {
           ...resultToSave.answers,
