@@ -65,7 +65,7 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         .qr-code-section img { width: 120px; height: 120px; }
         .qr-code-section p { font-size: 9pt; text-align: center; margin-top: 5px; }
         .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding: 0 20px; display: flex; flex-direction: column; min-height: 180px; position: relative; }
-        .answer-grid-header { text-align: center; margin-bottom: 8px; font-size: 9pt; font-weight: bold; padding-top: 10px; }
+        .answer-grid-header { text-align: center; margin-bottom: 8px; font-size: 9pt; font-weight: bold; padding-top: 15px; }
         .answer-grid-columns-container { display: flex; flex-direction: row; justify-content: space-around; flex: 1; padding: 15px 25px; }
         .answer-grid-column { display: flex; flex-direction: column; }
         .column-divider { width: 1.5px; background-color: #000; margin: 0 10px; }
