@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, Image as ImageIcon, Users } from 'lucide-react'; // <-- Ícone 'Users' importado
+import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, BookCopy, Users } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface DashboardStats {
@@ -105,21 +105,35 @@ export default function Dashboard() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Link to="/questions/new"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><PlusCircle /> Nova Questão</CardTitle></CardHeader><CardContent><CardDescription>Adicionar uma nova questão ao seu banco de dados.</CardDescription></CardContent></Card></Link>
             <Link to="/exams/new"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><FileText /> Nova Prova</CardTitle></CardHeader><CardContent><CardDescription>Montar uma nova prova usando suas questões.</CardDescription></CardContent></Card></Link>
+            <Link to="/students"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><Users /> Gerenciar Alunos</CardTitle></CardHeader><CardContent><CardDescription>Adicionar e editar alunos para suas turmas.</CardDescription></CardContent></Card></Link>
             
             {/* NOVO CARD ADICIONADO AQUI */}
-            <Link to="/students"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><Users /> Gerenciar Alunos</CardTitle></CardHeader><CardContent><CardDescription>Adicionar e editar alunos, turmas e instituições.</CardDescription></CardContent></Card></Link>
-
-            <Link to="/corrections"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><Upload /> Corrigir Provas</CardTitle></CardHeader><CardContent><CardDescription>Escanear e corrigir provas automaticamente.</CardDescription></CardContent></Card></Link>
+            <Link to="/classes"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><BookCopy /> Gerenciar Turmas</CardTitle></CardHeader><CardContent><CardDescription>Criar e editar suas turmas e instituições.</CardDescription></CardContent></Card></Link>
           </div>
 
-          {/* Pré-visualização da Última Prova */}
+          {/* Pré-visualização da Última Prova MELHORADA */}
           <Card>
             <CardHeader>
-              <CardTitle>Pré-visualização da Última Prova Criada</CardTitle>
-              {loading ? <Skeleton className="h-4 w-1/2 mt-1" /> : (lastExam ? <CardDescription>{lastExam.title} - {lastExam.subject}</CardDescription> : <CardDescription>Nenhuma prova criada ainda.</CardDescription>)}
+              <CardTitle>Última Prova Criada</CardTitle>
+              <CardDescription>
+                {loading ? <Skeleton className="h-4 w-1/2 mt-1" /> : (lastExam ? "Abaixo está um resumo da sua prova mais recente." : "Nenhuma prova criada ainda.")}
+              </CardDescription>
             </CardHeader>
-            <CardContent className="flex items-center justify-center p-2 sm:p-4">
-              {loading ? <Skeleton className="w-full h-48" /> : lastExam ? <div className="border rounded-md p-2 bg-white w-full"><img src="http://googleusercontent.com/file_content/8" alt="Exemplo de Cabeçalho de Prova" className="w-full object-contain" /></div> : <div className="text-center py-8"><ImageIcon className="w-12 h-12 mx-auto mb-4 text-muted-foreground" /><p className="text-muted-foreground">Crie sua primeira prova para ver a pré-visualização aqui.</p></div>}
+            <CardContent>
+              {loading ? <Skeleton className="w-full h-24" /> : lastExam ? (
+                <div className="border rounded-md p-4 bg-muted/20 space-y-2">
+                    <h3 className="font-semibold text-lg">{lastExam.title}</h3>
+                    <p className="text-sm text-muted-foreground">{lastExam.subject}</p>
+                    <Link to={`/exams/${lastExam.id}/edit`}>
+                        <Button variant="outline" size="sm" className="mt-2">Ver Detalhes</Button>
+                    </Link>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">Crie sua primeira prova para ver os detalhes aqui.</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

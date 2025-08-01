@@ -19,7 +19,8 @@ import EditExamPage from "./pages/EditExamPage";
 import ReportsPage from "./pages/ReportsPage";
 import HeadersPage from "./pages/HeadersPage";
 import CorrectionsPage from "./pages/CorrectionsPage";
-import StudentsPage from "./pages/StudentsPage"; // <-- ADICIONADO AQUI
+import StudentsPage from "./pages/StudentsPage";
+import ClassesPage from "./pages/ClassesPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -63,7 +64,8 @@ const App = () => (
             <Route path="/reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
             <Route path="/headers" element={<ProtectedRoute><HeadersPage /></ProtectedRoute>} />
             <Route path="/corrections" element={<ProtectedRoute><CorrectionsPage /></ProtectedRoute>} />
-            <Route path="/students" element={<ProtectedRoute><StudentsPage /></ProtectedRoute>} /> {/* <-- ROTA ADICIONADA AQUI */}
+            <Route path="/students" element={<ProtectedRoute><StudentsPage /></ProtectedRoute>} />
+            <Route path="/classes" element={<ProtectedRoute><ClassesPage /></ProtectedRoute>} /> {/* <-- 2. ROTA ADICIONADA AQUI */}
 
             <Route path="*" element={<NotFound />} />
           </Routes>

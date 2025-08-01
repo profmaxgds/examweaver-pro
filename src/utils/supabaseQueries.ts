@@ -1,3 +1,5 @@
+// src/utils/supabaseQueries.ts
+
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
@@ -68,10 +70,15 @@ export const fetchStudents = async (
   setLoading(true);
 
   try {
+    // ==================================================================
+    // CORREÇÃO PRINCIPAL APLICADA AQUI
+    // ==================================================================
     let query = supabase
       .from('students')
       .select(`
-        *
+        *,
+        classes ( * ),
+        exam_headers:institution_header_id ( * )
       `)
       .eq('author_id', userId);
 
@@ -82,17 +89,10 @@ export const fetchStudents = async (
     const { data, error } = await query.order('name', { ascending: true });
 
     if (error) throw new Error(error.message);
-    if (data) {
-      // Mapear os dados para a interface esperada
-      const studentsData = data.filter(student => student.name != null).map(student => ({
-        ...student,
-        classes: null, // Será buscado separadamente se necessário
-        exam_headers: null // Será buscado separadamente se necessário
-      }));
-      setStudents(studentsData as Student[]);
-    } else {
-      setStudents([]);
-    }
+    
+    // O mapeamento não é mais necessário, pois a consulta já traz os dados corretos
+    setStudents(data as Student[] || []);
+
   } catch (error) {
     console.error('Erro ao carregar alunos:', error);
     toast({
@@ -112,11 +112,6 @@ export const fetchClasses = async (
 ) => {
   if (!userId) {
     console.error('Usuário não autenticado');
-    toast({
-      title: 'Erro de Autenticação',
-      description: 'Usuário não está autenticado. Faça login novamente.',
-      variant: 'destructive',
-    });
     setClasses([]);
     return;
   }
@@ -134,7 +129,7 @@ export const fetchClasses = async (
     console.error('Erro ao buscar turmas:', error);
     toast({
       title: 'Erro de Conexão',
-      description: 'Não foi possível carregar as turmas. Verifique sua conexão ou permissões.',
+      description: 'Não foi possível carregar as turmas. Verifique sua conexão.',
       variant: 'destructive',
     });
     setClasses([]);

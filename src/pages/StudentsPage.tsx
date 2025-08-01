@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+// src/pages/StudentsPage.tsx
+
+import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -6,16 +8,18 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Plus, Upload, Users } from 'lucide-react';
+import { ArrowLeft, Plus, Upload, Users, Trash2, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ActionButtons } from '@/components/ActionButtons';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { StudentForm } from '@/components/StudentForm';
 import { ClassForm } from '@/components/ClassForm';
-import { ImportStudentsDialog } from '@/components/ImportStudentsDialog';
+import { ImportStudentsWizard } from '@/components/ImportStudentsWizard';
 import { fetchStudents, Student } from '@/utils/supabaseQueries';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
-// Interface para turmas, alinhada com a tabela classes
 interface Class {
   id: string;
   name: string | null;
@@ -39,6 +43,8 @@ export default function StudentsPage() {
   const [isClassDialogOpen, setClassDialogOpen] = useState(false);
   const [isImportDialogOpen, setImportDialogOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
 
   useEffect(() => {
     if (user) {
@@ -50,6 +56,7 @@ export default function StudentsPage() {
   useEffect(() => {
     if (user) {
       fetchStudents(user.id, selectedClass, setStudents, setLoading);
+      setSelectedStudents([]);
     }
   }, [selectedClass]);
 
@@ -58,7 +65,7 @@ export default function StudentsPage() {
     try {
       const { data, error } = await supabase
         .from('classes')
-        .select('id, name, description, year, semester, institution_header_id, created_at, updated_at')
+        .select('id, name, year, semester')
         .eq('author_id', user.id)
         .order('name', { ascending: true });
 
@@ -70,7 +77,7 @@ export default function StudentsPage() {
       console.error('Erro ao buscar turmas:', error);
       toast({
         title: 'Erro de Conexão',
-        description: 'Não foi possível carregar as turmas. Verifique sua conexão.',
+        description: 'Não foi possível carregar as turmas para o filtro.',
         variant: 'destructive',
       });
     }
@@ -154,6 +161,41 @@ export default function StudentsPage() {
     setEditingStudent(student);
     setStudentDialogOpen(true);
   };
+  
+  const handleGoToCreateClass = () => {
+    setImportDialogOpen(false);
+    setClassDialogOpen(true);
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedStudents.length === 0) return;
+    try {
+      const { error } = await supabase.from('students').delete().in('id', selectedStudents);
+      if (error) throw new Error(error.message);
+      
+      toast({ title: 'Sucesso!', description: `${selectedStudents.length} aluno(s) excluído(s).` });
+      setSelectedStudents([]);
+      await fetchStudents(user!.id, selectedClass, setStudents, setLoading);
+    } catch (error) {
+      console.error('Erro ao excluir alunos:', error);
+      toast({ title: 'Erro', description: 'Não foi possível excluir os alunos selecionados.', variant: 'destructive' });
+    }
+  };
+  
+  const filteredStudents = useMemo(() => {
+    return students.filter(student =>
+      (student.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      (student.student_id?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+    );
+  }, [students, searchTerm]);
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedStudents(filteredStudents.map(s => s.id));
+    } else {
+      setSelectedStudents([]);
+    }
+  };
 
   return (
     <>
@@ -194,20 +236,48 @@ export default function StudentsPage() {
               <CardDescription>Gerencie seus alunos e filtre por turma.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 max-w-xs">
-                <Select value={selectedClass} onValueChange={setSelectedClass} disabled={loading}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Filtrar por turma..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas as Turmas</SelectItem>
-                    {classes.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name || 'Sem nome'} {c.year && c.semester ? `(${c.year}/${c.semester})` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4">
+                <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+                  <Select value={selectedClass} onValueChange={setSelectedClass} disabled={loading}>
+                    <SelectTrigger className="w-full sm:w-[240px]">
+                      <SelectValue placeholder="Filtrar por turma..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as Turmas</SelectItem>
+                      {classes.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name || 'Sem nome'} {c.year && c.semester ? `(${c.year}/${c.semester})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="relative w-full sm:w-[240px]">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input placeholder="Buscar por nome ou matrícula..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
+                  </div>
+                </div>
+                {selectedStudents.length > 0 && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" className="w-full sm:w-auto">
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Excluir ({selectedStudents.length})
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Tem certeza que deseja excluir {selectedStudents.length} aluno(s)? Esta ação não pode ser desfeita.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteSelected}>Confirmar Exclusão</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
               </div>
 
               {loading ? (
@@ -230,32 +300,38 @@ export default function StudentsPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-[40px]">
+                          <Checkbox
+                            checked={selectedStudents.length > 0 && selectedStudents.length === filteredStudents.length}
+                            onCheckedChange={(checked) => handleSelectAll(Boolean(checked))}
+                          />
+                        </TableHead>
                         <TableHead>Nome</TableHead>
                         <TableHead>Matrícula</TableHead>
                         <TableHead>Curso</TableHead>
-                        <TableHead>Nota</TableHead>
                         <TableHead>Instituição</TableHead>
                         <TableHead>Turma</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {students.map((student) => (
-                        <TableRow key={student.id}>
+                      {filteredStudents.map((student) => (
+                        <TableRow key={student.id} data-state={selectedStudents.includes(student.id) ? "selected" : ""}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedStudents.includes(student.id)}
+                              onCheckedChange={(checked) => {
+                                setSelectedStudents(prev => 
+                                  checked ? [...prev, student.id] : prev.filter(id => id !== student.id)
+                                );
+                              }}
+                            />
+                          </TableCell>
                           <TableCell className="font-medium">{student.name || 'N/A'}</TableCell>
                           <TableCell>{student.student_id || 'N/A'}</TableCell>
                           <TableCell>{student.course || 'N/A'}</TableCell>
-                          <TableCell>{student.grade != null ? student.grade : 'N/A'}</TableCell>
                           <TableCell>{student.exam_headers?.institution || 'N/A'}</TableCell>
-                          <TableCell>
-                            {student.classes?.name
-                              ? `${student.classes.name} ${
-                                  student.classes.year && student.classes.semester
-                                    ? `(${student.classes.year}/${student.classes.semester})`
-                                    : ''
-                                }`
-                              : 'Sem turma'}
-                          </TableCell>
+                          <TableCell>{student.classes?.name || 'Sem turma'}</TableCell>
                           <TableCell className="text-right">
                             <ActionButtons
                               entityName="aluno"
@@ -282,16 +358,9 @@ export default function StudentsPage() {
           </DialogHeader>
           <StudentForm
             loading={loading}
-            initialData={
-              editingStudent
-                ? { ...editingStudent, institution_header_id: editingStudent.institution_header_id || '' }
-                : undefined
-            }
+            initialData={editingStudent ? { ...editingStudent, institution_header_id: editingStudent.institution_header_id || '' } : undefined}
             onSave={handleSaveStudent}
-            onCancel={() => {
-              setStudentDialogOpen(false);
-              setEditingStudent(null);
-            }}
+            onCancel={() => { setStudentDialogOpen(false); setEditingStudent(null); }}
           />
         </DialogContent>
       </Dialog>
@@ -302,18 +371,15 @@ export default function StudentsPage() {
             <DialogTitle>Cadastrar Nova Turma</DialogTitle>
             <DialogDescription>Preencha as informações para criar uma nova turma.</DialogDescription>
           </DialogHeader>
-          <ClassForm
-            loading={loading}
-            onSave={handleSaveClass}
-            onCancel={() => setClassDialogOpen(false)}
-          />
+          <ClassForm loading={loading} onSave={handleSaveClass} onCancel={() => setClassDialogOpen(false)} />
         </DialogContent>
       </Dialog>
-
-      <ImportStudentsDialog
+      
+      <ImportStudentsWizard
         isOpen={isImportDialogOpen}
         onClose={() => setImportDialogOpen(false)}
         onImported={() => fetchStudents(user!.id, selectedClass, setStudents, setLoading)}
+        onGoToCreateClass={handleGoToCreateClass}
       />
     </>
   );

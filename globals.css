@@ -1,0 +1,73 @@
+/* src/globals.css */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+ 
+@layer base {
+  :root {
+    --background: 220 30% 97%; /* #ebf3f7 - Branco Acinzentado */
+    --foreground: 240 10% 3.9%; /* Preto suave para texto */
+
+    --card: 210 40% 98%; /* Um branco muito claro para cards */
+    --card-foreground: 240 10% 3.9%;
+ 
+    --popover: 210 40% 98%;
+    --popover-foreground: 240 10% 3.9%;
+ 
+    /* Cor principal vibrante */
+    --primary: 175 41% 45%; /* #40aca4 - Verde-azulado */
+    --primary-foreground: 210 40% 98%;
+ 
+    /* Cor secundária escura e elegante */
+    --secondary: 250 64% 22%; /* #28225e - Roxo escuro */
+    --secondary-foreground: 210 40% 98%;
+ 
+    --muted: 220 18% 90%; /* #dde1e7 - Cinza claro para fundos sutis */
+    --muted-foreground: 240 4% 46%;
+ 
+    --accent: 220 18% 90%;
+    --accent-foreground: 240 5% 26%;
+ 
+    /* Cor de perigo (mantendo o vermelho padrão) */
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 13% 84%;
+    --input: 220 13% 89%;
+    --ring: 175 41% 45%; /* A mesma da cor primária para foco */
+ 
+    --radius: 0.5rem;
+  }
+ 
+  .dark {
+    /* Tema escuro usando a paleta */
+    --background: 255 56% 14%; /* #140d36 - Azul marinho escuro */
+    --foreground: 210 40% 98%;
+
+    --card: 250 64% 22%; /* #28225e - Roxo escuro */
+    --card-foreground: 210 40% 98%;
+ 
+    --popover: 250 64% 22%;
+    --popover-foreground: 210 40% 98%;
+ 
+    --primary: 175 41% 45%; /* #40aca4 */
+    --primary-foreground: 210 40% 98%;
+ 
+    --secondary: 250 28% 61%; /* #a19fb5 - Cinza azulado */
+    --secondary-foreground: 240 10% 3.9%;
+ 
+    --muted: 250 64% 22%;
+    --muted-foreground: 250 28% 61%;
+ 
+    --accent: 250 28% 61%;
+    --accent-foreground: 210 40% 98%;
+ 
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 250 64% 22%;
+    --input: 250 64% 22%;
+    --ring: 175 41% 45%;
+  }
+}

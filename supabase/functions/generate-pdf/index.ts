@@ -1,8 +1,10 @@
 // supabase/functions/generate-pdf/index.ts
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
-import { fetchExamData } from './data-fetcher.ts';
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+
+// Módulos que você já usa (assumindo que estão na mesma pasta)
+import { fetchExamData as fetchVersionExamData } from './data-fetcher.ts';
 import { generateExamHTML } from './layout.ts';
 import { shuffleArray } from './utils.ts';
 
@@ -11,60 +13,103 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// NOVA FUNÇÃO para buscar os dados de uma prova já preparada
+async function fetchPreparedExamData(supabase: SupabaseClient, studentExamId: string) {
+    const { data, error } = await supabase
+        .from('student_exams')
+        .select(`
+            id,
+            shuffled_question_ids,
+            shuffled_options_map,
+            exam:exams(*, header:header_id(*)),
+            student:students(*, class:classes(name))
+        `)
+        .eq('id', studentExamId)
+        .single();
+    if (error) throw new Error(`Prova preparada não encontrada: ${error.message}`);
+    
+    const { data: qData, error: qError } = await supabase
+        .from('questions')
+        .select('*')
+        .in('id', data.shuffled_question_ids);
+    if (qError) throw qError;
+
+    const questionMap = new Map(qData.map(q => [q.id, q]));
+    const orderedQuestions = data.shuffled_question_ids.map((id: string) => questionMap.get(id));
+
+    const finalQuestions = orderedQuestions.map((q: any) => {
+        if (q && q.type === 'multiple_choice' && data.shuffled_options_map[q.id]) {
+            const optionMap = new Map(q.options.map((opt: any) => [opt.id, opt]));
+            return { ...q, options: data.shuffled_options_map[q.id].map((optId: string) => optionMap.get(optId)) };
+        }
+        return q;
+    }).filter(Boolean);
+
+    return { preparedExamData: data, questions: finalQuestions };
+}
+
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log('Iniciando geração de PDF...');
-    const { examId, version = 1, includeAnswers = false } = await req.json();
-    console.log('Parâmetros recebidos:', { examId, version, includeAnswers });
-
-    if (!examId) {
-      throw new Error("O ID da prova é obrigatório.");
-    }
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
-    console.log('URLs Supabase:', { url: supabaseUrl ? 'definida' : 'não definida', key: supabaseKey ? 'definida' : 'não definida' });
+    const body = await req.json();
+    const { examId, version = 1, includeAnswers = false, studentExamId } = body;
 
     const supabase = createClient(
-      supabaseUrl ?? '',
-      supabaseKey ?? ''
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
     
-    // 1. Busca os dados usando o módulo separado
-    console.log('Buscando dados do exame...');
-    const { exam, questions } = await fetchExamData(supabase, examId);
+    let html: string;
+    let examTitle: string;
+    
+    // ROTA 1: Geração por Turma (a prova já foi preparada)
+    if (studentExamId) {
+        console.log('Iniciando geração por ALUNO:', studentExamId);
+        const { preparedExamData, questions } = await fetchPreparedExamData(supabase, studentExamId);
+        
+        const studentInfo = {
+            name: preparedExamData.student?.name || 'N/A',
+            id: preparedExamData.student?.student_id || 'N/A',
+            course: preparedExamData.student?.course || 'N/A',
+            class: preparedExamData.student?.class?.name || 'N/A',
+            qrId: preparedExamData.id 
+        };
+        
+        html = generateExamHTML(preparedExamData.exam, questions, version, includeAnswers, studentInfo);
+        examTitle = preparedExamData.exam.title;
 
-    // 2. Prepara os dados (ordenação e embaralhamento)
-    console.log('Preparando questões para versão:', version);
-    const originalOrderMap = new Map(exam.question_ids.map((id: string, index: number) => [id, index]));
-    let processedQuestions = [...questions].sort((a, b) => (originalOrderMap.get(a.id) ?? Infinity) - (originalOrderMap.get(b.id) ?? Infinity));
+    // ROTA 2: Geração por Versão (seu código original)
+    } else if (examId) {
+        console.log('Iniciando geração por VERSÃO:', examId, ' v', version);
+        const { exam, questions } = await fetchVersionExamData(supabase, examId);
 
-    if (exam.shuffle_questions && version > 1) {
-        console.log('Embaralhando questões...');
-        processedQuestions = shuffleArray(processedQuestions, version);
+        const originalOrderMap = new Map(exam.question_ids.map((id: string, index: number) => [id, index]));
+        let processedQuestions = [...questions].sort((a, b) => (originalOrderMap.get(a.id) ?? Infinity) - (originalOrderMap.get(b.id) ?? Infinity));
+
+        if (exam.shuffle_questions) { // Embaralha para todas as versões
+            processedQuestions = shuffleArray(processedQuestions, version);
+        }
+        if (exam.shuffle_options) {
+            processedQuestions = processedQuestions.map(q => ({
+                ...q,
+                options: q.options && Array.isArray(q.options)
+                    ? shuffleArray(q.options, (version * 100) + parseInt(q.id.slice(-4), 16))
+                    : q.options
+            }));
+        }
+        
+        html = generateExamHTML(exam, processedQuestions, version, includeAnswers);
+        examTitle = exam.title;
+
+    } else {
+        throw new Error("Parâmetros inválidos. Forneça 'studentExamId' ou 'examId'.");
     }
-    if (exam.shuffle_options && version > 1) {
-        console.log('Embaralhando opções...');
-        processedQuestions = processedQuestions.map(q => ({
-            ...q,
-            options: q.options && Array.isArray(q.options)
-                ? shuffleArray(q.options, (version * 100) + parseInt(q.id.slice(-4), 16))
-                : q.options
-        }));
-    }
 
-    // 3. Gera o HTML usando o módulo de layout
-    console.log('Gerando HTML da prova...');
-    const html = generateExamHTML(exam, processedQuestions, version, includeAnswers);
-    console.log('HTML gerado com sucesso, tamanho:', html.length, 'caracteres');
-
-    // 4. Retorna a resposta
-    return new Response(JSON.stringify({ html, examTitle: exam.title, version }), {
+    return new Response(JSON.stringify({ html, examTitle, version }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
