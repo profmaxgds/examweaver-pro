@@ -64,17 +64,17 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         .qr-code-section { flex: 0 0 140px; padding: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .qr-code-section img { width: 120px; height: 120px; }
         .qr-code-section p { font-size: 9pt; text-align: center; margin-top: 5px; }
-        .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding: 0 15px; display: flex; flex-direction: column; min-height: 180px; }
+        .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding: 0 20px; display: flex; flex-direction: column; min-height: 180px; position: relative; }
         .answer-grid-header { text-align: center; margin-bottom: 8px; font-size: 9pt; font-weight: bold; padding-top: 10px; }
-        .answer-grid-columns-container { display: flex; flex-direction: row; justify-content: space-around; flex: 1; padding: 10px 0; }
+        .answer-grid-columns-container { display: flex; flex-direction: row; justify-content: space-around; flex: 1; padding: 15px 25px; }
         .answer-grid-column { display: flex; flex-direction: column; }
         .column-divider { width: 1.5px; background-color: #000; margin: 0 10px; }
-        .answer-options-header { display: flex; margin-bottom: 4px; padding-left: 32px; }
-        .answer-options-header span { width: 18px; text-align: center; font-size: 9pt; font-weight: bold; }
+        .answer-options-header { display: flex; margin-bottom: 4px; padding-left: 28px; }
+        .answer-options-header span { width: 16px; text-align: center; font-size: 9pt; font-weight: bold; margin: 0 2px; }
         .answer-row { display: flex; align-items: center; margin-bottom: 3px; }
-        .answer-row .q-number { font-weight: bold; margin-right: 8px; font-size: 10pt; width: 28px; text-align: left; }
+        .answer-row .q-number { font-weight: bold; margin-right: 6px; font-size: 10pt; width: 26px; text-align: left; }
         .answer-row .options-bubbles { display: flex; align-items: center; }
-        .answer-row .bubble { width: 12px; height: 12px; border: 1px solid #999; border-radius: 50%; margin: 0 3px; }
+        .answer-row .bubble { width: 11px; height: 11px; border: 1px solid #999; border-radius: 50%; margin: 0 2.5px; }
         
         /* --- CSS das Questões --- */
         .instructions { margin-bottom: 25px; text-align: justify; font-size: 10pt; color: #444; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
@@ -138,23 +138,23 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         }
         
         .grid-top-left-anchor {
-            top: 15px;
-            left: 15px;
+            top: 8px;
+            left: 8px;
         }
         
         .grid-top-right-anchor {
-            top: 15px;
-            right: 15px;
+            top: 8px;
+            right: 8px;
         }
         
         .grid-bottom-left-anchor {
-            bottom: 15px;
-            left: 15px;
+            bottom: 8px;
+            left: 8px;
         }
         
         .grid-bottom-right-anchor {
-            bottom: 15px;
-            right: 15px;
+            bottom: 8px;
+            right: 8px;
         }
 
         /* Marcadores de delimitação da área de respostas */
