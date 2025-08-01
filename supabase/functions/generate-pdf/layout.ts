@@ -60,20 +60,20 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         .main-header, .info-grid, .student-info { display: none !important; }
 
         /* --- CSS do Gabarito --- */
-        .answer-sheet-container { border: 1.5px solid #000; margin-bottom: 25px; display: flex; padding: 5px; }
+        .answer-sheet-container { border: 1.5px solid #000; margin-bottom: 25px; display: flex; padding: 5px; min-height: 200px; }
         .qr-code-section { flex: 0 0 140px; padding: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .qr-code-section img { width: 120px; height: 120px; }
         .qr-code-section p { font-size: 9pt; text-align: center; margin-top: 5px; }
-        .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding: 0 15px; display: flex; flex-direction: column; }
-        .answer-grid-header { text-align: center; margin-bottom: 5px; font-size: 9pt; font-weight: bold; }
-        .answer-grid-columns-container { display: flex; flex-direction: row; justify-content: space-around; flex: 1; }
+        .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding: 0 15px; display: flex; flex-direction: column; min-height: 180px; }
+        .answer-grid-header { text-align: center; margin-bottom: 8px; font-size: 9pt; font-weight: bold; padding-top: 10px; }
+        .answer-grid-columns-container { display: flex; flex-direction: row; justify-content: space-around; flex: 1; padding: 10px 0; }
         .answer-grid-column { display: flex; flex-direction: column; }
         .column-divider { width: 1.5px; background-color: #000; margin: 0 10px; }
-        .answer-options-header { display: flex; margin-bottom: 2px; }
+        .answer-options-header { display: flex; margin-bottom: 4px; padding-left: 32px; }
         .answer-options-header span { width: 18px; text-align: center; font-size: 9pt; font-weight: bold; }
-        .answer-row { display: flex; align-items: center; margin-bottom: 2px; }
-        .answer-row .q-number { font-weight: bold; margin-right: 5px; font-size: 10pt; width: 28px; }
-        .answer-row .options-bubbles { display: flex; }
+        .answer-row { display: flex; align-items: center; margin-bottom: 3px; }
+        .answer-row .q-number { font-weight: bold; margin-right: 8px; font-size: 10pt; width: 28px; text-align: left; }
+        .answer-row .options-bubbles { display: flex; align-items: center; }
         .answer-row .bubble { width: 12px; height: 12px; border: 1px solid #999; border-radius: 50%; margin: 0 3px; }
         
         /* --- CSS das Questões --- */
@@ -85,8 +85,9 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         .question-content { text-align: justify; margin-bottom: 10px; widows: 3; orphans: 3; }
         .question-content img { max-width: 100%; height: auto; display: block; margin: 10px 0; }
         .options-list { list-style-type: none; padding-left: 0; margin-top: 5px; }
-        .option { margin-bottom: 6px; display: flex; align-items: flex-start; }
-        .option-letter { font-weight: bold; margin-right: 8px; }
+        .option { margin-bottom: 8px; display: flex; align-items: flex-start; }
+        .option-letter { font-weight: bold; margin-right: 8px; min-width: 20px; display: inline-block; }
+        .option-text { flex: 1; line-height: 1.4; }
         .correct-answer-highlight { background-color: #cccccc; border-radius: 3px; padding: 1px 4px; }
         
         /* NOVO: CSS para o gabarito destacável do aluno */
@@ -137,23 +138,23 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         }
         
         .grid-top-left-anchor {
-            top: 5px;
-            left: 5px;
+            top: 15px;
+            left: 15px;
         }
         
         .grid-top-right-anchor {
-            top: 5px;
-            right: 5px;
+            top: 15px;
+            right: 15px;
         }
         
         .grid-bottom-left-anchor {
-            bottom: 5px;
-            left: 5px;
+            bottom: 15px;
+            left: 15px;
         }
         
         .grid-bottom-right-anchor {
-            bottom: 5px;
-            right: 5px;
+            bottom: 15px;
+            right: 15px;
         }
 
         /* Marcadores de delimitação da área de respostas */
@@ -352,7 +353,10 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
                     if (q.type === 'multiple_choice' && Array.isArray(q.options)) {
                         optionsHTML = `<ol class="options-list">${q.options.map((opt: any, optIndex: number) => {
                             const isCorrect = includeAnswers && Array.isArray(q.correct_answer) && q.correct_answer.includes(opt.id);
-                            return `<li class="option ${isCorrect ? 'correct-answer-highlight' : ''}"><span class="option-letter">${String.fromCharCode(65 + optIndex)})</span><div>${opt.text}</div></li>`;
+                            return `<li class="option ${isCorrect ? 'correct-answer-highlight' : ''}">
+                                <span class="option-letter">${String.fromCharCode(65 + optIndex)})</span>
+                                <div class="option-text">${opt.text}</div>
+                            </li>`;
                         }).join('')}</ol>`;
                     }
                     return `<div class="question"><div class="question-header">Questão ${index + 1} (${q.points.toFixed(2)} pts)</div><div class="question-content">${questionContent}</div>${optionsHTML}</div>`;
