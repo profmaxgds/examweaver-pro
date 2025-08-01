@@ -69,17 +69,22 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
 
   // Função para gerar o gabarito de bolhas
   const generateAnswerGrid = () => {
+    const multipleChoiceQuestions = questions.filter(q => q.type === 'multiple_choice');
+    if (multipleChoiceQuestions.length === 0) return '';
+    
     let grid = `<div class="answer-grid-header">Marque o gabarito preenchendo completamente a região de cada alternativa.</div>`;
     grid += `<div class="answer-options-header">${['a', 'b', 'c', 'd', 'e'].map(l => `<span>${l}</span>`).join('')}</div>`;
-    for (let i = 1; i <= questions.length; i++) {
+    
+    multipleChoiceQuestions.forEach((_, index) => {
+        const questionNumber = index + 1;
         grid += `
         <div class="answer-row">
-            <span class="q-number">Q.${i}:</span>
+            <span class="q-number">Q.${questionNumber}:</span>
             <div class="options-bubbles">
-                ${Array(5).fill('<div class="bubble-container"><div class="bubble-outer"><div class="bubble-inner"></div></div></div>').join('')}
+                ${Array(5).fill(0).map(() => `<div class="bubble-container"><div class="bubble-outer"><div class="bubble-inner"></div></div></div>`).join('')}
             </div>
         </div>`;
-    }
+    });
     return grid;
   };
 
@@ -106,14 +111,16 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
           .qr-code-section p { font-size: 9pt; text-align: center; margin-top: 5px; }
           .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding-left: 15px; display: flex; flex-direction: column; }
           .answer-grid-header { text-align: center; margin-bottom: 8px; font-size: 9pt; font-weight: bold; }
-          .answer-options-header { display: flex; margin-left: 35px; margin-bottom: 4px; }
-          .answer-options-header span { width: 20px; text-align: center; font-size: 9pt; font-weight: bold; }
+          .answer-options-header { display: flex; margin-left: 38px; margin-bottom: 4px; gap: 2px; }
+          .answer-options-header span { width: 16px; text-align: center; font-size: 9pt; font-weight: bold; }
           .answer-row { display: flex; align-items: center; margin-bottom: 3px; }
-          .answer-row .q-number { font-weight: bold; margin-right: 8px; font-size: 10pt; width: 28px; }
-          .answer-row .options-bubbles { display: flex; }
-          .bubble-container { width: 20px; display: flex; justify-content: center; align-items: center; }
-          .bubble-outer { width: 14px; height: 14px; border: 1.5px solid #000; border-radius: 50%; display: flex; justify-content: center; align-items: center; }
-          .bubble-inner { width: 8px; height: 8px; border: 1px solid #666; border-radius: 50%; }
+          .answer-row .q-number { font-weight: bold; margin-right: 8px; font-size: 10pt; width: 30px; }
+          .answer-row .options-bubbles { display: flex; gap: 2px; }
+          .bubble-container { width: 16px; display: flex; justify-content: center; align-items: center; }
+          .bubble-outer { width: 14px; height: 14px; border: 2px solid #000; border-radius: 50%; display: flex; justify-content: center; align-items: center; }
+          .bubble-inner { width: 8px; height: 8px; border: 1px solid #333; border-radius: 50%; }
+          .essay-lines { margin-top: 8px; }
+          .essay-line { border-bottom: 1px solid #999; height: 20px; margin-bottom: 2px; width: 100%; }
           .instructions { margin-bottom: 25px; text-align: justify; font-size: 10pt; color: #444; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
           .questions-container { column-count: ${isDoubleColumn ? 2 : 1}; column-gap: 1.5cm; }
           .question { margin-bottom: 18px; page-break-inside: avoid; -webkit-column-break-inside: avoid; break-inside: avoid; }
@@ -161,12 +168,19 @@ export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: 
                                     const isCorrect = includeAnswers && Array.isArray(q.correct_answer) && q.correct_answer.includes(opt.id);
                                     return (
                                         <li key={opt.id} className={`option ${isCorrect ? 'correct-answer-highlight' : ''}`}>
-                                            <span className="option-letter">{String.fromCharCode(65 + optIndex)})</span>
+                                            <span className="option-letter">{String.fromCharCode(97 + optIndex)})</span>
                                             <div dangerouslySetInnerHTML={{ __html: opt.text }} />
                                         </li>
                                     );
                                 })}
                             </ol>
+                        )}
+                        {q.type === 'essay' && (
+                            <div className="essay-lines">
+                                {Array.from({ length: (q as any).essay_lines || 5 }, (_, i) => (
+                                    <div key={i} className="essay-line"></div>
+                                ))}
+                            </div>
                         )}
                     </div>
                 ))}

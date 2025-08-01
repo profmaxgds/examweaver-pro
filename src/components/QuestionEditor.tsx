@@ -31,6 +31,7 @@ interface QuestionData {
   difficulty: 'easy' | 'medium' | 'hard';
   tags: string[];
   points: number;
+  essayLines?: number;
 }
 
 interface QuestionEditorProps {
@@ -58,6 +59,7 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
     difficulty: initialData?.difficulty || 'medium',
     tags: initialData?.tags || [],
     points: initialData?.points || 1.0,
+    essayLines: (initialData as any)?.essayLines || 5,
   });
 
   const [newTag, setNewTag] = useState('');
@@ -347,13 +349,29 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
             {question.type === 'essay' && (
                <Card>
                 <CardHeader><CardTitle>Resposta Esperada / Critérios de Correção</CardTitle></CardHeader>
-                <CardContent>
-                  <Textarea
-                    placeholder="Descreva a resposta ideal ou os critérios para a correção..."
-                    value={question.correctAnswer || ''}
-                    onChange={(e) => handleCorrectAnswerChange(e.target.value)}
-                    rows={5}
-                  />
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="essayLines">Número de linhas para resposta</Label>
+                    <Input
+                      id="essayLines"
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={question.essayLines || 5}
+                      onChange={(e) => setQuestion(prev => ({ ...prev, essayLines: parseInt(e.target.value) || 5 }))}
+                      placeholder="Ex: 5"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="expectedAnswer">Resposta Esperada / Critérios</Label>
+                    <Textarea
+                      id="expectedAnswer"
+                      placeholder="Descreva a resposta ideal ou os critérios para a correção..."
+                      value={question.correctAnswer || ''}
+                      onChange={(e) => handleCorrectAnswerChange(e.target.value)}
+                      rows={5}
+                    />
+                  </div>
                 </CardContent>
               </Card>
             )}
