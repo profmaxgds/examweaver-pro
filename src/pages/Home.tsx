@@ -100,7 +100,7 @@ export default function Home() {
                 <CardContent><div className="text-2xl font-bold">{loading ? <Skeleton className="h-8 w-12" /> : stats.exams}</div><div className="text-xs text-muted-foreground">Provas disponíveis</div></CardContent>
               </Card>
             </Link>
-            <Link to="/reports">
+            <Link to="/corrections-management">
               <Card className="hover:border-primary transition-colors">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">Correções Realizadas</CardTitle><BarChart3 className="h-4 w-4 text-muted-foreground" /></CardHeader>
                 <CardContent><div className="text-2xl font-bold">{loading ? <Skeleton className="h-8 w-12" /> : stats.corrections}</div><div className="text-xs text-muted-foreground">Total de provas corrigidas</div></CardContent>
@@ -113,6 +113,7 @@ export default function Home() {
             <Link to="/questions/new"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><PlusCircle /> Nova Questão</CardTitle></CardHeader><CardContent><CardDescription>Adicionar uma nova questão ao seu banco de dados.</CardDescription></CardContent></Card></Link>
             <Link to="/exams/new"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><FileText /> Nova Prova</CardTitle></CardHeader><CardContent><CardDescription>Montar uma nova prova usando suas questões.</CardDescription></CardContent></Card></Link>
             <Link to="/auto-correction"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><Upload /> Correção Automática</CardTitle></CardHeader><CardContent><CardDescription>Escaneie QR codes e corrija provas automaticamente.</CardDescription></CardContent></Card></Link>
+            <Link to="/corrections-management"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><ClipboardList /> Gestão de Gabaritos</CardTitle></CardHeader><CardContent><CardDescription>Visualize, edite e publique correções de provas.</CardDescription></CardContent></Card></Link>
             <Link to="/students"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><Users /> Gerenciar Alunos</CardTitle></CardHeader><CardContent><CardDescription>Adicionar e editar alunos para suas turmas.</CardDescription></CardContent></Card></Link>
             <Link to="/classes"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><BookCopy /> Gerenciar Turmas</CardTitle></CardHeader><CardContent><CardDescription>Criar e editar suas turmas e instituições.</CardDescription></CardContent></Card></Link>
           </div>

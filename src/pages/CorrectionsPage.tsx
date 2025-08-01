@@ -174,6 +174,20 @@ export default function CorrectionsPage() {
               </Link>
               <h1 className="text-2xl font-bold">Correções</h1>
             </div>
+            <div className="flex items-center gap-2">
+              <Link to="/reports">
+                <Button variant="outline" size="sm">
+                  <FileText className="w-4 h-4 mr-2" />
+                  Relatórios
+                </Button>
+              </Link>
+              <Link to="/corrections-management">
+                <Button variant="outline" size="sm">
+                  <Eye className="w-4 h-4 mr-2" />
+                  Gestão de Gabaritos
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </header>

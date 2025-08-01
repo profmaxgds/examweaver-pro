@@ -20,6 +20,7 @@ import NewExamPage from "./pages/NewExamPage";
 import EditExamPage from "./pages/EditExamPage";
 import ReportsPage from "./pages/ReportsPage";
 import CorrectionsPage from "./pages/CorrectionsPage";
+import CorrectionsManagementPage from "./pages/CorrectionsManagementPage";
 import HeadersPage from "./pages/HeadersPage";
 import StudentsPage from "./pages/StudentsPage";
 import ClassesPage from "./pages/ClassesPage";
@@ -68,6 +69,8 @@ const App = () => (
           <Route path="/reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
           <Route path="/headers" element={<ProtectedRoute><HeadersPage /></ProtectedRoute>} />
           <Route path="/corrections" element={<ProtectedRoute><CorrectionsPage /></ProtectedRoute>} />
+          <Route path="/corrections-management" element={<ProtectedRoute><CorrectionsManagementPage /></ProtectedRoute>} />
+          <Route path="/corrections-management/:examId" element={<ProtectedRoute><CorrectionsManagementPage /></ProtectedRoute>} />
           <Route path="/students" element={<ProtectedRoute><StudentsPage /></ProtectedRoute>} />
 
           <Route path="/classes" element={<ProtectedRoute><ClassesPage /></ProtectedRoute>} />

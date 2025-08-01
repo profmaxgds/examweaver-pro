@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -6,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { Download, TrendingUp, Users, FileText, Trophy } from 'lucide-react';
+import { Download, TrendingUp, Users, FileText, Trophy, ArrowLeft, Home } from 'lucide-react';
 
 interface Exam {
   id: string;
@@ -197,13 +198,29 @@ export default function ReportsPage() {
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold">Relatórios e Estatísticas</h1>
-            {reportData && (
-              <Button onClick={exportReport}>
-                <Download className="w-4 h-4 mr-2" />
-                Exportar Relatório
-              </Button>
-            )}
+            <div className="flex items-center space-x-4">
+              <Link to="/">
+                <Button variant="ghost" size="sm">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Voltar
+                </Button>
+              </Link>
+              <h1 className="text-2xl font-bold">Relatórios e Estatísticas</h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link to="/corrections-management">
+                <Button variant="outline" size="sm">
+                  <FileText className="w-4 h-4 mr-2" />
+                  Gestão de Gabaritos
+                </Button>
+              </Link>
+              {reportData && (
+                <Button onClick={exportReport}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Exportar Relatório
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </header>

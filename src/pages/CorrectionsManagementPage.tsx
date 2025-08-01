@@ -367,11 +367,11 @@ export default function CorrectionsManagementPage() {
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
-            onClick={() => navigate('/corrections')}
+            onClick={() => navigate('/')}
             className="gap-2"
           >
             <ArrowLeft className="w-4 h-4" />
-            Voltar
+            Home
           </Button>
           <div>
             <h1 className="text-3xl font-bold">Gestão de Gabaritos</h1>
