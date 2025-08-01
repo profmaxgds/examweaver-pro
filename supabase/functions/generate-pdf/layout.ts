@@ -5,10 +5,11 @@ interface Question {
   id: string;
   title: string;
   content: any;
-  type: string;
+  type: 'multiple_choice' | 'true_false' | 'essay';
   points: number;
   options?: any[];
   correct_answer?: any;
+  text_lines?: number; // Número de linhas para questões dissertativas
 }
 
 interface ExamData {
@@ -40,7 +41,7 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
     const isDoubleColumn = exam.layout === 'double_column';
     const totalQuestions = questions.length;
 
-    // Estilos CSS com todas as alterações
+    // Estilos CSS atualizados
     const styles = `
         @import url('https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap');
         body { font-family: 'Times New Roman', Times, serif; font-size: 11pt; line-height: 1.4; margin: 0; padding: 1.5cm; color: #000; background-color: #fff; }
@@ -75,6 +76,7 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         .answer-row .q-number { font-weight: bold; margin-right: 6px; font-size: 10pt; width: 26px; text-align: left; }
         .answer-row .options-bubbles { display: flex; align-items: center; }
         .answer-row .bubble { width: 11px; height: 11px; border: 1px solid #999; border-radius: 50%; margin: 0 2.5px; }
+        .answer-row .essay-indicator { font-size: 9pt; color: #555; font-style: italic; }
         
         /* --- CSS das Questões --- */
         .instructions { margin-bottom: 25px; text-align: justify; font-size: 10pt; color: #444; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
@@ -90,145 +92,35 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         .option-text { flex: 1; line-height: 1.4; }
         .correct-answer-highlight { background-color: #cccccc; border-radius: 3px; padding: 1px 4px; }
         
-        /* NOVO: CSS para o gabarito destacável do aluno */
-        .student-answer-key {
-            border-top: 2px dashed #999;
-            padding-top: 15px;
-            margin-top: 30px;
-            text-align: center;
-        }
-        .student-answer-key .cut-line {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            font-size: 10pt;
-            color: #555;
-            margin-bottom: 10px;
-        }
-        .student-answer-key .key-grid {
-            display: inline-flex;
-            flex-wrap: wrap;
-            gap: 5px 15px;
-            max-width: 100%;
-        }
-        .student-answer-key .key-item {
-            font-size: 10pt;
-        }
+        /* CSS para questões dissertativas */
+        .essay-lines { margin-top: 10px; width: 100%; }
+        .essay-line { border-bottom: 1px solid #999; margin-bottom: 2mm; height: 7mm; width: 100%; }
+        
+        /* CSS para o gabarito destacável do aluno */
+        .student-answer-key { border-top: 2px dashed #999; padding-top: 15px; margin-top: 30px; text-align: center; }
+        .student-answer-key .cut-line { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 10pt; color: #555; margin-bottom: 10px; }
+        .student-answer-key .key-grid { display: inline-flex; flex-wrap: wrap; gap: 5px 15px; max-width: 100%; }
+        .student-answer-key .key-item { font-size: 10pt; }
+        .student-answer-key .essay-key-item { font-size: 9pt; color: #555; font-style: italic; }
         
         /* Container da folha de respostas */
-        .answer-sheet-container {
-            position: relative;
-        }
-        
-        /* Container da grade de respostas com marcadores âncora */
-        .answer-grid-section {
-            position: relative;
-        }
-        
-        /* Marcadores âncora APENAS na região da grade de respostas (à direita do QR code) */
-        .anchor-marker {
-            position: absolute;
-            width: 8px;
-            height: 8px;
-            background-color: #000;
-            border: 2px solid #000;
-            border-radius: 50%;
-            z-index: 20;
-        }
-        
-        .grid-top-left-anchor {
-            top: 8px;
-            left: 8px;
-        }
-        
-        .grid-top-right-anchor {
-            top: 8px;
-            right: 8px;
-        }
-        
-        .grid-bottom-left-anchor {
-            bottom: 8px;
-            left: 8px;
-        }
-        
-        .grid-bottom-right-anchor {
-            bottom: 8px;
-            right: 8px;
-        }
-
-        /* Marcadores de delimitação da área de respostas */
-        .answer-area-marker {
-            position: absolute;
-            background-color: #000;
-            z-index: 15;
-        }
-        
-        /* Marcadores horizontais superior e inferior da grade */
-        .answer-top-marker {
-            width: 12px;
-            height: 3px;
-            top: 15px;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        
-        .answer-bottom-marker {
-            width: 12px;
-            height: 3px;
-            bottom: 5px;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        
-        /* Marcadores verticais esquerdo e direito da grade */
-        .answer-left-marker {
-            width: 3px;
-            height: 12px;
-            left: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-        
-        .answer-right-marker {
-            width: 3px;
-            height: 12px;
-            right: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-
-        /* Marcadores de referência específicos para detecção */
-        .detection-reference {
-            position: absolute;
-            width: 4px;
-            height: 4px;
-            background-color: #333;
-            border-radius: 50%;
-            z-index: 10;
-        }
-        
-        .ref-q1 {
-            top: 35px;
-            left: 25px;
-        }
-        
-        .ref-q5 {
-            top: 95px;
-            left: 25px;
-        }
-        
-        .ref-q10 {
-            top: 155px;
-            left: 25px;
-        }
-
-        /* QR code - sem marcadores âncora */
-        .qr-code-section {
-            position: relative;
-            z-index: 5;
-        }
-
+        .answer-sheet-container { position: relative; }
+        .answer-grid-section { position: relative; }
+        .anchor-marker { position: absolute; width: 8px; height: 8px; background-color: #000; border: 2px solid #000; border-radius: 50%; z-index: 20; }
+        .grid-top-left-anchor { top: 8px; left: 8px; }
+        .grid-top-right-anchor { top: 8px; right: 8px; }
+        .grid-bottom-left-anchor { bottom: 8px; left: 8px; }
+        .grid-bottom-right-anchor { bottom: 8px; right: 8px; }
+        .answer-area-marker { position: absolute; background-color: #000; z-index: 15; }
+        .answer-top-marker { width: 12px; height: 3px; top: 15px; left: 50%; transform: translateX(-50%); }
+        .answer-bottom-marker { width: 12px; height: 3px; bottom: 5px; left: 50%; transform: translateX(-50%); }
+        .answer-left-marker { width: 3px; height: 12px; left: 15px; top: 50%; transform: translateY(-50%); }
+        .answer-right-marker { width: 3px; height: 12px; right: 15px; top: 50%; transform: translateY(-50%); }
+        .detection-reference { position: absolute; width: 4px; height: 4px; background-color: #333; border-radius: 50%; z-index: 10; }
+        .ref-q1 { top: 35px; left: 25px; }
+        .ref-q5 { top: 95px; left: 25px; }
+        .ref-q10 { top: 155px; left: 25px; }
+        .qr-code-section { position: relative; z-index: 5; }
         .page-footer { display: flex; justify-content: space-between; font-size: 10pt; margin-top: 20px; border-top: 1px solid #ccc; padding-top: 5px; }
         @media print { 
             body { -webkit-print-color-adjust: exact; }
@@ -243,16 +135,26 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         if (totalQuestions === 0) return '';
         const generateGridColumn = (start: number, end: number) => {
             let columnHTML = `<div class="answer-grid-column">`;
-            columnHTML += `<div class="answer-options-header">${['a', 'b', 'c', 'd', 'e'].map(l => `<span>${l}</span>`).join('')}</div>`;
+            const questionsInColumn = questions.slice(start - 1, end);
+            // Determinar opções com base nas questões da coluna
+            const hasMultipleChoice = questionsInColumn.some(q => q.type === 'multiple_choice');
+            const options = hasMultipleChoice ? ['A', 'B', 'C', 'D', 'E'] : ['V', 'F'];
+            columnHTML += `<div class="answer-options-header">${options.map(l => `<span>${l}</span>`).join('')}</div>`;
             for (let i = start; i <= end; i++) {
-                columnHTML += `<div class="answer-row"><span class="q-number">Q.${i}:</span><div class="options-bubbles">${Array(5).fill('<div class="bubble"></div>').join('')}</div></div>`;
+                const q = questions[i - 1];
+                if (q.type === 'essay') {
+                    columnHTML += `<div class="answer-row"><span class="q-number">Q.${i}:</span><span class="essay-indicator">Dissertativa</span></div>`;
+                } else {
+                    const numOptions = q.type === 'true_false' ? 2 : 5;
+                    columnHTML += `<div class="answer-row"><span class="q-number">Q.${i}:</span><div class="options-bubbles">${Array(numOptions).fill('<div class="bubble"></div>').join('')}</div></div>`;
+                }
             }
             columnHTML += `</div>`;
             return columnHTML;
         };
         const numCols = totalQuestions <= 6 ? 1 : totalQuestions <= 12 ? 2 : 3;
         const questionsPerColumn = Math.ceil(totalQuestions / numCols);
-        let allColumnsHTML = `<div class="answer-grid-header">Marque o gabarito preenchendo completamente a região de cada alternativa.</div>`;
+        let allColumnsHTML = `<div class="answer-grid-header">Marque o gabarito preenchendo completamente a região de cada alternativa. Questões dissertativas devem ser respondidas no espaço fornecido.</div>`;
         allColumnsHTML += `<div class="answer-grid-columns-container">`;
         for (let i = 0; i < numCols; i++) {
             const start = (i * questionsPerColumn) + 1;
@@ -267,13 +169,17 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         return allColumnsHTML;
     };
 
-    // NOVA FUNÇÃO: Gera o gabarito destacável
     const generateStudentAnswerKey = () => {
         let keyHTML = `<div class="student-answer-key">`;
         keyHTML += `<div class="cut-line">&#9986; ----- Recorte e leve com você ----- &#9986;</div>`;
         keyHTML += `<div class="key-grid">`;
         for (let i = 1; i <= totalQuestions; i++) {
-            keyHTML += `<div class="key-item"><strong>${i}.</strong> _____</div>`;
+            const q = questions[i - 1];
+            if (q.type === 'essay') {
+                keyHTML += `<div class="key-item essay-key-item"><strong>${i}.</strong> Dissertativa</div>`;
+            } else {
+                keyHTML += `<div class="key-item"><strong>${i}.</strong> _____</div>`;
+            }
         }
         keyHTML += `</div></div>`;
         return keyHTML;
@@ -300,23 +206,17 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
                     <p>Prova: ${exam.id.split('-')[0]}.${studentInfo?.id || version}</p>
                 </div>
                 <div class="answer-grid-section">
-                    <!-- Marcadores âncora APENAS na região da grade de respostas (à direita do QR code) -->
                     <div class="anchor-marker grid-top-left-anchor"></div>
                     <div class="anchor-marker grid-top-right-anchor"></div>
                     <div class="anchor-marker grid-bottom-left-anchor"></div>
                     <div class="anchor-marker grid-bottom-right-anchor"></div>
-                    
-                    <!-- Marcadores de delimitação da área de respostas -->
                     <div class="answer-area-marker answer-top-marker"></div>
                     <div class="answer-area-marker answer-bottom-marker"></div>
                     <div class="answer-area-marker answer-left-marker"></div>
                     <div class="answer-area-marker answer-right-marker"></div>
-                    
-                    <!-- Marcadores de referência para detecção -->
                     <div class="detection-reference ref-q1"></div>
                     <div class="detection-reference ref-q5"></div>
                     <div class="detection-reference ref-q10"></div>
-                    
                     ${generateAnswerGrid()}
                 </div>
             </div>
@@ -358,6 +258,18 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
                                 <div class="option-text">${opt.text}</div>
                             </li>`;
                         }).join('')}</ol>`;
+                    } else if (q.type === 'true_false') {
+                        optionsHTML = `<ol class="options-list">${['Verdadeiro', 'Falso'].map((opt, optIndex) => {
+                            const isCorrect = includeAnswers && q.correct_answer === (optIndex === 0 ? true : false);
+                            return `<li class="option ${isCorrect ? 'correct-answer-highlight' : ''}">
+                                <span class="option-letter">${optIndex === 0 ? 'V' : 'F'})</span>
+                                <div class="option-text">${opt}</div>
+                            </li>`;
+                        }).join('')}</ol>`;
+                    } else if (q.type === 'essay') {
+                        const numLines = q.text_lines || 5; // Padrão de 5 linhas se não especificado
+                        const lineWidth = isDoubleColumn ? '100%' : '100%'; // Ajustar para layout
+                        optionsHTML = `<div class="essay-lines">${Array(numLines).fill().map(() => `<div class="essay-line"></div>`).join('')}</div>`;
                     }
                     return `<div class="question"><div class="question-header">Questão ${index + 1} (${q.points.toFixed(2)} pts)</div><div class="question-content">${questionContent}</div>${optionsHTML}</div>`;
                 }).join('')}

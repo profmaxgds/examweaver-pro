@@ -1,291 +1,558 @@
 import QRCode from 'qrcode';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useToast } from '@/hooks/use-toast';
+import JSZip from 'jszip';
+import { ExamEditorContext } from './context';
+import { EditExamPageContent } from './EditExamPageContent';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { QuestionEditor } from './QuestionEditor';
 
-// Interfaces para os dados da prova
 interface Question {
   id: string;
   title: string;
   content: any;
-  type: string;
+  type: 'multiple_choice' | 'true_false' | 'essay';
+  subject: string;
+  category: string | null;
+  difficulty: string;
+  tags: string[];
   points: number;
-  options?: any[];
-  correct_answer?: any;
-  essayLines?: number;
-  essay_lines?: number;
-}
-
-interface ExamHeader {
-  institution?: string;
-  logo_url?: string;
-  content?: any;
+  options: { id: string; text: string }[] | null;
+  correct_answer: any; // Array para múltipla escolha, booleano para V/F, null para dissertativa
+  text_lines?: number; // Número de linhas para questões dissertativas
 }
 
 interface ExamData {
   id: string;
   title: string;
   subject: string;
-  total_points: number;
-  exam_date: string | null;
-  instructions?: string;
-  layout?: string;
-  institution?: string;
-  exam_headers?: ExamHeader | null;
+  institution: string;
+  examDate: string;
+  selectedQuestions: Question[];
+  shuffleQuestions: boolean;
+  shuffleOptions: boolean;
+  versions: number;
+  layout: string;
+  header_id: string | null;
+  qr_enabled: boolean;
+  time_limit: number | null;
+  generation_mode: 'versions' | 'class';
+  target_class_id: string | null;
 }
 
-interface ExamPrintTemplateProps {
-  exam: ExamData;
-  questions: Question[];
-  version: number;
-  includeAnswers?: boolean;
-}
+// Função de embaralhamento determinístico
+const seededShuffle = <T,>(array: T[], seed: string): T[] => {
+  let currentIndex = array.length, randomIndex;
+  const newArray = [...array];
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    const char = seed.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  const random = () => {
+    let x = Math.sin(hash++) * 10000;
+    return x - Math.floor(x);
+  };
+  while (currentIndex !== 0) {
+    randomIndex = Math.floor(random() * currentIndex);
+    currentIndex--;
+    [newArray[currentIndex], newArray[randomIndex]] = [newArray[randomIndex], newArray[currentIndex]];
+  }
+  return newArray;
+};
 
-// Componente React que renderiza o HTML da Prova
-export function ExamPrintTemplate({ exam, questions, version, includeAnswers }: ExamPrintTemplateProps) {
+export default function EditExamPage() {
+  const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
-  const [qrCodeUrl, setQrCodeUrl] = useState('');
-  const [professorName, setProfessorName] = useState<string>('');
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  
+  const [loading, setLoading] = useState(true);
+  const [isPreparing, setIsPreparing] = useState(false);
+  const [examData, setExamData] = useState<ExamData | null>(null);
+  const [allQuestions, setAllQuestions] = useState<Question[]>([]);
+  const [previewQuestion, setPreviewQuestion] = useState<Question | null>(null);
+  const [editQuestion, setEditQuestion] = useState<Question | null>(null);
 
-  // Buscar nome do professor do perfil
-  useEffect(() => {
-    const fetchProfessorName = async () => {
-      if (user) {
-        try {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('name')
-            .eq('user_id', user.id)
-            .single();
-          
-          if (profile?.name) {
-            setProfessorName(profile.name);
-          }
-        } catch (error) {
-          console.error('Erro ao buscar perfil:', error);
-        }
+  const fetchExamAndQuestions = useCallback(async (force = false) => {
+    if (!force && examData) return;
+    if (!id || !user) return;
+    setLoading(true);
+    try {
+      const examPromise = supabase.from('exams').select('*').eq('id', id).eq('author_id', user.id).single();
+      const allQuestionsPromise = supabase.from('questions').select('*').eq('author_id', user.id).order('created_at', { ascending: false });
+
+      const [{ data: exam, error: examError }, { data: allQs, error: allQsError }] = await Promise.all([examPromise, allQuestionsPromise]);
+
+      if (examError || !exam) {
+        toast({ title: "Erro", description: "Prova não encontrada ou você não tem permissão para acessá-la.", variant: "destructive" });
+        navigate('/exams');
+        return;
       }
-    };
-    
-    fetchProfessorName();
-  }, [user]);
+      if (allQsError) throw allQsError;
+      
+      const currentQuestions = (allQs || []).map(q => ({
+        ...q,
+        options: Array.isArray(q.options) ? q.options.map((opt: any) => ({
+          id: opt.id || opt,
+          text: opt.text || opt
+        })) : q.type === 'true_false' ? null : null, // Garantir que V/F não tenha options
+        correct_answer: q.type === 'essay' ? null : q.correct_answer, // Forçar null para dissertativas
+        text_lines: q.type === 'essay' ? (q.text_lines || 5) : undefined // Definir padrão para dissertativas
+      })) as Question[];
+      setAllQuestions(currentQuestions);
 
-  // Gera o QR Code dinamicamente no cliente
+      const selectedQs = currentQuestions.filter(q => exam.question_ids.includes(q.id));
+
+      setExamData({
+        id: exam.id,
+        title: exam.title,
+        subject: exam.subject,
+        institution: exam.institutions || '',
+        examDate: exam.exam_date ? new Date(exam.exam_date).toISOString().split('T')[0] : '',
+        selectedQuestions: selectedQs,
+        shuffleQuestions: exam.shuffle_questions || false,
+        shuffleOptions: exam.shuffle_options || false,
+        versions: exam.versions || 1,
+        layout: exam.layout || 'single_column',
+        header_id: exam.header_id,
+        qr_enabled: exam.qr_enabled !== false,
+        time_limit: exam.time_limit,
+        generation_mode: (exam.generation_mode as 'versions' | 'class') || 'versions',
+        target_class_id: exam.target_class_id,
+      });
+
+    } catch (error) {
+      console.error('Erro ao buscar dados:', error);
+      toast({ title: "Erro", description: "Erro ao carregar a prova ou questões.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }, [id, user, navigate, toast]);
+
   useEffect(() => {
-    const generateQRCode = async () => {
-      try {
-        // Gerar QR code com formato JSON padronizado
-        const qrData = {
-          examId: exam.id,
-          studentId: `version-${version}`, // Para versões gerais
-          version: version
-        };
-        
-        const url = await QRCode.toDataURL(JSON.stringify(qrData), {
-          width: 120,
-          margin: 1,
-        });
-        setQrCodeUrl(url);
-      } catch (err) {
-        console.error('Falha ao gerar QR code:', err);
-      }
-    };
-    generateQRCode();
-  }, [exam.id, version]);
+    fetchExamAndQuestions(true);
+  }, [fetchExamAndQuestions]);
 
-  const header = exam.exam_headers;
-  const isDoubleColumn = exam.layout === 'double_column';
+  const handleSave = async () => {
+    if (!examData) return;
+    setLoading(true);
+    try {
+      const totalPoints = examData.selectedQuestions.reduce((sum, q) => sum + q.points, 0);
+      
+      const updateData = {
+        title: examData.title,
+        subject: examData.subject,
+        exam_date: examData.examDate ? new Date(examData.examDate).toISOString() : null,
+        question_ids: examData.selectedQuestions.map(q => q.id),
+        total_points: totalPoints,
+        layout: examData.layout,
+        shuffle_questions: examData.shuffleQuestions,
+        shuffle_options: examData.shuffleOptions,
+        versions: examData.versions,
+        header_id: examData.header_id || null,
+        qr_enabled: examData.qr_enabled,
+        time_limit: examData.time_limit || null,
+        generation_mode: examData.generation_mode,
+        target_class_id: examData.generation_mode === 'class' ? examData.target_class_id : null,
+      };
 
-  // Função para gerar o gabarito de bolhas com âncoras
-  const generateAnswerGrid = () => {
-    const multipleChoiceQuestions = questions.filter(q => q.type === 'multiple_choice');
-    const trueFalseQuestions = questions.filter(q => q.type === 'true_false');
-    const essayQuestions = questions.filter(q => q.type === 'essay');
-    
-    let grid = `<div class="answer-grid-container">`;
-    grid += `<div class="answer-grid-header">Marque o gabarito preenchendo completamente a região correspondente.</div>`;
-    
-    // Seção de questões múltipla escolha
-    if (multipleChoiceQuestions.length > 0) {
-      grid += `<div class="section-header">QUESTÕES DE MÚLTIPLA ESCOLHA</div>`;
-      grid += `<div class="answer-options-header">${['a', 'b', 'c', 'd', 'e'].map(l => `<span>${l}</span>`).join('')}</div>`;
-      
-      grid += `<div class="bubbles-detection-area">`;
-      grid += `<div class="detection-anchor detection-top-left"></div>`;
-      grid += `<div class="detection-anchor detection-top-right"></div>`;
-      
-      multipleChoiceQuestions.forEach((_, index) => {
-          const questionNumber = index + 1;
-          grid += `
-          <div class="answer-row">
-              <span class="q-number">Q.${questionNumber}:</span>
-              <div class="options-bubbles">
-                  ${Array(5).fill(0).map(() => `<div class="bubble-outer"><div class="bubble-inner"></div></div>`).join('')}
-              </div>
-          </div>`;
+      const { error } = await supabase
+        .from('exams')
+        .update(updateData)
+        .eq('id', examData.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Sucesso!",
+        description: "Prova atualizada com sucesso.",
       });
-      
-      grid += `<div class="detection-anchor detection-bottom-left"></div>`;
-      grid += `<div class="detection-anchor detection-bottom-right"></div>`;
-      grid += `</div>`;
-    }
-    
-    // Seção de questões verdadeiro/falso
-    if (trueFalseQuestions.length > 0) {
-      grid += `<div class="section-header">QUESTÕES VERDADEIRO/FALSO</div>`;
-      grid += `<div class="answer-options-header"><span>V</span><span>F</span></div>`;
-      
-      grid += `<div class="bubbles-detection-area tf-section">`;
-      grid += `<div class="detection-anchor detection-top-left"></div>`;
-      grid += `<div class="detection-anchor detection-top-right"></div>`;
-      
-      trueFalseQuestions.forEach((_, index) => {
-          const questionNumber = multipleChoiceQuestions.length + index + 1;
-          grid += `
-          <div class="answer-row">
-              <span class="q-number">Q.${questionNumber}:</span>
-              <div class="options-bubbles tf-bubbles">
-                  <div class="bubble-outer"><div class="bubble-inner"></div></div>
-                  <div class="bubble-outer"><div class="bubble-inner"></div></div>
-              </div>
-          </div>`;
+
+    } catch (error: any) {
+      console.error('Erro ao atualizar prova:', error);
+      toast({
+        title: "Erro",
+        description: `Não foi possível atualizar a prova: ${error.message}`,
+        variant: "destructive",
       });
-      
-      grid += `<div class="detection-anchor detection-bottom-left"></div>`;
-      grid += `<div class="detection-anchor detection-bottom-right"></div>`;
-      grid += `</div>`;
+    } finally {
+      setLoading(false);
     }
-    
-    // Seção de questões abertas
-    if (essayQuestions.length > 0) {
-      grid += `<div class="section-header">QUESTÕES ABERTAS</div>`;
-      grid += `<div class="essay-questions-list">`;
-      
-      essayQuestions.forEach((_, index) => {
-          const questionNumber = multipleChoiceQuestions.length + trueFalseQuestions.length + index + 1;
-          grid += `<div class="essay-question-item">Q.${questionNumber}: Questão Aberta</div>`;
-      });
-      
-      grid += `</div>`;
-    }
-    
-    grid += `</div>`;
-    return grid;
   };
 
-  return (
-    <html lang="pt-BR">
-      <head>
-        <meta charSet="UTF-8" />
-        <title>{`${exam.title} - V${version}`}</title>
-        <style>{`
-          /* Estilos otimizados para impressão, replicando o PDF */
-          @import url('https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap');
-          body { font-family: 'Times New Roman', Times, serif; font-size: 11pt; line-height: 1.4; margin: 0; padding: 1.5cm; color: #000; background-color: #fff; }
-          .page-container { width: 100%; max-width: 18cm; margin: auto; }
-          .main-header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; }
-          .main-header img { max-height: 50px; margin-bottom: 10px; }
-          .main-header .institution { font-size: 14pt; font-weight: bold; }
-          .main-header .title { font-size: 16pt; font-weight: bold; margin-top: 10px; }
-          .main-header .subtitle { font-size: 12pt; color: #333; }
-          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 15px; font-size: 10pt; padding: 10px 0; border-top: 1px solid #999; border-bottom: 1px solid #999; margin: 20px 0; }
-          .student-info { border-top: 1px solid #999; border-bottom: 1px solid #999; padding: 10px 0; margin-bottom: 25px; font-size: 11pt; }
-          .answer-sheet-container { border: 1.5px solid #000; margin-bottom: 25px; display: flex; padding: 5px; }
-          .qr-code-section { flex: 0 0 140px; padding: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-          .qr-code-section img { width: 120px; height: 120px; }
-          .qr-code-section p { font-size: 9pt; text-align: center; margin-top: 5px; }
-          .answer-grid-section { flex: 1; border-left: 1.5px solid #000; padding: 10px; display: flex; flex-direction: column; position: relative; }
-          .answer-grid-container { position: relative; padding: 20px; border: 2px solid #000; margin: 5px; }
-          .bubbles-detection-area { position: relative; padding: 15px; margin: 10px 0; }
-          .detection-anchor { position: absolute; width: 25px; height: 25px; background-color: #000; border: 3px solid #000; }
-          .detection-top-left { top: -3px; left: -3px; }
-          .detection-top-right { top: -3px; right: -3px; }
-          .detection-bottom-left { bottom: -3px; left: -3px; }
-          .detection-bottom-right { bottom: -3px; right: -3px; }
-          .answer-grid-header { text-align: center; margin: 10px 0; font-size: 9pt; font-weight: bold; }
-          .section-header { background-color: #f0f0f0; padding: 5px; margin: 10px 0 5px 0; font-size: 10pt; font-weight: bold; text-align: center; border: 1px solid #ccc; }
-          .answer-options-header { display: flex; margin-left: 40px; margin-bottom: 8px; gap: 6px; }
-          .answer-options-header span { width: 14px; text-align: center; font-size: 9pt; font-weight: bold; }
-          .answer-row { display: flex; align-items: center; margin-bottom: 5px; }
-          .answer-row .q-number { font-weight: bold; margin-right: 10px; font-size: 10pt; width: 30px; }
-          .answer-row .options-bubbles { display: flex; gap: 6px; }
-          .tf-bubbles { gap: 12px; }
-          .bubble-outer { width: 14px; height: 14px; border: 2px solid #000; border-radius: 50%; display: flex; justify-content: center; align-items: center; background-color: white; }
-          .bubble-inner { width: 6px; height: 6px; border: 1px solid #000; border-radius: 50%; background-color: white; }
-          .essay-questions-list { padding: 10px; background-color: #f9f9f9; border: 1px solid #ddd; margin: 5px 0; }
-          .essay-question-item { font-size: 9pt; margin-bottom: 3px; color: #666; }
-          .essay-lines { margin-top: 15px; width: 100%; }
-          .essay-line { border-bottom: 1px solid #333; height: 20px; margin-bottom: 3px; width: 100%; min-height: 20px; }
-          .instructions { margin-bottom: 25px; text-align: justify; font-size: 10pt; color: #444; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
-          .questions-container { column-count: ${isDoubleColumn ? 2 : 1}; column-gap: 1.5cm; }
-          .question { margin-bottom: 18px; page-break-inside: avoid; -webkit-column-break-inside: avoid; break-inside: avoid; }
-          .question-header { font-weight: bold; margin-bottom: 8px; font-size: 11pt; }
-          .question-content { text-align: justify; margin-bottom: 10px; }
-          .options-list { list-style-type: none; padding-left: 0; margin-top: 5px; }
-          .option { margin-bottom: 6px; display: flex; align-items: flex-start; }
-          .option-letter { font-weight: bold; margin-right: 8px; }
-          .correct-answer-highlight { background-color: #cccccc !important; border-radius: 3px; padding: 1px 4px; }
-          .page-footer { display: flex; justify-content: space-between; font-size: 10pt; margin-top: 20px; border-top: 1px solid #ccc; padding-top: 5px; }
-          @media print { body { -webkit-print-color-adjust: exact; } }
-        `}</style>
-      </head>
-      <body>
-        <div className="page-container">
-            <div className="answer-sheet-container">
-                <div className="qr-code-section">
-                    {qrCodeUrl && <img src={qrCodeUrl} alt="QR Code" />}
-                    <p>Prova: {exam.id.split('-')[0]}.${version}</p>
-                </div>
-                <div className="answer-grid-section" dangerouslySetInnerHTML={{ __html: generateAnswerGrid() }} />
-            </div>
-            <div className="main-header">
-                {header?.logo_url && <img src={header.logo_url} alt="Logo" />}
-                <div className="institution">{header?.institution || exam.institution || 'Instituição de Ensino'}</div>
-                {header?.content?.subtitle && <div className="subtitle">{header.content.subtitle}</div>}
-                <div className="title">{exam.title}</div>
-            </div>
-            <div className="info-grid">
-                <div><strong>Disciplina:</strong> {exam.subject}</div>
-                <div><strong>Professor(a):</strong> {header?.content?.professor || header?.content?.professorName || professorName || 'Prof. Nome'}</div>
-                <div><strong>Data:</strong> {exam.exam_date ? new Date(exam.exam_date).toLocaleDateString('pt-BR') : '___/___/______'}</div>
-                <div><strong>Valor:</strong> {exam.total_points.toFixed(2)} pontos</div>
-            </div>
-            <div className="student-info"><div className="student-field"><strong>Aluno(a):</strong> __________________________________________________________________</div></div>
-            {exam.instructions && <div className="instructions" dangerouslySetInnerHTML={{ __html: `<strong>Instruções:</strong><br>${exam.instructions.replace(/\n/g, '<br>')}` }} />}
-            <div className="questions-container">
-                {questions.map((q, index) => (
-                    <div className="question" key={q.id}>
-                        <div className="question-header">Questão {index + 1} ({q.points.toFixed(2)} pts)</div>
-                        <div className="question-content" dangerouslySetInnerHTML={{ __html: typeof q.content === 'string' ? q.content : JSON.stringify(q.content) }} />
-                        {q.type === 'multiple_choice' && Array.isArray(q.options) && (
-                            <ol className="options-list">
-                                {q.options.map((opt: any, optIndex: number) => {
-                                    const isCorrect = includeAnswers && Array.isArray(q.correct_answer) && q.correct_answer.includes(opt.id);
-                                    return (
-                                        <li key={opt.id} className={`option ${isCorrect ? 'correct-answer-highlight' : ''}`}>
-                                            <span className="option-letter">{String.fromCharCode(97 + optIndex)})</span>
-                                            <div dangerouslySetInnerHTML={{ __html: opt.text }} />
-                                        </li>
-                                    );
-                                })}
-                            </ol>
-                        )}
-                        {q.type === 'essay' && (
-                            <div className="essay-lines">
-                                {Array.from({ length: q.essayLines || q.essay_lines || 5 }, (_, i) => (
-                                    <div key={i} className="essay-line"></div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                ))}
-            </div>
-            <div className="page-footer">
-                <span>{`${exam.title} - V${version}`}</span>
-                <span>Página 1 de 1</span>
-            </div>
+  const handlePrepareExams = async () => {
+    if (!examData || examData.generation_mode !== 'class' || !examData.target_class_id) {
+      toast({ title: "Atenção", description: "Selecione o modo 'Turma' e uma turma para preparar as provas.", variant: "destructive" });
+      return;
+    }
+    setIsPreparing(true);
+    try {
+      const { data: students, error: studentsError } = await supabase.from('students').select('id').eq('class_id', examData.target_class_id);
+      if (studentsError) throw studentsError;
+      if (!students || students.length === 0) {
+        toast({ title: "Nenhum Aluno", description: "Não há alunos nesta turma para preparar provas.", variant: "destructive" });
+        setIsPreparing(false);
+        return;
+      }
+
+      const instancesToUpsert = [];
+      for (const student of students) {
+        const studentSeed = `${examData.id}-${student.id}`;
+        const shuffledQuestions = examData.shuffleQuestions ? seededShuffle(examData.selectedQuestions, studentSeed) : examData.selectedQuestions;
+        const shuffled_question_ids = shuffledQuestions.map(q => q.id);
+
+        const shuffled_options_map: { [key: string]: string[] } = {};
+        const answer_key: { [key: string]: any } = {};
+
+        shuffledQuestions.forEach(q => {
+          if (q.type === 'multiple_choice' && q.options) {
+            const questionSeed = `${studentSeed}-${q.id}`;
+            const shuffledOpts = examData.shuffleOptions ? seededShuffle(q.options, questionSeed) : q.options;
+            shuffled_options_map[q.id] = shuffledOpts.map(opt => opt.id);
+            answer_key[q.id] = q.correct_answer;
+          } else if (q.type === 'true_false') {
+            answer_key[q.id] = q.correct_answer; // Booleano para V/F
+          }
+          // Questões dissertativas não entram no answer_key
+        });
+
+        instancesToUpsert.push({
+          exam_id: examData.id,
+          student_id: student.id,
+          author_id: user!.id,
+          shuffled_question_ids,
+          shuffled_options_map,
+          answer_key
+        });
+      }
+
+      const { error } = await supabase.from('student_exams').upsert(instancesToUpsert, { onConflict: 'exam_id, student_id' });
+      if (error) throw error;
+
+      toast({ title: "Sucesso!", description: `${students.length} provas foram preparadas ou atualizadas para a turma.` });
+    } catch (error: any) {
+      toast({ title: "Erro ao Preparar", description: error.message, variant: "destructive" });
+    } finally {
+      setIsPreparing(false);
+    }
+  };
+
+  const createVersionAnswerKey = async (version: number) => {
+    if (!examData || !user) return;
+
+    const { data: existing } = await supabase
+      .from('student_exams')
+      .select('id')
+      .eq('exam_id', examData.id)
+      .eq('student_id', `version-${version}`)
+      .eq('author_id', user.id)
+      .single();
+
+    if (existing) return;
+
+    const versionSeed = `${examData.id}-version-${version}`;
+    const shuffledQuestions = examData.shuffleQuestions ? seededShuffle(examData.selectedQuestions, versionSeed) : examData.selectedQuestions;
+    const shuffled_question_ids = shuffledQuestions.map(q => q.id);
+
+    const shuffled_options_map: { [key: string]: string[] } = {};
+    const answer_key: { [key: string]: any } = {};
+
+    shuffledQuestions.forEach(q => {
+      if (q.type === 'multiple_choice' && q.options) {
+        const questionSeed = `${versionSeed}-${q.id}`;
+        const shuffledOpts = examData.shuffleOptions ? seededShuffle(q.options, questionSeed) : q.options;
+        shuffled_options_map[q.id] = shuffledOpts.map(opt => opt.id);
+        answer_key[q.id] = q.correct_answer;
+      } else if (q.type === 'true_false') {
+        answer_key[q.id] = q.correct_answer; // Booleano para V/F
+      }
+      // Questões dissertativas não entram no answer_key
+    });
+
+    await supabase.from('student_exams').insert({
+      exam_id: examData.id,
+      student_id: `version-${version}`,
+      author_id: user.id,
+      shuffled_question_ids,
+      shuffled_options_map,
+      answer_key
+    });
+  };
+
+  const openPrintDialog = (htmlContent: string) => {
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    } else {
+      toast({
+        title: "Erro",
+        description: "Não foi possível abrir a janela de impressão. Verifique as configurações de pop-up do seu navegador.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const callGeneratePdfFunction = async (payload: object, asPDF: boolean = false) => {
+    const response = await supabase.functions.invoke('generate-pdf', { 
+      body: { ...payload, generatePDF: asPDF } 
+    });
+    if (response.error) throw new Error(response.error.message);
+    
+    if (asPDF) {
+      return response.data;
+    } else {
+      return response.data.html;
+    }
+  };
+
+  const generatePDF = async (id: string | number, includeAnswers: boolean = false) => {
+    if (!examData) return;
+    setLoading(true);
+    try {
+      if (typeof id === 'number' && !includeAnswers) {
+        await createVersionAnswerKey(id);
+      }
+
+      const payload = typeof id === 'string'
+        ? { studentExamId: id, includeAnswers }
+        : { examId: examData.id, version: id, includeAnswers };
+
+      const response = await supabase.functions.invoke('generate-pdf', { 
+        body: { ...payload, generatePDF: true } 
+      });
+      
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      if (response.data && typeof response.data === 'string') {
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          printWindow.document.write(response.data);
+          printWindow.document.close();
+          setTimeout(() => {
+            printWindow.print();
+          }, 1000);
+        }
+        
+        const fileName = typeof id === 'string'
+          ? `${examData.title}_${id}_${includeAnswers ? 'gabarito' : 'prova'}`
+          : `${examData.title}_v${id}_${includeAnswers ? 'gabarito' : 'prova'}`;
+          
+        toast({ title: "Sucesso!", description: `Arquivo pronto para salvar como PDF: ${fileName}` });
+      } else {
+        throw new Error('Resposta inválida do servidor');
+      }
+    } catch (error: any) {
+      console.error('Erro ao gerar PDF:', error);
+      toast({ title: "Erro", description: `Não foi possível gerar o PDF: ${error.message}`, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateAllPDFs = async () => {
+    if (!examData) return;
+    setLoading(true);
+    toast({ title: "Iniciando Geração", description: "Preparando arquivos para download..." });
+    try {
+      const zip = new JSZip();
+      
+      if (examData.generation_mode === 'class' && examData.target_class_id) {
+        const { data: preparedExams, error } = await supabase.from('student_exams').select('id, student:students(name)').eq('exam_id', examData.id);
+        if (error) throw error;
+        if (!preparedExams || preparedExams.length === 0) {
+          toast({ title: "Atenção", description: "Nenhuma prova preparada encontrada. Clique em 'Preparar Provas' primeiro.", variant: "destructive" });
+          return;
+        }
+        for (const pExam of preparedExams) {
+          const html = await callGeneratePdfFunction({ studentExamId: pExam.id, includeAnswers: false });
+          zip.file(`${pExam.student.name.replace(/\s/g, '_')}_prova.html`, html);
+        }
+      } else {
+        for (let version = 1; version <= examData.versions; version++) {
+          await createVersionAnswerKey(version);
+          const htmlProva = await callGeneratePdfFunction({ examId: examData.id, version: version, includeAnswers: false });
+          const htmlGabarito = await callGeneratePdfFunction({ examId: examData.id, version: version, includeAnswers: true });
+          zip.file(`Versao_${version}_Prova.html`, htmlProva);
+          zip.file(`Versao_${version}_Gabarito.html`, htmlGabarito);
+        }
+      }
+      
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(zipBlob);
+      link.download = `${examData.title.replace(/\s/g, '_')}_provas.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+
+    } catch (error: any) {
+      toast({ title: "Erro ao gerar ZIP", description: error.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const previewExam = async (id: string | number = 1, includeAnswers = false) => {
+    if (!examData) return;
+    setLoading(true);
+    try {
+      const payload = typeof id === 'string'
+        ? { studentExamId: id, includeAnswers }
+        : { examId: examData.id, version: id, includeAnswers };
+      
+      const html = await callGeneratePdfFunction(payload, false);
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(html);
+        printWindow.document.close();
+      }
+    } catch (error: any) {
+      toast({ title: "Erro", description: `Não foi possível gerar a visualização: ${error.message}`, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const toggleQuestionSelection = (question: Question) => {
+    setExamData(prev => {
+      if (!prev) return null;
+      const isSelected = prev.selectedQuestions.some(q => q.id === question.id);
+      return {
+        ...prev,
+        selectedQuestions: isSelected ? prev.selectedQuestions.filter(q => q.id !== question.id) : [...prev.selectedQuestions, question]
+      };
+    });
+  };
+
+  const removeSelectedQuestion = (questionId: string) => {
+    setExamData(prev => prev ? { ...prev, selectedQuestions: prev.selectedQuestions.filter(q => q.id !== questionId) } : null);
+  };
+
+  const handleUpdateQuestion = async (questionData: any) => {
+    if (!editQuestion) return;
+    setLoading(true);
+    try {
+      // Validar text_lines para questões dissertativas
+      const textLines = questionData.type === 'essay' ? (Number.isInteger(questionData.textLines) && questionData.textLines > 0 ? questionData.textLines : 5) : null;
+
+      // Validar correct_answer para questões V/F
+      const correctAnswer = questionData.type === 'multiple_choice'
+        ? questionData.options.filter((opt: any) => opt.isCorrect).map((opt: any) => opt.id)
+        : questionData.type === 'true_false'
+          ? (questionData.correctAnswer === true || questionData.correctAnswer === false ? questionData.correctAnswer : null)
+          : null;
+
+      const updateData = {
+        title: questionData.title,
+        content: questionData.content,
+        type: questionData.type,
+        options: questionData.type === 'multiple_choice' ? questionData.options : null, // Forçar null para V/F e dissertativas
+        correct_answer: correctAnswer,
+        category: questionData.category || null,
+        subject: questionData.subject,
+        institution: questionData.institution || null,
+        difficulty: questionData.difficulty,
+        tags: questionData.tags,
+        points: questionData.points,
+        language: questionData.language,
+        text_lines: textLines
+      };
+
+      const { error } = await supabase.from('questions').update(updateData).eq('id', editQuestion.id);
+      if (error) throw error;
+      toast({ title: "Sucesso!", description: "Questão atualizada com sucesso." });
+      setEditQuestion(null);
+      await fetchExamAndQuestions(true);
+    } catch (error) {
+      toast({ title: "Erro", description: "Não foi possível atualizar a questão.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading || !examData) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Carregando prova...</p>
         </div>
-      </body>
-    </html>
+      </div>
+    );
+  }
+
+  return (
+    <ExamEditorContext.Provider value={{ 
+      examData, 
+      setExamData, 
+      allQuestions, 
+      toggleQuestionSelection, 
+      removeSelectedQuestion,
+      loading, 
+      isPreparing, 
+      setPreviewQuestion, 
+      setEditQuestion, 
+      handleSave, 
+      handlePrepareExams,
+      previewExam, 
+      generatePDF, 
+      generateAllPDFs, 
+      toast
+    }}>
+      <EditExamPageContent />
+      <Dialog open={!!previewQuestion} onOpenChange={() => setPreviewQuestion(null)}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          {previewQuestion && (
+            <div className="p-4">
+              <h4 className="font-medium mb-2">{previewQuestion.title}</h4>
+              <div className="prose" dangerouslySetInnerHTML={{ __html: previewQuestion.content }} />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!editQuestion} onOpenChange={() => setEditQuestion(null)}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          {editQuestion && (
+            <QuestionEditor 
+              initialData={{ 
+                title: editQuestion.title, 
+                content: typeof editQuestion.content === 'string' ? editQuestion.content : JSON.stringify(editQuestion.content), 
+                type: editQuestion.type as 'multiple_choice' | 'true_false' | 'essay', 
+                options: editQuestion.type === 'multiple_choice' && Array.isArray(editQuestion.options) 
+                  ? editQuestion.options.map((opt: any) => ({ 
+                      id: opt.id, 
+                      text: opt.text, 
+                      isCorrect: Array.isArray(editQuestion.correct_answer) ? editQuestion.correct_answer.includes(opt.id) : false 
+                    })) 
+                  : [], 
+                correctAnswer: editQuestion.correct_answer, 
+                category: editQuestion.category || '', 
+                subject: editQuestion.subject, 
+                difficulty: editQuestion.difficulty === 'custom' ? 'medium' : editQuestion.difficulty as 'easy' | 'medium' | 'hard', 
+                tags: editQuestion.tags || [], 
+                points: editQuestion.points, 
+                textLines: editQuestion.text_lines || (editQuestion.type === 'essay' ? 5 : undefined) // Definir padrão para dissertativas
+              }} 
+              onSave={handleUpdateQuestion} 
+              loading={loading} 
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </ExamEditorContext.Provider>
   );
 }

@@ -46,8 +46,8 @@ interface ExamEditorContextType {
   handleSave: () => Promise<void>;
   handlePrepareExams: () => Promise<void>;
   previewExam: (version?: number | string, includeAnswers?: boolean) => Promise<void>;
-  generatePDF: (version?: number | string, includeAnswers?: boolean) => Promise<void>;
-  generateAllPDFs: () => Promise<void>;
+  generateExam: (version?: number | string, includeAnswers?: boolean) => Promise<void>;
+  generateAllExams: () => Promise<void>;
   toast: (options: any) => void;
 }
 

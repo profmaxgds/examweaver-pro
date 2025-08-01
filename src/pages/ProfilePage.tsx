@@ -1,5 +1,3 @@
-// src/pages/ProfilePage.tsx
-
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -18,12 +16,14 @@ interface Profile {
   id: string;
   user_id: string;
   name: string;
+  email: string;
   institution: string | null;
   subjects: string[] | null;
   credits: number;
   total_corrections: number;
   created_at: string;
   updated_at: string;
+  theme_preference: string | null;
 }
 
 export default function ProfilePage() {
@@ -52,7 +52,6 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user) {
       fetchProfile();
-      setEmail(user.email || '');
     }
   }, [user]);
 
@@ -71,6 +70,8 @@ export default function ProfilePage() {
       setProfile(data);
       setName(data.name || '');
       setSubjects(data.subjects?.join(', ') || '');
+      setEmail(user.email || '');
+      setTheme(data.theme_preference || 'system');
     } catch (error) {
       console.error('Erro ao buscar perfil:', error);
       toast({
@@ -88,35 +89,39 @@ export default function ProfilePage() {
     
     setUpdating(true);
     try {
-      // Atualizar perfil
       const subjectsArray = subjects
         .split(',')
         .map(s => s.trim())
         .filter(s => s.length > 0);
       
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          name,
-          subjects: subjectsArray.length > 0 ? subjectsArray : null,
-        })
-        .eq('user_id', user.id);
+      const profileUpdate: { name: string; subjects: string[] | null; email: string; theme_preference: string | null } = {
+        name,
+        subjects: subjectsArray.length > 0 ? subjectsArray : null,
+        email: email,
+        theme_preference: theme === 'system' ? null : theme,
+      };
       
-      if (profileError) throw profileError;
-      
-      // Atualizar email se mudou
+      // Atualizar o e-mail no Supabase Auth se ele mudou
       if (email !== user.email) {
         const { error: emailError } = await supabase.auth.updateUser({
           email: email,
         });
         
         if (emailError) throw emailError;
-        
+
         toast({
           title: "Email atualizado!",
           description: "Verifique seu novo email para confirmar a alteração.",
         });
       }
+      
+      // Atualizar perfil na tabela 'profiles'
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update(profileUpdate)
+        .eq('user_id', user.id);
+      
+      if (profileError) throw profileError;
       
       toast({
         title: "Sucesso!",

@@ -26,13 +26,15 @@ import {
   UserCheck,
   Edit2,
   Save,
-  X
+  X,
+  Send,
 } from 'lucide-react';
 
 interface Profile {
   id: string;
   user_id: string;
   name: string;
+  email: string;
   credits: number;
   institution?: string;
   status: 'active' | 'blocked' | 'suspended';
@@ -67,7 +69,7 @@ export default function AdminPage() {
   const [filteredUsers, setFilteredUsers] = useState<UserWithRoles[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('active');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [selectedUser, setSelectedUser] = useState<UserWithRoles | null>(null);
   const [creditAmount, setCreditAmount] = useState<string>('');
@@ -75,7 +77,6 @@ export default function AdminPage() {
   const [editingSettings, setEditingSettings] = useState<Record<string, boolean>>({});
   const [tempSettings, setTempSettings] = useState<Record<string, number>>({});
 
-  // Redirecionar se não for admin
   useEffect(() => {
     if (!rolesLoading && !isAdmin) {
       navigate('/');
@@ -97,43 +98,28 @@ export default function AdminPage() {
     try {
       setLoading(true);
 
-      // Carregar profiles
+      // BUSCA OS USUÁRIOS DIRETAMENTE DA TABELA DE PERFIS, QUE JÁ DEVE CONTER O E-MAIL
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('*');
-
+        
       if (profilesError) throw profilesError;
 
-      // Para cada usuário, usar os créditos do perfil  
-      const currentUser = await supabase.auth.getUser();
-      
-      const usersWithCredits = profilesData.map((profile) => {
-        // Usar créditos do perfil por enquanto
-        const credits = profile.credits || 0;
-
-        // Verificar se é admin (temporário)
-        const isAdminUser = profile.user_id === currentUser.data.user?.id;
-        const isProfessorUser = false; // Temporário
-
-        // Simular roles
+      const usersWithRoles = profilesData.map((profile: any) => {
         const roles = [];
-        if (isAdminUser) {
-          roles.push({ id: 'admin', role: 'admin' as const });
-        }
-        if (isProfessorUser) {
-          roles.push({ id: 'professor', role: 'professor' as const });
-        }
-
+        // Lógica de papéis deve ser implementada aqui
+        
         return {
           ...profile,
-          current_credits: credits || 0,
+          current_credits: profile.credits || 0,
+          status: profile.status, // Usa o status real do banco de dados
+          registration_date: profile.created_at,
           roles,
-          status: 'active' as const, // Temporário até o campo ser adicionado
-          registration_date: profile.created_at
+          email: profile.email // Usa o e-mail da tabela de perfis
         };
       });
 
-      setUsers(usersWithCredits);
+      setUsers(usersWithRoles);
     } catch (error) {
       console.error('Erro ao carregar usuários:', error);
       toast({
@@ -148,20 +134,32 @@ export default function AdminPage() {
 
   const loadCreditSettings = async () => {
     try {
-      // Por enquanto, usar valores padrão
+      const { data, error } = await supabase
+        .from('credit_settings')
+        .select('*');
+
+      if (error) throw error;
+      
+      setCreditSettings(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar configurações de créditos:', error);
       setCreditSettings([
         { id: '1', setting_name: 'manual_correction_cost', setting_value: 0.10, description: 'Custo em créditos para correção manual' },
         { id: '2', setting_name: 'auto_correction_cost', setting_value: 1.00, description: 'Custo em créditos para correção automática' },
         { id: '3', setting_name: 'initial_credits', setting_value: 30.00, description: 'Créditos iniciais para novos usuários' }
       ]);
-    } catch (error) {
-      console.error('Erro ao carregar configurações de créditos:', error);
     }
   };
 
   const updateCreditSetting = async (settingName: string, newValue: number) => {
     try {
-      // Atualizar o valor localmente
+      const { error } = await supabase
+        .from('credit_settings')
+        .update({ setting_value: newValue, updated_at: new Date().toISOString() })
+        .eq('setting_name', settingName);
+      
+      if (error) throw error;
+      
       setCreditSettings(prev => 
         prev.map(setting => 
           setting.setting_name === settingName 
@@ -207,20 +205,18 @@ export default function AdminPage() {
   const filterUsers = () => {
     let filtered = users;
 
-    // Filtro por busca
     if (searchTerm) {
       filtered = filtered.filter(user =>
         user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.user_id.toLowerCase().includes(searchTerm.toLowerCase())
+        user.user_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
-    // Filtro por status
     if (statusFilter !== 'all') {
       filtered = filtered.filter(user => user.status === statusFilter);
     }
 
-    // Filtro por papel
     if (roleFilter !== 'all') {
       filtered = filtered.filter(user => 
         user.roles.some(role => role.role === roleFilter)
@@ -232,7 +228,6 @@ export default function AdminPage() {
 
   const assignRole = async (userId: string, role: 'admin' | 'professor' | 'corretor', professorId?: string) => {
     try {
-      // Por enquanto, vamos simular a atribuição de papéis
       toast({
         title: "Funcionalidade em desenvolvimento",
         description: "Atribuição de papéis será implementada em breve",
@@ -250,7 +245,6 @@ export default function AdminPage() {
 
   const removeRole = async (userId: string, roleId: string) => {
     try {
-      // Por enquanto, vamos simular a remoção de papéis
       toast({
         title: "Funcionalidade em desenvolvimento",
         description: "Remoção de papéis será implementada em breve",
@@ -268,29 +262,60 @@ export default function AdminPage() {
 
   const adjustCredits = async (userId: string, amount: number, description: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // Simular ajuste de créditos por enquanto (será implementado quando os tipos estiverem prontos)
+      const { error: insertError } = await supabase
+        .from('credit_transactions')
+        .insert({
+          user_id: userId,
+          amount: amount,
+          description: description,
+          transaction_type: 'manual_adjustment',
+        });
+  
+      if (insertError) {
+        console.error('Erro ao inserir transação:', insertError);
+        throw insertError;
+      }
+  
+      const { data: sumData, error: sumError } = await supabase
+        .from('credit_transactions')
+        .select('amount')
+        .eq('user_id', userId);
+          
+      if (sumError) {
+        console.error('Erro ao somar transações:', sumError);
+        throw sumError;
+      }
+  
+      const newCredits = sumData.reduce((total, transaction) => total + transaction.amount, 0);
+  
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ credits: newCredits })
+        .eq('user_id', userId);
+  
+      if (updateError) {
+        console.error('Erro ao atualizar perfil:', updateError);
+        throw updateError;
+      }
+  
       toast({
         title: "Créditos ajustados",
-        description: `${amount > 0 ? 'Adicionados' : 'Removidos'} ${Math.abs(amount)} créditos`,
+        description: `${amount > 0 ? 'Adicionados' : 'Removidos'} ${Math.abs(amount)} créditos. Saldo atual: ${newCredits}.`,
       });
-
-      // Atualizar localmente o perfil do usuário
+  
       setUsers(prevUsers => 
         prevUsers.map(u => 
           u.user_id === userId 
-            ? { ...u, current_credits: u.current_credits + amount }
+            ? { ...u, current_credits: newCredits }
             : u
         )
       );
-
-      // Recarregar dados
+  
       loadUsers();
       setCreditAmount('');
       setCreditDescription('');
     } catch (error) {
-      console.error('Erro ao ajustar créditos:', error);
+      console.error('Erro geral na função adjustCredits:', error);
       toast({
         title: "Erro",
         description: "Erro ao ajustar créditos",
@@ -299,15 +324,35 @@ export default function AdminPage() {
     }
   };
 
+  const resendPasswordResetLink = async (email: string) => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Link de redefinição enviado",
+        description: `Um link de redefinição de senha foi enviado para ${email}.`,
+      });
+    } catch (error) {
+      console.error('Erro ao reenviar link de redefinição de senha:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível reenviar o link de redefinição de senha.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const updateUserStatus = async (userId: string, status: 'active' | 'blocked' | 'suspended') => {
     try {
-      // Temporariamente desabilitado até os tipos serem atualizados
       toast({
         title: "Funcionalidade em desenvolvimento",
         description: "Atualização de status será implementada em breve",
         variant: "destructive",
       });
-
       loadUsers();
     } catch (error) {
       console.error('Erro ao atualizar status:', error);
@@ -347,7 +392,6 @@ export default function AdminPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-start">
         <div className="flex items-center gap-4">
           <Button
@@ -381,13 +425,12 @@ export default function AdminPage() {
         </TabsList>
 
         <TabsContent value="users" className="space-y-6">
-          {/* Filtros */}
           <Card>
             <CardContent className="pt-6">
               <div className="flex gap-4 items-center flex-wrap">
                 <div className="flex-1 min-w-64">
                   <Input
-                    placeholder="Buscar por nome ou ID..."
+                    placeholder="Buscar por nome, e-mail ou ID..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
@@ -425,7 +468,6 @@ export default function AdminPage() {
             </CardContent>
           </Card>
 
-          {/* Tabela de Usuários */}
           <Card>
             <CardHeader>
               <CardTitle>Usuários do Sistema</CardTitle>
@@ -440,6 +482,7 @@ export default function AdminPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nome</TableHead>
+                      <TableHead>E-mail</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Papéis</TableHead>
                       <TableHead>Créditos</TableHead>
@@ -451,10 +494,10 @@ export default function AdminPage() {
                     {filteredUsers.map((user) => (
                       <TableRow key={user.id}>
                         <TableCell>
-                          <div>
-                            <p className="font-medium">{user.name}</p>
-                            <p className="text-sm text-muted-foreground">{user.institution}</p>
-                          </div>
+                          <p className="font-medium">{user.name}</p>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm text-muted-foreground">{user.email}</p>
                         </TableCell>
                         <TableCell>
                           <Badge variant={getStatusColor(user.status)}>
@@ -508,6 +551,7 @@ export default function AdminPage() {
                                     onRemoveRole={removeRole}
                                     onUpdateStatus={updateUserStatus}
                                     onAdjustCredits={adjustCredits}
+                                    onResendPasswordLink={resendPasswordResetLink}
                                     creditAmount={creditAmount}
                                     setCreditAmount={setCreditAmount}
                                     creditDescription={creditDescription}
@@ -623,6 +667,7 @@ interface UserManagementDialogProps {
   onRemoveRole: (userId: string, roleId: string) => void;
   onUpdateStatus: (userId: string, status: 'active' | 'blocked' | 'suspended') => void;
   onAdjustCredits: (userId: string, amount: number, description: string) => void;
+  onResendPasswordLink: (email: string) => void;
   creditAmount: string;
   setCreditAmount: (amount: string) => void;
   creditDescription: string;
@@ -636,6 +681,7 @@ function UserManagementDialog({
   onRemoveRole,
   onUpdateStatus,
   onAdjustCredits,
+  onResendPasswordLink,
   creditAmount,
   setCreditAmount,
   creditDescription,
@@ -663,11 +709,14 @@ function UserManagementDialog({
 
   return (
     <div className="space-y-6">
-      {/* Informações do usuário */}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-sm font-medium">Nome</label>
           <p className="text-sm text-muted-foreground">{user.name}</p>
+        </div>
+        <div>
+          <label className="text-sm font-medium">E-mail</label>
+          <p className="text-sm text-muted-foreground">{user.email}</p>
         </div>
         <div>
           <label className="text-sm font-medium">Status</label>
@@ -690,9 +739,21 @@ function UserManagementDialog({
             </Button>
           </div>
         </div>
+        <div>
+          <label className="text-sm font-medium">Ações de Conta</label>
+          <div className="flex gap-2 mt-1">
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={() => onResendPasswordLink(user.email)}
+            >
+              <Send className="w-4 h-4 mr-1" />
+              Reenviar Link de Senha
+            </Button>
+          </div>
+        </div>
       </div>
 
-      {/* Papéis */}
       <div>
         <label className="text-sm font-medium">Papéis Atuais</label>
         <div className="flex gap-2 mt-1 mb-2">
@@ -744,7 +805,6 @@ function UserManagementDialog({
         </div>
       </div>
 
-      {/* Créditos */}
       <div>
         <label className="text-sm font-medium">Ajustar Créditos (Atual: {user.current_credits})</label>
         <div className="flex gap-2 mt-1">
