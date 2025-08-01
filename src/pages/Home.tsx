@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, BookCopy, Users, User } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
-interface DashboardStats {
+interface HomeStats {
   questions: number;
   exams: number;
   corrections: number;
@@ -24,12 +24,12 @@ interface Exam {
 
 export default function Home() {
   const { user, signOut } = useAuth();
-  const [stats, setStats] = useState<DashboardStats>({ questions: 0, exams: 0, corrections: 0 });
+  const [stats, setStats] = useState<HomeStats>({ questions: 0, exams: 0, corrections: 0 });
   const [lastExam, setLastExam] = useState<Exam | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    const fetchHomeData = async () => {
       if (!user) return;
 
       try {
@@ -51,13 +51,13 @@ export default function Home() {
         }
 
       } catch (error) {
-        console.error('Erro ao buscar dados do dashboard:', error);
+        console.error('Erro ao buscar dados da home:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDashboardData();
+    fetchHomeData();
   }, [user]);
 
   return (

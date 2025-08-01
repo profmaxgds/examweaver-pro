@@ -146,7 +146,7 @@ export default function ClassesPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <Link to="/">
-                  <Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4 mr-2" />Dashboard</Button>
+                  <Button variant="ghost" size="sm"><ArrowLeft className="w-4 h-4 mr-2" />Home</Button>
                 </Link>
                 <h1 className="text-2xl font-bold">Gerenciar Turmas</h1>
               </div>

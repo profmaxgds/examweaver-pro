@@ -144,7 +144,7 @@ export default function QuestionsPage() {
               <Link to="/">
                 <Button variant="ghost" size="sm">
                   <ArrowLeft className="w-4 h-4 mr-2" />
-                  Dashboard
+                  Home
                 </Button>
               </Link>
               <h1 className="text-2xl font-bold">Banco de Questões</h1>
