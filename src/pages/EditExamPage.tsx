@@ -188,7 +188,7 @@ export default function EditExamPage() {
           id: exam.id,
           title: exam.title,
           subject: exam.subject,
-          institution: exam.institution || '',
+          institution: exam.institutions || '',
           examDate: exam.exam_date ? new Date(exam.exam_date).toISOString().split('T')[0] : '',
           selectedQuestions: selectedQs,
           shuffleQuestions: exam.shuffle_questions || false,

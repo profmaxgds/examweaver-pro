@@ -52,7 +52,9 @@ export default function ExamsPage() {
         .eq('author_id', user.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      setExams(data || []);
+      if (data) {
+        setExams(data.map(exam => ({ ...exam, institution: exam.institutions || '' })));
+      }
     } catch (error) {
       console.error('Erro ao buscar provas:', error);
       toast({

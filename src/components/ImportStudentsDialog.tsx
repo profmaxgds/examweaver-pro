@@ -65,7 +65,10 @@ export function ImportStudentsDialog({ isOpen, onClose, onImported }: ImportStud
       author_id: user.id,
     }));
 
-    const { error } = await supabase.from('students').insert(studentsToInsert);
+    const { error } = await supabase.from('students').insert(studentsToInsert.map(student => ({
+      ...student,
+      name: student.name || 'Nome não informado'
+    })));
 
     if (error) {
       toast({ title: "Erro na importação", description: error.message, variant: "destructive" });

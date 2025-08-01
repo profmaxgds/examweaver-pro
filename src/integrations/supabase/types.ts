@@ -112,6 +112,71 @@ export type Database = {
           },
         ]
       }
+      exam_corrections: {
+        Row: {
+          answers: Json
+          author_id: string
+          auto_corrected: boolean | null
+          correction_date: string
+          created_at: string
+          exam_id: string
+          id: string
+          image_url: string | null
+          max_score: number
+          percentage: number
+          qr_code_data: string | null
+          score: number
+          student_id: string | null
+          student_identification: string | null
+          student_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          answers?: Json
+          author_id: string
+          auto_corrected?: boolean | null
+          correction_date?: string
+          created_at?: string
+          exam_id: string
+          id?: string
+          image_url?: string | null
+          max_score?: number
+          percentage?: number
+          qr_code_data?: string | null
+          score?: number
+          student_id?: string | null
+          student_identification?: string | null
+          student_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          answers?: Json
+          author_id?: string
+          auto_corrected?: boolean | null
+          correction_date?: string
+          created_at?: string
+          exam_id?: string
+          id?: string
+          image_url?: string | null
+          max_score?: number
+          percentage?: number
+          qr_code_data?: string | null
+          score?: number
+          student_id?: string | null
+          student_identification?: string | null
+          student_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exam_corrections_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       exam_headers: {
         Row: {
           author_id: string
@@ -315,6 +380,7 @@ export type Database = {
           points: number
           subject: string
           tags: string[] | null
+          text_lines: number | null
           title: string
           type: Database["public"]["Enums"]["question_type"]
           updated_at: string
@@ -335,6 +401,7 @@ export type Database = {
           points?: number
           subject: string
           tags?: string[] | null
+          text_lines?: number | null
           title: string
           type?: Database["public"]["Enums"]["question_type"]
           updated_at?: string
@@ -355,6 +422,7 @@ export type Database = {
           points?: number
           subject?: string
           tags?: string[] | null
+          text_lines?: number | null
           title?: string
           type?: Database["public"]["Enums"]["question_type"]
           updated_at?: string

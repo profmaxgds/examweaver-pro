@@ -48,8 +48,10 @@ export function StudentForm({ initialData, onSave, onCancel, loading }: StudentF
       setInstitutions(institutionsData || []);
 
       // Busca Turmas (classes)
-      const { data: classesData } = await supabase.from('classes').select('id, name').eq('author_id', user.id);
-      setClasses(classesData || []);
+      const { data: classesData, error: classesError } = await supabase.from('classes').select('id, name').eq('author_id', user.id);
+      if (!classesError && classesData) {
+        setClasses(classesData);
+      }
     };
     fetchData();
   }, [user]);

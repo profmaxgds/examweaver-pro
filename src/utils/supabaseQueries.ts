@@ -71,19 +71,7 @@ export const fetchStudents = async (
     let query = supabase
       .from('students')
       .select(`
-        id,
-        student_id,
-        name,
-        email,
-        course,
-        grade,
-        class_id,
-        institution_header_id,
-        exam_id,
-        created_at,
-        updated_at,
-        classes:classes!students_class_id_fkey (id, name, description, year, semester, institution_header_id, created_at, updated_at),
-        exam_headers:exam_headers!students_institution_header_id_fkey (id, name, institution, logo_url, is_default, created_at, updated_at)
+        *
       `)
       .eq('author_id', userId);
 
@@ -94,7 +82,17 @@ export const fetchStudents = async (
     const { data, error } = await query.order('name', { ascending: true });
 
     if (error) throw new Error(error.message);
-    setStudents(data || []);
+    if (data) {
+      // Mapear os dados para a interface esperada
+      const studentsData = data.filter(student => student.name != null).map(student => ({
+        ...student,
+        classes: null, // Será buscado separadamente se necessário
+        exam_headers: null // Será buscado separadamente se necessário
+      }));
+      setStudents(studentsData as Student[]);
+    } else {
+      setStudents([]);
+    }
   } catch (error) {
     console.error('Erro ao carregar alunos:', error);
     toast({

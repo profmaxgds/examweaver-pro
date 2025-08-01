@@ -63,7 +63,9 @@ export default function StudentsPage() {
         .order('name', { ascending: true });
 
       if (error) throw new Error(error.message);
-      setClasses(data || []);
+      if (data) {
+        setClasses(data);
+      }
     } catch (error) {
       console.error('Erro ao buscar turmas:', error);
       toast({
@@ -77,7 +79,11 @@ export default function StudentsPage() {
   const handleSaveStudent = async (formData: Partial<Student>, studentId?: string) => {
     setLoading(true);
     try {
-      const dataToSave = { ...formData, author_id: user!.id };
+      const dataToSave = { 
+        ...formData, 
+        author_id: user!.id,
+        name: formData.name || 'Nome não informado'
+      };
       const { error } = studentId
         ? await supabase.from('students').update(dataToSave).eq('id', studentId)
         : await supabase.from('students').insert(dataToSave);
@@ -123,7 +129,11 @@ export default function StudentsPage() {
     try {
       const { error } = await supabase
         .from('classes')
-        .insert({ ...formData, author_id: user!.id });
+        .insert({ 
+          ...formData, 
+          author_id: user!.id,
+          name: formData.name || 'Nome não informado'
+        });
       if (error) throw new Error(error.message);
       toast({ title: 'Sucesso!', description: 'Turma cadastrada com sucesso.' });
       setClassDialogOpen(false);
