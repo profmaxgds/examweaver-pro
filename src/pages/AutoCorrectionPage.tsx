@@ -1427,17 +1427,44 @@ export default function AutoCorrectionPage() {
                 </Button>
               )}
 
-              {/* Após capturar gabarito ou enviar arquivo - mostrar botão corrigir */}
+              {/* Após capturar gabarito ou enviar arquivo - mostrar opções */}
               {selectedFile && (step === 'need-answer-sheet' || step === 'photo-capture') && examInfo && (
-                <Button
-                  onClick={() => {
-                    setStep('qr-detected'); // Vai para estado pronto para corrigir
-                  }}
-                  className="w-full"
-                >
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Usar esta imagem como gabarito respondido
-                </Button>
+                <div className="space-y-3">
+                  <Button
+                    onClick={() => {
+                      setStep('qr-detected'); // Vai para estado pronto para corrigir
+                    }}
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    size="lg"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Usar esta imagem como gabarito respondido
+                  </Button>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button
+                      onClick={() => startCamera('photo')}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      <Camera className="w-4 h-4 mr-2" />
+                      Recapturar
+                    </Button>
+                    
+                    <Button
+                      onClick={() => {
+                        setSelectedFile(null);
+                        setPreviewImage(null);
+                        fileInputRef.current?.click();
+                      }}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      <FileImage className="w-4 h-4 mr-2" />
+                      Novo Arquivo
+                    </Button>
+                  </div>
+                </div>
               )}
 
               {/* Botão de corrigir prova */}
