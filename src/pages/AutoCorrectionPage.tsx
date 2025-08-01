@@ -325,24 +325,29 @@ export default function AutoCorrectionPage() {
         throw new Error('Prova não encontrada no sistema');
       }
 
-      // Buscar gabarito específico do aluno
+      // Primeiro, buscar dados do aluno pelo student_id (campo de texto)
+      const { data: studentData, error: studentError } = await supabase
+        .from('students')
+        .select('*')
+        .eq('student_id', qrData.studentId) // Usar student_id (texto) ao invés de id (UUID)
+        .eq('author_id', user.id)
+        .single();
+
+      if (studentError || !studentData) {
+        throw new Error(`Aluno com ID ${qrData.studentId} não encontrado`);
+      }
+
+      // Agora buscar gabarito específico do aluno usando o UUID correto
       const { data: studentExam, error: studentExamError } = await supabase
         .from('student_exams')
         .select('*')
         .eq('exam_id', qrData.examId)
-        .eq('student_id', qrData.studentId)
+        .eq('student_id', studentData.id) // Usar o UUID do aluno
         .single();
 
       if (studentExamError || !studentExam) {
         throw new Error('Gabarito do aluno não encontrado');
       }
-
-      // Buscar dados do aluno
-      const { data: studentData, error: studentError } = await supabase
-        .from('students')
-        .select('*')
-        .eq('id', qrData.studentId)
-        .single();
 
       const examInfo: ExamInfo = {
         examId: qrData.examId,
