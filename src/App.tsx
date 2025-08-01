@@ -24,6 +24,7 @@ import CorrectionsManagementPage from "./pages/CorrectionsManagementPage";
 import HeadersPage from "./pages/HeadersPage";
 import StudentsPage from "./pages/StudentsPage";
 import ClassesPage from "./pages/ClassesPage";
+import AdminPage from "./pages/AdminPage";
 
 import NotFound from "./pages/NotFound";
 
@@ -72,8 +73,8 @@ const App = () => (
           <Route path="/corrections-management" element={<ProtectedRoute><CorrectionsManagementPage /></ProtectedRoute>} />
           <Route path="/corrections-management/:examId" element={<ProtectedRoute><CorrectionsManagementPage /></ProtectedRoute>} />
           <Route path="/students" element={<ProtectedRoute><StudentsPage /></ProtectedRoute>} />
-
           <Route path="/classes" element={<ProtectedRoute><ClassesPage /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

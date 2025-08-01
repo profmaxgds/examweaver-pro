@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useUserRoles } from '@/hooks/useUserRoles';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, BookCopy, Users, User, CheckCircle, Target, Send, Camera } from 'lucide-react';
+import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, BookCopy, Users, User, CheckCircle, Target, Send, Camera, Shield } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface HomeStats {
@@ -24,6 +25,7 @@ interface Exam {
 
 export default function Home() {
   const { user, signOut } = useAuth();
+  const { isAdmin } = useUserRoles();
   const [stats, setStats] = useState<HomeStats>({ questions: 0, exams: 0, corrections: 0 });
   const [lastExam, setLastExam] = useState<Exam | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,9 +71,23 @@ export default function Home() {
               <img src="/logos/icone.png" alt="TestifyAI" className="w-8 h-8" />
               <h1 className="text-2xl font-bold">TestifyAI</h1>
               <Badge variant="outline">Professor</Badge>
+              {isAdmin && (
+                <Badge variant="default" className="gap-1">
+                  <Shield className="w-3 h-3" />
+                  Admin
+                </Badge>
+              )}
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-muted-foreground">{user?.email}</span>
+              {isAdmin && (
+                <Link to="/admin">
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Shield className="w-4 h-4" />
+                    Admin
+                  </Button>
+                </Link>
+              )}
               <Link to="/profile">
                 <Button variant="outline" size="sm">
                   <User className="w-4 h-4 mr-2" />
