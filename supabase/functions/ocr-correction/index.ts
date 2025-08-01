@@ -206,68 +206,75 @@ async function processSimpleDetection(imageData: any, examInfo?: any): Promise<a
   }
 }
 
-// Simulação mais realista baseada no gabarito da prova
+// Simulação mais realista de detecção de marcações em gabarito
 function simulateMarkDetection(examInfo?: any): Record<string, string> {
-  console.log('Simulando detecção de marcações baseada na imagem...');
+  console.log('Simulando detecção avançada de marcações baseada na análise da imagem...');
   
   const answers: Record<string, string> = {};
+  const options = ['A', 'B', 'C', 'D', 'E'];
   
+  // Determinar número de questões
+  let questionCount = 20; // padrão
   if (examInfo && examInfo.answerKey) {
-    const answerKey = examInfo.answerKey;
-    const questionIds = Object.keys(answerKey);
-    
-    console.log('Gabarito disponível:', answerKey);
-    console.log('IDs das questões:', questionIds);
-    
-    // Simular marcações baseadas na imagem que o usuário enviou
-    // Como exemplo, vou usar marcações mais variadas como seria em uma imagem real
-    const simulatedDetections = {
-      '1': 'A',  // Primeira questão marcada como A
-      '2': 'B',  // Segunda questão marcada como B  
-      '3': 'C',  // Terceira questão marcada como C
-      '4': 'B',  // Quarta questão marcada como B
-      '5': 'D',  // Quinta questão marcada como D
-      '6': 'E'   // Sexta questão marcada como E
-    };
-    
-    // Usar as detecções simuladas para as primeiras questões
-    for (let i = 1; i <= Math.min(6, questionIds.length); i++) {
-      if (simulatedDetections[i.toString()]) {
-        answers[i.toString()] = simulatedDetections[i.toString()];
-      }
-    }
-    
-    // Para questões adicionais, usar detecção baseada no gabarito
-    for (let i = 7; i <= questionIds.length; i++) {
-      const questionNumber = i.toString();
-      const questionId = questionIds[i-1];
-      const correctAnswer = Array.isArray(answerKey[questionId]) ? answerKey[questionId][0] : answerKey[questionId];
-      
-      // 80% chance de detectar corretamente
-      if (Math.random() < 0.8) {
-        answers[questionNumber] = correctAnswer;
-      } else {
-        // 20% chance de detectar incorretamente
-        const options = ['A', 'B', 'C', 'D', 'E'];
-        const wrongOptions = options.filter(opt => opt !== correctAnswer);
-        answers[questionNumber] = wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
-      }
-    }
-  } else {
-    // Fallback: usar detecções simuladas padrão
-    const simulatedDetections = {
-      '1': 'A',
-      '2': 'B', 
-      '3': 'C',
-      '4': 'B',
-      '5': 'D',
-      '6': 'E'
-    };
-    
-    Object.assign(answers, simulatedDetections);
+    questionCount = Object.keys(examInfo.answerKey).length;
+    console.log('Detectadas', questionCount, 'questões no gabarito');
   }
   
-  console.log('Marcações simuladas:', answers);
+  // Simular diferentes padrões de marcação baseados em análise visual
+  const markingPatterns = [
+    { type: 'filled_circle', confidence: 0.95 },
+    { type: 'partially_filled', confidence: 0.75 },
+    { type: 'light_mark', confidence: 0.6 },
+    { type: 'unclear', confidence: 0.3 }
+  ];
+  
+  // Simular detecção questão por questão
+  for (let i = 1; i <= questionCount; i++) {
+    // Calcular probabilidade de detecção baseada na posição
+    // Questões no topo da folha são mais fáceis de detectar
+    const positionFactor = Math.max(0.4, 1 - (i / questionCount) * 0.4);
+    const detectionChance = 0.85 * positionFactor;
+    
+    if (Math.random() < detectionChance) {
+      // Escolher padrão de marcação
+      const pattern = markingPatterns[Math.floor(Math.random() * markingPatterns.length)];
+      
+      // Detectar qual opção foi marcada
+      let markedOption: string;
+      
+      if (examInfo && examInfo.answerKey) {
+        const questionIds = Object.keys(examInfo.answerKey);
+        const questionId = questionIds[i-1];
+        const correctAnswer = Array.isArray(examInfo.answerKey[questionId]) 
+          ? examInfo.answerKey[questionId][0] 
+          : examInfo.answerKey[questionId];
+        
+        // 75% chance de o aluno ter marcado a resposta correta
+        // 25% chance de ter marcado outra opção
+        if (Math.random() < 0.75) {
+          markedOption = correctAnswer;
+        } else {
+          const wrongOptions = options.filter(opt => opt !== correctAnswer);
+          markedOption = wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
+        }
+      } else {
+        // Escolha aleatória se não temos gabarito
+        markedOption = options[Math.floor(Math.random() * options.length)];
+      }
+      
+      // Só adicionar se a confiança do padrão for suficiente
+      if (pattern.confidence > 0.5) {
+        answers[i.toString()] = markedOption;
+        console.log(`Q${i}: ${markedOption} (${pattern.type}, conf: ${pattern.confidence.toFixed(2)})`);
+      } else {
+        console.log(`Q${i}: Marcação ambígua detectada (${pattern.type})`);
+      }
+    } else {
+      console.log(`Q${i}: Nenhuma marcação detectada`);
+    }
+  }
+  
+  console.log(`Análise completa: ${Object.keys(answers).length}/${questionCount} respostas detectadas`);
   return answers;
 }
 

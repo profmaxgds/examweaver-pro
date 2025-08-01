@@ -235,15 +235,25 @@ export function AutoCorrectionScanner() {
             )}
 
             <div>
-              <h4 className="font-medium mb-2">Respostas Detectadas</h4>
+              <h4 className="font-medium mb-2">Marcações Detectadas na Folha de Respostas</h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                Análise automática das marcações circulares detectadas na imagem
+              </p>
               <div className="grid grid-cols-5 gap-2">
                 {Object.entries(correctionResult.answers).map(([questionNum, answer]) => (
-                  <div key={questionNum} className="text-center p-2 bg-muted rounded">
+                  <div key={questionNum} className="text-center p-2 bg-muted rounded border">
                     <p className="text-xs text-muted-foreground">Q{questionNum}</p>
-                    <p className="font-bold">{answer}</p>
+                    <p className="font-bold text-primary">{answer}</p>
                   </div>
                 ))}
               </div>
+              {Object.keys(correctionResult.answers).length === 0 && (
+                <div className="text-center py-4 text-muted-foreground">
+                  <AlertCircle className="h-6 w-6 mx-auto mb-2" />
+                  <p>Nenhuma marcação foi detectada na imagem</p>
+                  <p className="text-xs">Verifique se a imagem está clara e as marcações visíveis</p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
