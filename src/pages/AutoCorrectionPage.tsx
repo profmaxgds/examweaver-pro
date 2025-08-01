@@ -622,22 +622,38 @@ export default function AutoCorrectionPage() {
       
       // Comparar com gabarito
       const correctAnswers = examInfo.answerKey;
+      console.log('Gabarito da prova:', correctAnswers);
+      console.log('Respostas detectadas:', detectedAnswers);
+      
       let score = 0;
       const feedback = [];
 
-      for (const [questionNum, studentAnswer] of Object.entries(detectedAnswers)) {
-        const correctAnswer = correctAnswers[questionNum];
-        const isCorrect = studentAnswer === correctAnswer;
+      // Processar cada questão do gabarito
+      for (const [questionId, correctAnswerArray] of Object.entries(correctAnswers)) {
+        // O gabarito pode estar como array, pegar o primeiro elemento
+        const correctAnswer = Array.isArray(correctAnswerArray) ? correctAnswerArray[0] : correctAnswerArray;
+        
+        // Encontrar resposta do aluno para esta questão (buscar por índice ou ID)
+        let studentAnswer = null;
+        
+        // Tentar diferentes formatos de mapeamento questão
+        const questionIndex = Object.keys(correctAnswers).indexOf(questionId) + 1;
+        studentAnswer = detectedAnswers[questionIndex.toString()] || 
+                       detectedAnswers[questionId] || 
+                       detectedAnswers[`q${questionIndex}`];
+        
+        const isCorrect = studentAnswer && studentAnswer === correctAnswer;
         
         if (isCorrect) {
           score += 1; // Assumindo 1 ponto por questão
         }
 
         feedback.push({
-          questionNumber: questionNum,
-          studentAnswer: studentAnswer as string,
+          questionNumber: questionIndex.toString(),
+          questionId: questionId,
+          studentAnswer: studentAnswer || 'Não marcada',
           correctAnswer: correctAnswer as string,
-          isCorrect
+          isCorrect: !!isCorrect
         });
       }
 
