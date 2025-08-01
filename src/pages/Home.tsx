@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, BookCopy, Users, User } from 'lucide-react';
+import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, BookCopy, Users, User, CheckCircle, Target, Send, Camera } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface HomeStats {
@@ -108,17 +108,164 @@ export default function Home() {
             </Link>
           </div>
 
-          {/* Ações Rápidas */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Link to="/questions/new"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><PlusCircle /> Nova Questão</CardTitle></CardHeader><CardContent><CardDescription>Adicionar uma nova questão ao seu banco de dados.</CardDescription></CardContent></Card></Link>
-            <Link to="/exams/new"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><FileText /> Nova Prova</CardTitle></CardHeader><CardContent><CardDescription>Montar uma nova prova usando suas questões.</CardDescription></CardContent></Card></Link>
-            <Link to="/auto-correction"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><Upload /> Correção Automática</CardTitle></CardHeader><CardContent><CardDescription>Escaneie QR codes e corrija provas automaticamente.</CardDescription></CardContent></Card></Link>
-            <Link to="/corrections-management"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><ClipboardList /> Gestão de Gabaritos</CardTitle></CardHeader><CardContent><CardDescription>Visualize, edite e publique correções de provas.</CardDescription></CardContent></Card></Link>
-            <Link to="/students"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><Users /> Gerenciar Alunos</CardTitle></CardHeader><CardContent><CardDescription>Adicionar e editar alunos para suas turmas.</CardDescription></CardContent></Card></Link>
-            <Link to="/classes"><Card className="h-full hover:shadow-md transition-shadow"><CardHeader><CardTitle className="flex items-center gap-2"><BookCopy /> Gerenciar Turmas</CardTitle></CardHeader><CardContent><CardDescription>Criar e editar suas turmas e instituições.</CardDescription></CardContent></Card></Link>
+          {/* Seção de Destaque - Gestão de Gabaritos */}
+          <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-secondary/5">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <ClipboardList className="w-6 h-6 text-primary" />
+                Sistema Avançado de Gestão de Gabaritos
+              </CardTitle>
+              <CardDescription className="text-base">
+                Plataforma completa para correção automática e manual de provas com tecnologia OCR
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
+                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">Correção Automática</p>
+                    <p className="text-xs text-muted-foreground">OCR + IA para detectar marcações</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
+                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                    <Target className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">Correção Manual</p>
+                    <p className="text-xs text-muted-foreground">Interface interativa tipo gabarito</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
+                  <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                    <BarChart3 className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">Estatísticas</p>
+                    <p className="text-xs text-muted-foreground">Relatórios em tempo real</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
+                  <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                    <Send className="w-5 h-5 text-orange-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">Publicação</p>
+                    <p className="text-xs text-muted-foreground">Envio individual ou em massa</p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Link to="/auto-correction">
+                  <Button className="gap-2">
+                    <Camera className="w-4 h-4" />
+                    Iniciar Correção
+                  </Button>
+                </Link>
+                <Link to="/corrections-management">
+                  <Button variant="outline" className="gap-2">
+                    <ClipboardList className="w-4 h-4" />
+                    Gestão de Gabaritos
+                  </Button>
+                </Link>
+                <Link to="/reports">
+                  <Button variant="outline" className="gap-2">
+                    <BarChart3 className="w-4 h-4" />
+                    Relatórios
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Funcionalidades Principais Organizadas */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Gestão de Conteúdo */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="w-5 h-5" />
+                  Gestão de Conteúdo
+                </CardTitle>
+                <CardDescription>Crie e organize suas questões e provas</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <Link to="/questions/new">
+                  <Card className="hover:shadow-sm transition-shadow cursor-pointer">
+                    <CardContent className="flex items-center gap-3 pt-4">
+                      <PlusCircle className="w-8 h-8 text-primary" />
+                      <div>
+                        <p className="font-semibold">Nova Questão</p>
+                        <p className="text-sm text-muted-foreground">Adicionar questão ao banco</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+                <Link to="/exams/new">
+                  <Card className="hover:shadow-sm transition-shadow cursor-pointer">
+                    <CardContent className="flex items-center gap-3 pt-4">
+                      <FileText className="w-8 h-8 text-primary" />
+                      <div>
+                        <p className="font-semibold">Nova Prova</p>
+                        <p className="text-sm text-muted-foreground">Montar prova com questões</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+                <Link to="/headers">
+                  <Card className="hover:shadow-sm transition-shadow cursor-pointer">
+                    <CardContent className="flex items-center gap-3 pt-4">
+                      <BookCopy className="w-8 h-8 text-primary" />
+                      <div>
+                        <p className="font-semibold">Cabeçalhos</p>
+                        <p className="text-sm text-muted-foreground">Configurar layout de provas</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </CardContent>
+            </Card>
+
+            {/* Gestão de Turmas */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  Gestão de Turmas
+                </CardTitle>
+                <CardDescription>Organize alunos e turmas</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <Link to="/students">
+                  <Card className="hover:shadow-sm transition-shadow cursor-pointer">
+                    <CardContent className="flex items-center gap-3 pt-4">
+                      <User className="w-8 h-8 text-primary" />
+                      <div>
+                        <p className="font-semibold">Gerenciar Alunos</p>
+                        <p className="text-sm text-muted-foreground">Adicionar e editar alunos</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+                <Link to="/classes">
+                  <Card className="hover:shadow-sm transition-shadow cursor-pointer">
+                    <CardContent className="flex items-center gap-3 pt-4">
+                      <BookCopy className="w-8 h-8 text-primary" />
+                      <div>
+                        <p className="font-semibold">Gerenciar Turmas</p>
+                        <p className="text-sm text-muted-foreground">Criar e organizar turmas</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Pré-visualização da Última Prova MELHORADA */}
+          {/* Última Prova Criada */}
           <Card>
             <CardHeader>
               <CardTitle>Última Prova Criada</CardTitle>
@@ -131,14 +278,28 @@ export default function Home() {
                 <div className="border rounded-md p-4 bg-muted/20 space-y-2">
                     <h3 className="font-semibold text-lg">{lastExam.title}</h3>
                     <p className="text-sm text-muted-foreground">{lastExam.subject}</p>
-                    <Link to={`/exams/${lastExam.id}/edit`}>
-                        <Button variant="outline" size="sm" className="mt-2">Ver Detalhes</Button>
-                    </Link>
+                    <div className="flex gap-2 mt-3">
+                      <Link to={`/exams/${lastExam.id}/edit`}>
+                          <Button variant="outline" size="sm">Ver Detalhes</Button>
+                      </Link>
+                      <Link to={`/corrections-management/${lastExam.id}`}>
+                          <Button variant="outline" size="sm" className="gap-2">
+                            <ClipboardList className="w-4 h-4" />
+                            Gestão de Gabaritos
+                          </Button>
+                      </Link>
+                    </div>
                 </div>
               ) : (
                 <div className="text-center py-8">
                   <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                   <p className="text-muted-foreground">Crie sua primeira prova para ver os detalhes aqui.</p>
+                  <Link to="/exams/new">
+                    <Button className="mt-4 gap-2">
+                      <PlusCircle className="w-4 h-4" />
+                      Criar Primeira Prova
+                    </Button>
+                  </Link>
                 </div>
               )}
             </CardContent>
