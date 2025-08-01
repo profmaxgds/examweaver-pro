@@ -369,10 +369,13 @@ export default function AutoCorrectionPage() {
           const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
           setSelectedFile(file);
           
-          // Aplicar preprocessamento para preview
+          // Aplicar preprocessamento para preview (COMENTADO TEMPORARIAMENTE)
           try {
-            const processedPreviewUrl = await preprocessImage(file);
-            setPreviewImage(processedPreviewUrl);
+            // const processedPreviewUrl = await preprocessImage(file);
+            // setPreviewImage(processedPreviewUrl);
+            // Usando preview normal por enquanto
+            const previewUrl = URL.createObjectURL(blob);
+            setPreviewImage(previewUrl);
           } catch (error) {
             console.error('Erro no preprocessamento:', error);
             // Fallback para preview normal
@@ -475,14 +478,14 @@ export default function AutoCorrectionPage() {
         scanIntervalRef.current = null;
       }
       
-      // Capturar automaticamente após um delay maior para dar tempo de posicionar
+      // Capturar automaticamente após um delay menor para dar tempo de posicionar
       setTimeout(() => {
         capturePhoto();
-      }, 2000); // 2 segundos ao invés de 500ms
+      }, 1000); // 1 segundo - delay reduzido
       
       toast({
         title: "🎯 Gabarito detectado!",
-        description: "Capturando imagem automaticamente em 2 segundos...",
+        description: "Capturando imagem automaticamente em 1 segundo...",
       });
     }
   };
@@ -668,7 +671,11 @@ export default function AutoCorrectionPage() {
         console.error('Erro ao buscar questões:', questionsError);
       }
 
+      console.log('Questões encontradas:', questionsData);
+      console.log('Question IDs from exam:', examData.question_ids);
+
       const essayQuestionsFound = questionsData?.filter(q => q.type === 'essay') || [];
+      console.log('Questões abertas encontradas:', essayQuestionsFound);
 
       const examInfo: ExamInfo = {
         examId: qrData.examId,
@@ -1285,16 +1292,19 @@ export default function AutoCorrectionPage() {
                         if (file) {
                           setSelectedFile(file);
                           
-                          // Aplicar preprocessamento para preview
-                          try {
-                            const processedPreviewUrl = await preprocessImage(file);
-                            setPreviewImage(processedPreviewUrl);
-                          } catch (error) {
-                            console.error('Erro no preprocessamento:', error);
-                            // Fallback para preview normal
-                            const previewUrl = URL.createObjectURL(file);
-                            setPreviewImage(previewUrl);
-                          }
+          // Aplicar preprocessamento para preview (COMENTADO TEMPORARIAMENTE)
+          try {
+            // const processedPreviewUrl = await preprocessImage(file);
+            // setPreviewImage(processedPreviewUrl);
+            // Usando preview normal por enquanto
+            const previewUrl = URL.createObjectURL(file);
+            setPreviewImage(previewUrl);
+          } catch (error) {
+            console.error('Erro no preprocessamento:', error);
+            // Fallback para preview normal
+            const previewUrl = URL.createObjectURL(file);
+            setPreviewImage(previewUrl);
+          }
                         }
                       }}
                       className="hidden"
