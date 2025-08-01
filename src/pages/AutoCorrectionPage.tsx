@@ -1,20 +1,29 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/hooks/useAuth';
+import { Camera, Upload, QrCode, Loader2, FileImage, ScanLine, CheckCircle, Save, ArrowLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { ArrowLeft, Camera, Upload, CheckCircle, Loader2, Save, QrCode } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { Link } from 'react-router-dom';
 import jsQR from 'jsqr';
+import heic2any from 'heic2any';
 
 interface QRCodeData {
   examId: string;
   studentId: string;
   version?: number;
-  studentExamId?: string; // Adicionar campo para compatibilidade
+  studentExamId?: string;
+}
+
+interface ExamInfo {
+  examId: string;
+  studentId: string;
+  examTitle: string;
+  studentName: string;
+  answerKey: Record<string, string>;
+  version?: number;
 }
 
 interface CorrectionResult {
@@ -34,59 +43,197 @@ interface CorrectionResult {
   }>;
 }
 
-interface ExamInfo {
-  examId: string;
-  studentId: string;
-  examTitle: string;
-  studentName: string;
-  answerKey: Record<string, string>;
-  version?: number;
-}
-
 export default function AutoCorrectionPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [step, setStep] = useState<'capture' | 'qr-detected' | 'correcting' | 'results'>('capture');
+  
+  // Estados principais
+  const [step, setStep] = useState<'upload' | 'qr-scan' | 'photo-capture' | 'qr-detected' | 'scan-marks' | 'corrected'>('upload');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [examInfo, setExamInfo] = useState<ExamInfo | null>(null);
   const [correctionResult, setCorrectionResult] = useState<CorrectionResult | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  
+  // Estados da câmera
   const [useCamera, setUseCamera] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanMode, setScanMode] = useState<'qr' | 'photo'>('qr');
+  const [isSaving, setIsSaving] = useState(false);
+  
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Limpeza ao desmontar componente
   useEffect(() => {
     return () => {
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
       }
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+      }
     };
   }, [cameraStream]);
 
-  // Effect para configurar o vídeo quando useCamera ou cameraStream mudar
-  useEffect(() => {
-    if (useCamera && cameraStream && videoRef.current) {
-      console.log('Configurando stream no vídeo via useEffect...');
-      videoRef.current.srcObject = cameraStream;
-      
-      const playVideo = async () => {
-        try {
-          await videoRef.current?.play();
-          console.log('Vídeo iniciado via useEffect');
-        } catch (error) {
-          console.error('Erro ao reproduzir vídeo via useEffect:', error);
-        }
-      };
+  // Função para converter arquivos HEIC
+  const convertHeicToJpeg = async (file: File): Promise<File> => {
+    if (file.type === 'image/heic' || file.name.toLowerCase().endsWith('.heic')) {
+      try {
+        toast({
+          title: "Convertendo arquivo HEIC...",
+          description: "Processando imagem do iPhone/iPad",
+        });
 
-      playVideo();
+        const convertedBlob = await heic2any({
+          blob: file,
+          toType: "image/jpeg",
+          quality: 0.8
+        }) as Blob;
+
+        return new File([convertedBlob], file.name.replace(/\.heic$/i, '.jpg'), {
+          type: 'image/jpeg'
+        });
+      } catch (error) {
+        console.error('Erro ao converter HEIC:', error);
+        throw new Error('Erro ao converter arquivo HEIC. Tente um formato diferente.');
+      }
     }
-  }, [useCamera, cameraStream]);
+    return file;
+  };
 
+  // Função para ler QR code de arquivo ultra-robusta
+  const readQRCodeFromFile = async (file: File): Promise<string | null> => {
+    try {
+      // Converter HEIC se necessário
+      const processedFile = await convertHeicToJpeg(file);
+      
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            
+            if (!context) {
+              resolve(null);
+              return;
+            }
+
+            // Usar resolução alta para arquivo
+            const maxSize = 1200;
+            let { width, height } = img;
+            
+            if (width > height) {
+              if (width > maxSize) {
+                height = (height * maxSize) / width;
+                width = maxSize;
+              }
+            } else {
+              if (height > maxSize) {
+                width = (width * maxSize) / height;
+                height = maxSize;
+              }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            context.drawImage(img, 0, 0, width, height);
+            
+            const imageData = context.getImageData(0, 0, width, height);
+            
+            // Tentar múltiplas configurações agressivamente
+            const configurations = [
+              { inversionAttempts: "dontInvert" as const },
+              { inversionAttempts: "onlyInvert" as const },
+              { inversionAttempts: "attemptBoth" as const },
+              { inversionAttempts: "invertFirst" as const }
+            ];
+
+            for (const config of configurations) {
+              try {
+                const code = jsQR(imageData.data, imageData.width, imageData.height, config);
+                if (code && code.data && code.data.trim()) {
+                  console.log('✅ QR code encontrado no arquivo:', code.data);
+                  resolve(code.data);
+                  return;
+                }
+              } catch (error) {
+                continue;
+              }
+            }
+
+            // Tentar com diferentes escalas se não encontrou
+            for (const scale of [0.5, 1.5, 2.0]) {
+              const scaledWidth = Math.floor(width * scale);
+              const scaledHeight = Math.floor(height * scale);
+              
+              canvas.width = scaledWidth;
+              canvas.height = scaledHeight;
+              context.drawImage(img, 0, 0, scaledWidth, scaledHeight);
+              
+              const scaledImageData = context.getImageData(0, 0, scaledWidth, scaledHeight);
+              
+              for (const config of configurations) {
+                try {
+                  const code = jsQR(scaledImageData.data, scaledImageData.width, scaledImageData.height, config);
+                  if (code && code.data && code.data.trim()) {
+                    console.log('✅ QR code encontrado com escala:', scale, code.data);
+                    resolve(code.data);
+                    return;
+                  }
+                } catch (error) {
+                  continue;
+                }
+              }
+            }
+            
+            resolve(null);
+          };
+          img.onerror = () => reject(new Error('Erro ao carregar imagem'));
+          img.src = e.target?.result as string;
+        };
+        reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
+        reader.readAsDataURL(processedFile);
+      });
+    } catch (error) {
+      console.error('Erro ao processar arquivo:', error);
+      throw error;
+    }
+  };
+
+  // Configurar o stream no vídeo quando a câmera for ativada
+  useEffect(() => {
+    if (!useCamera || !cameraStream || !videoRef.current) return;
+
+    const playVideo = async () => {
+      if (!videoRef.current) return;
+      
+      try {
+        console.log('Configurando stream no vídeo...');
+        videoRef.current.srcObject = cameraStream;
+        
+        await videoRef.current.play();
+        console.log('Vídeo iniciado com sucesso');
+        
+        // Se está no modo QR, começar escaneamento
+        if (scanMode === 'qr') {
+          setTimeout(() => {
+            startAutoScan();
+          }, 500);
+        }
+      } catch (error) {
+        console.error('Erro ao reproduzir vídeo:', error);
+      }
+    };
+
+    playVideo();
+  }, [useCamera, cameraStream, scanMode]);
+
+  // Som de bip melhorado
   const playBeep = () => {
     try {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -96,72 +243,50 @@ export default function AutoCorrectionPage() {
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
       
-      oscillator.frequency.value = 1000; // Frequência mais alta e clara
-      oscillator.type = 'square'; // Som mais nítido
+      oscillator.frequency.value = 1200;
+      oscillator.type = 'square';
       
-      gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+      gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
       
       oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.3);
+      oscillator.stop(audioContext.currentTime + 0.2);
     } catch (error) {
       console.log('Erro ao reproduzir som:', error);
     }
   };
 
-  const startCamera = async () => {
+  // Iniciar câmera para QR ou foto
+  const startCamera = async (mode: 'qr' | 'photo') => {
+    setScanMode(mode);
     try {
-      // Verificar se getUserMedia está disponível
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera API não suportada neste navegador');
       }
 
-      console.log('Tentando acessar a câmera...');
+      console.log(`📷 Acessando câmera para ${mode === 'qr' ? 'QR Code' : 'captura de foto'}...`);
       
-      // Configurações para desktop e mobile
       const constraints = {
         video: {
-          // Usar câmera traseira no mobile, qualquer câmera no desktop
-          facingMode: { ideal: 'environment' },
+          facingMode: 'environment',
           width: { ideal: 1280 },
-          height: { ideal: 720 }
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
         }
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      console.log('Câmera acessada com sucesso');
-      
       setCameraStream(stream);
       setUseCamera(true);
-      setIsScanning(true); // Iniciar escaneamento automático
+      setStep(mode === 'qr' ? 'qr-scan' : 'photo-capture');
       
-      // Aguardar um pouco para o vídeo inicializar e então começar o scan
-      setTimeout(() => {
-        startAutoScan();
-      }, 1000);
-      setTimeout(() => {
-        if (videoRef.current) {
-          console.log('Configurando srcObject do vídeo...');
-          videoRef.current.srcObject = stream;
-          
-          // Forçar o play do vídeo
-          videoRef.current.play().then(() => {
-            console.log('Vídeo iniciado com sucesso');
-          }).catch(err => {
-            console.error('Erro ao reproduzir vídeo:', err);
-            // Tentar novamente em caso de erro
-            setTimeout(() => {
-              if (videoRef.current) {
-                videoRef.current.play().catch(e => console.error('Erro no segundo tentativa:', e));
-              }
-            }, 500);
-          });
-        }
-      }, 100);
-
+      if (mode === 'qr') {
+        setIsScanning(true);
+      }
+      
       toast({
-        title: "Sucesso!",
-        description: "Câmera ativada com sucesso.",
+        title: mode === 'qr' ? "📷 Escaneamento QR ativo!" : "📷 Câmera ativa!",
+        description: mode === 'qr' ? "Aproxime o QR code da câmera" : "Posicione a prova para capturar",
       });
 
     } catch (error) {
@@ -200,6 +325,7 @@ export default function AutoCorrectionPage() {
       setCameraStream(null);
     }
     setUseCamera(false);
+    setStep('upload');
   };
 
   const capturePhoto = () => {
@@ -443,160 +569,6 @@ export default function AutoCorrectionPage() {
     return null;
   };
 
-  // Função para ler QR code localmente da imagem
-  const readQRCodeFromImage = (file: File): Promise<string | null> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d');
-          
-          if (!context) {
-            resolve(null);
-            return;
-          }
-
-          canvas.width = img.width;
-          canvas.height = img.height;
-          context.drawImage(img, 0, 0);
-          
-          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height);
-          
-          resolve(code ? code.data : null);
-        };
-        img.src = e.target?.result as string;
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  // Etapa 1: Detectar QR Code localmente e carregar informações da prova
-  const detectQRCode = async () => {
-    if (!selectedFile || !user) {
-      toast({
-        title: "Erro",
-        description: "Selecione uma imagem da prova primeiro.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsProcessing(true);
-
-    try {
-      console.log('Lendo QR Code da imagem...');
-      
-      // Ler QR code localmente (sem upload)
-      const qrCodeText = await readQRCodeFromImage(selectedFile);
-      
-      if (!qrCodeText) {
-        throw new Error('QR Code não encontrado na imagem. Verifique se a imagem contém um QR code válido.');
-      }
-
-      console.log('QR Code detectado:', qrCodeText);
-
-      // Extrair dados do QR code
-      const qrData = extractQRCodeData(qrCodeText);
-      if (!qrData) {
-        throw new Error('QR Code inválido. Verifique se é um QR code de prova válido.');
-      }
-
-      console.log('Dados extraídos do QR:', qrData);
-
-      // Buscar dados da prova
-      const { data: examData, error: examError } = await supabase
-        .from('exams')
-        .select('*')
-        .eq('id', qrData.examId)
-        .single();
-
-      if (examError || !examData) {
-        throw new Error('Prova não encontrada no sistema');
-      }
-
-      let studentExam;
-      let studentData;
-
-      // Verificar se temos studentExamId no QR code (prova individual)
-      if (qrData.studentExamId) {
-        // Buscar direto pelo student_exam ID
-        const { data: examInstance, error: examInstanceError } = await supabase
-          .from('student_exams')
-          .select(`
-            *,
-            students!inner(*)
-          `)
-          .eq('id', qrData.studentExamId)
-          .eq('author_id', user.id)
-          .single();
-
-        if (examInstanceError || !examInstance) {
-          throw new Error('Gabarito específico do aluno não encontrado');
-        }
-
-        studentExam = examInstance;
-        studentData = examInstance.students;
-      } else {
-        // Fallback: buscar pelo studentId (para compatibilidade com QR codes antigos)
-        const { data: student, error: studentError } = await supabase
-          .from('students')
-          .select('*')
-          .eq('student_id', qrData.studentId)
-          .eq('author_id', user.id)
-          .single();
-
-        if (studentError || !student) {
-          throw new Error(`Aluno com ID ${qrData.studentId} não encontrado`);
-        }
-
-        const { data: examInstance, error: examInstanceError } = await supabase
-          .from('student_exams')
-          .select('*')
-          .eq('exam_id', qrData.examId)
-          .eq('student_id', student.id)
-          .single();
-
-        if (examInstanceError || !examInstance) {
-          throw new Error('Gabarito do aluno não encontrado');
-        }
-
-        studentExam = examInstance;
-        studentData = student;
-      }
-
-      const examInfo: ExamInfo = {
-        examId: qrData.examId,
-        studentId: qrData.studentId,
-        examTitle: examData.title,
-        studentName: studentData?.name || 'Aluno não identificado',
-        answerKey: studentExam.answer_key as Record<string, string>,
-        version: qrData.version
-      };
-
-      setExamInfo(examInfo);
-      setStep('qr-detected');
-      
-      toast({
-        title: "QR Code detectado!",
-        description: `Prova: ${examInfo.examTitle} | Aluno: ${examInfo.studentName}`,
-      });
-
-    } catch (error) {
-      console.error('Erro ao detectar QR Code:', error);
-      setStep('capture');
-      toast({
-        title: "Erro",
-        description: error instanceof Error ? error.message : 'Erro desconhecido ao detectar QR Code',
-        variant: "destructive",
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   // Etapa 2: Processar marcações e fazer correção
   const processCorrection = async () => {
     if (!selectedFile || !examInfo || !user) {
@@ -609,7 +581,7 @@ export default function AutoCorrectionPage() {
     }
 
     setIsProcessing(true);
-    setStep('correcting');
+    setStep('scan-marks');
 
     try {
       // Upload da imagem com user ID no caminho para seguir políticas RLS
@@ -675,7 +647,7 @@ export default function AutoCorrectionPage() {
       };
 
       setCorrectionResult(result);
-      setStep('results');
+      setStep('corrected');
       
       toast({
         title: "Correção realizada!",
@@ -695,11 +667,12 @@ export default function AutoCorrectionPage() {
   };
 
   const resetProcess = () => {
-    setStep('capture');
+    setStep('upload');
     setExamInfo(null);
     setCorrectionResult(null);
     setSelectedFile(null);
     setUseCamera(false);
+    setScanMode('qr');
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
@@ -783,34 +756,34 @@ export default function AutoCorrectionPage() {
             <CardContent className="space-y-4">
               <div className="text-center space-y-4">
                 {!useCamera ? (
-                  <div className="space-y-4">
-                    <Button onClick={startCamera} className="w-full">
-                      <Camera className="w-4 h-4 mr-2" />
-                      Usar Câmera
-                    </Button>
-                    
-                    <div className="text-center text-muted-foreground">ou</div>
-                    
-                    <div>
-                      <Input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) setSelectedFile(file);
-                        }}
-                        className="hidden"
-                      />
-                      <Button 
-                        variant="outline" 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full"
-                      >
-                        <Upload className="w-4 h-4 mr-2" />
-                        Enviar Arquivo
-                      </Button>
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Botão para escanear QR code */}
+                    <Card className="p-4 border-2 border-dashed border-blue-300 hover:border-blue-500 transition-colors cursor-pointer"
+                          onClick={() => startCamera('qr')}>
+                      <div className="text-center space-y-3">
+                        <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                          <QrCode className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-blue-900">Escanear QR Code</h3>
+                          <p className="text-sm text-blue-600">Detectar QR da prova ao vivo</p>
+                        </div>
+                      </div>
+                    </Card>
+
+                    {/* Botão para capturar gabarito */}
+                    <Card className="p-4 border-2 border-dashed border-green-300 hover:border-green-500 transition-colors cursor-pointer"
+                          onClick={() => startCamera('photo')}>
+                      <div className="text-center space-y-3">
+                        <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                          <Camera className="w-6 h-6 text-green-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-green-900">Capturar Gabarito</h3>
+                          <p className="text-sm text-green-600">Tirar foto da prova respondida</p>
+                        </div>
+                      </div>
+                    </Card>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -821,71 +794,120 @@ export default function AutoCorrectionPage() {
                       muted
                       controls={false}
                       className="w-full max-w-md mx-auto rounded-lg border bg-black"
-                       style={{ aspectRatio: '16/9' }}
-                     />
-                     
-                     {/* Canvas invisível para processamento de QR codes */}
-                     <canvas
-                       ref={canvasRef}
-                       style={{ display: 'none' }}
-                     />
-                     
-                     <div className="flex gap-2 justify-center">
-                       {isScanning ? (
-                         <div className="text-center space-y-2">
-                           <div className="inline-flex items-center gap-2 text-green-600">
-                             <div className="relative">
-                               <div className="animate-ping absolute w-4 h-4 bg-green-400 rounded-full opacity-75"></div>
-                               <div className="relative w-4 h-4 bg-green-600 rounded-full"></div>
-                             </div>
-                             <span className="text-sm font-bold">⚡ DETECÇÃO INSTANTÂNEA ATIVA</span>
-                           </div>
-                           <div className="text-xs text-green-700 mt-1 font-medium">
-                             Aproxime o QR code da câmera
-                           </div>
-                           <Button variant="outline" onClick={stopCamera} size="sm" className="mt-2 border-red-300 text-red-600 hover:bg-red-50">
-                             ⏹ Parar
-                           </Button>
-                         </div>
-                       ) : isProcessing ? (
-                         <div className="text-center">
-                           <div className="inline-flex items-center gap-2 text-blue-600">
-                             <Loader2 className="w-4 h-4 animate-spin" />
-                             <span className="text-sm">Processando QR Code...</span>
-                           </div>
-                         </div>
-                       ) : (
-                         <>
-                           <Button onClick={capturePhoto} size="sm">
-                             <Camera className="w-4 h-4 mr-2" />
-                             Capturar Foto
-                           </Button>
-                           <Button variant="outline" onClick={stopCamera} size="sm">
-                             Cancelar
-                           </Button>
-                         </>
-                       )}
-                     </div>
+                      style={{ aspectRatio: '16/9' }}
+                    />
+                    
+                    {/* Canvas invisível para processamento */}
+                    <canvas ref={canvasRef} style={{ display: 'none' }} />
+                    
+                    <div className="flex gap-2 justify-center">
+                      {scanMode === 'qr' && isScanning ? (
+                        <div className="text-center space-y-2">
+                          <div className="inline-flex items-center gap-2 text-blue-600">
+                            <div className="relative">
+                              <div className="animate-ping absolute w-4 h-4 bg-blue-400 rounded-full opacity-75"></div>
+                              <div className="relative w-4 h-4 bg-blue-600 rounded-full"></div>
+                            </div>
+                            <ScanLine className="w-5 h-5 animate-pulse" />
+                            <span className="text-sm font-bold">ESCANEANDO QR CODE</span>
+                          </div>
+                          <div className="text-xs text-blue-700 mt-1 font-medium">
+                            Aproxime bem o QR code da câmera
+                          </div>
+                          <Button variant="outline" onClick={stopCamera} size="sm" className="mt-2">
+                            ⏹ Parar
+                          </Button>
+                        </div>
+                      ) : isProcessing ? (
+                        <div className="text-center">
+                          <div className="inline-flex items-center gap-2 text-orange-600">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span className="text-sm">Processando...</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          {scanMode === 'qr' ? (
+                            <Button onClick={() => setIsScanning(true)} size="sm" className="bg-blue-600 hover:bg-blue-700">
+                              <ScanLine className="w-4 h-4 mr-2" />
+                              Iniciar Scan QR
+                            </Button>
+                          ) : (
+                            <Button onClick={capturePhoto} size="sm" className="bg-green-600 hover:bg-green-700">
+                              <Camera className="w-4 h-4 mr-2" />
+                              Capturar Foto
+                            </Button>
+                          )}
+                          <Button variant="outline" onClick={stopCamera} size="sm">
+                            Cancelar
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
+
+                {/* Área de upload de arquivo */}
+                <div className="border-t pt-4">
+                  <div className="text-center text-muted-foreground mb-3">ou</div>
+                  
+                  <div>
+                    <Input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,.heic,.pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) setSelectedFile(file);
+                      }}
+                      className="hidden"
+                    />
+                    <Button
+                      onClick={() => fileInputRef.current?.click()}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      <FileImage className="w-4 h-4 mr-2" />
+                      Enviar Arquivo (JPG, PNG, HEIC, PDF)
+                    </Button>
+                  </div>
+                </div>
               </div>
 
               {selectedFile && (
                 <div className="border rounded-lg p-4 bg-muted/50">
                   <p className="text-sm font-medium">Arquivo selecionado:</p>
                   <p className="text-sm text-muted-foreground">{selectedFile.name}</p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    {selectedFile.type === 'image/heic' || selectedFile.name.toLowerCase().endsWith('.heic') 
+                      ? '📱 Arquivo HEIC será convertido automaticamente' 
+                      : '✅ Formato suportado'}
+                  </p>
                 </div>
               )}
 
               <div className="text-sm text-muted-foreground text-center space-y-1">
-                 {step === 'capture' && (
-                   <>
-                     <p>⚡ <strong>DETECÇÃO INSTANTÂNEA:</strong> Aproxime o QR code da câmera</p>
-                     <p>🚀 Escaneamento a 20fps para detecção em tempo real</p>
-                     <p>🔊 Som de alerta quando detectado</p>
-                     <p className="text-xs text-blue-600">💡 Múltiplas configurações para máxima compatibilidade</p>
-                   </>
-                 )}
+                {step === 'upload' && (
+                  <>
+                    <p>🎯 <strong>Escolha uma opção:</strong> Escanear QR ao vivo ou capturar foto da prova</p>
+                    <p>📱 Suporte completo para HEIC, JPG, PNG e PDF</p>
+                    <p>⚡ Detecção de QR ultra-robusta com múltiplas configurações</p>
+                  </>
+                )}
+                {step === 'qr-scan' && (
+                  <>
+                    <p>⚡ <strong>MODO QR:</strong> Aproxime o QR code bem da câmera</p>
+                    <p>🚀 Detecção em tempo real com máxima sensibilidade</p>
+                    <p>🔊 Som de alerta quando detectado</p>
+                  </>
+                )}
+                {step === 'photo-capture' && (
+                  <>
+                    <p>📷 <strong>MODO FOTO:</strong> Posicione a prova respondida</p>
+                    <p>🎯 Certifique-se que o gabarito está bem visível</p>
+                    <p>💡 Use boa iluminação para melhor resultado</p>
+                  </>
+                )}
                 {step === 'qr-detected' && examInfo && (
                   <>
                     <p>✅ <strong>QR Code detectado!</strong></p>
@@ -894,27 +916,45 @@ export default function AutoCorrectionPage() {
                     <p>🎯 <strong>Etapa 2:</strong> Agora detecte as marcações</p>
                   </>
                 )}
-                {step === 'correcting' && (
+                {step === 'scan-marks' && (
                   <p>⚡ Processando marcações e comparando com gabarito...</p>
                 )}
               </div>
 
               {/* Botões baseados no estado */}
-              {step === 'capture' && (
+              {selectedFile && step === 'upload' && (
                 <Button
-                  onClick={detectQRCode}
-                  disabled={!selectedFile || isProcessing}
+                  onClick={async () => {
+                    setIsProcessing(true);
+                    try {
+                      const qrCodeText = await readQRCodeFromFile(selectedFile);
+                      if (qrCodeText) {
+                        await processQRCodeData(qrCodeText);
+                      } else {
+                        throw new Error('QR Code não encontrado no arquivo. Verifique se a imagem contém um QR code válido e bem visível.');
+                      }
+                    } catch (error) {
+                      toast({
+                        title: "Erro",
+                        description: error instanceof Error ? error.message : 'Erro ao processar arquivo',
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setIsProcessing(false);
+                    }
+                  }}
+                  disabled={isProcessing}
                   className="w-full"
                 >
                   {isProcessing ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Lendo QR Code...
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processando Arquivo...
                     </>
                   ) : (
                     <>
-                      <QrCode className="mr-2 h-4 w-4" />
-                      1. Detectar QR Code
+                      <QrCode className="w-4 h-4 mr-2" />
+                      Detectar QR Code no Arquivo
                     </>
                   )}
                 </Button>
@@ -962,7 +1002,7 @@ export default function AutoCorrectionPage() {
                 </div>
               )}
 
-              {step === 'results' && (
+              {step === 'corrected' && (
                 <Button
                   onClick={resetProcess}
                   variant="outline"
@@ -1069,8 +1109,6 @@ export default function AutoCorrectionPage() {
           )}
         </div>
       </main>
-
-      <canvas ref={canvasRef} className="hidden" />
     </div>
   );
 }
