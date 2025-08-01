@@ -120,58 +120,120 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
             position: relative;
         }
         
+        /* Marcadores âncora principais nos cantos do gabarito */
         .anchor-marker {
             position: absolute;
-            width: 6px;
-            height: 6px;
+            width: 8px;
+            height: 8px;
             background-color: #000;
+            border: 2px solid #000;
             border-radius: 50%;
-            z-index: 10;
+            z-index: 20;
         }
         
         .top-left-anchor {
-            top: 5px;
-            left: 5px;
+            top: 3px;
+            left: 3px;
         }
         
         .top-right-anchor {
-            top: 5px;
-            right: 5px;
+            top: 3px;
+            right: 3px;
         }
         
         .bottom-left-anchor {
-            bottom: 5px;
-            left: 5px;
+            bottom: 3px;
+            left: 3px;
         }
         
         .bottom-right-anchor {
-            bottom: 5px;
-            right: 5px;
+            bottom: 3px;
+            right: 3px;
         }
 
-        /* Marcadores de referência na grade de respostas */
-        .grid-reference {
+        /* Marcadores de delimitação da área de respostas */
+        .answer-area-marker {
             position: absolute;
             background-color: #000;
-            z-index: 10;
+            z-index: 15;
         }
         
-        .grid-ref-top {
-            width: 8px;
-            height: 2px;
-            top: -3px;
+        /* Marcadores horizontais superior e inferior da grade */
+        .answer-top-marker {
+            width: 12px;
+            height: 3px;
+            top: 0px;
             left: 50%;
             transform: translateX(-50%);
         }
         
-        .grid-ref-left {
-            width: 2px;
-            height: 8px;
-            left: -3px;
+        .answer-bottom-marker {
+            width: 12px;
+            height: 3px;
+            bottom: 0px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        
+        /* Marcadores verticais esquerdo e direito da grade */
+        .answer-left-marker {
+            width: 3px;
+            height: 12px;
+            left: 0px;
             top: 50%;
             transform: translateY(-50%);
         }
         
+        .answer-right-marker {
+            width: 3px;
+            height: 12px;
+            right: 0px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        /* Marcadores de referência específicos para detecção */
+        .detection-reference {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background-color: #333;
+            border-radius: 50%;
+            z-index: 10;
+        }
+        
+        .ref-q1 {
+            top: 25px;
+            left: 20px;
+        }
+        
+        .ref-q5 {
+            top: 85px;
+            left: 20px;
+        }
+        
+        .ref-q10 {
+            top: 145px;
+            left: 20px;
+        }
+
+        /* Exclusão do QR code da área de detecção */
+        .qr-code-section {
+            position: relative;
+            z-index: 5; /* Menor que os marcadores */
+        }
+        
+        .qr-code-section::after {
+            content: "";
+            position: absolute;
+            top: -5px;
+            left: -5px;
+            right: -5px;
+            bottom: -5px;
+            border: 1px dashed #ccc;
+            z-index: 1;
+        }
+
         .page-footer { display: flex; justify-content: space-between; font-size: 10pt; margin-top: 20px; border-top: 1px solid #ccc; padding-top: 5px; }
         @media print { body { -webkit-print-color-adjust: exact; } }
     `;
@@ -227,7 +289,7 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
     <body>
         <div class="page-container">
             <div class="answer-sheet-container">
-                <!-- Marcadores âncora APENAS na região do gabarito -->
+                <!-- Marcadores âncora PRINCIPAIS nos cantos do gabarito -->
                 <div class="anchor-marker top-left-anchor"></div>
                 <div class="anchor-marker top-right-anchor"></div>
                 <div class="anchor-marker bottom-left-anchor"></div>
@@ -243,9 +305,17 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
                     <p>Prova: ${exam.id.split('-')[0]}.${studentInfo?.id || version}</p>
                 </div>
                 <div class="answer-grid-section" style="position: relative;">
-                    <!-- Marcadores de referência na grade -->
-                    <div class="grid-reference grid-ref-top"></div>
-                    <div class="grid-reference grid-ref-left"></div>
+                    <!-- Marcadores de delimitação da área de respostas -->
+                    <div class="answer-area-marker answer-top-marker"></div>
+                    <div class="answer-area-marker answer-bottom-marker"></div>
+                    <div class="answer-area-marker answer-left-marker"></div>
+                    <div class="answer-area-marker answer-right-marker"></div>
+                    
+                    <!-- Marcadores de referência para detecção -->
+                    <div class="detection-reference ref-q1"></div>
+                    <div class="detection-reference ref-q5"></div>
+                    <div class="detection-reference ref-q10"></div>
+                    
                     ${generateAnswerGrid()}
                 </div>
             </div>
