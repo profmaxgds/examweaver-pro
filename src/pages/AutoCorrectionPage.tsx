@@ -242,7 +242,7 @@ export default function AutoCorrectionPage() {
           }, 500);
         }
         
-        // Se está no modo photo e já tem examInfo, ativar detecção automática do gabarito
+        // Se está no modo photo e já tem examInfo, ativar detecção automática da folha de respostas
         if (scanMode === 'photo') {
           setTimeout(() => {
             startAnswerSheetDetection();
@@ -404,7 +404,7 @@ export default function AutoCorrectionPage() {
           if (examInfo) {
             setStep('qr-detected');
             toast({
-              title: "Gabarito capturado!",
+              title: "Folha de respostas capturada!",
               description: "Pronto para correção automática.",
             });
           } else {
@@ -430,11 +430,11 @@ export default function AutoCorrectionPage() {
     }, 50); // 20x por segundo para detecção instantânea
   };
 
-  // Função para detectar automaticamente o gabarito quando a câmera está ativa
+  // Função para detectar automaticamente a folha de respostas quando a câmera está ativa
   const startAnswerSheetDetection = () => {
     if (scanIntervalRef.current) return;
     
-    console.log('🎯 Iniciando detecção automática do gabarito...');
+    console.log('🎯 Iniciando detecção automática da folha de respostas...');
     setAutoDetectGrading(true);
     
     scanIntervalRef.current = setInterval(() => {
@@ -444,7 +444,7 @@ export default function AutoCorrectionPage() {
     }, 100); // Detectar a cada 100ms
   };
 
-  // Função para detectar estrutura similar ao gabarito gerado
+  // Função para detectar estrutura similar à folha de respostas gerada
   const detectAnswerSheetStructure = () => {
     if (!videoRef.current || !canvasRef.current || !cameraStream) return;
 
@@ -464,10 +464,10 @@ export default function AutoCorrectionPage() {
     context.drawImage(video, 0, 0, scanWidth, scanHeight);
     const imageData = context.getImageData(0, 0, scanWidth, scanHeight);
     
-    // Detectar padrões que indicam um gabarito (linhas, círculos, etc)
+    // Detectar padrões que indicam uma folha de respostas (linhas, círculos, etc)
     if (detectGradingPattern(imageData)) {
-      // Se detectou padrão de gabarito, capturar automaticamente
-      console.log('✅ Estrutura de gabarito detectada! Capturando automaticamente...');
+      // Se detectou padrão de folha de respostas, capturar automaticamente
+      console.log('✅ Estrutura de folha de respostas detectada! Capturando automaticamente...');
       playBeep();
       setDetectedAnswerSheet(true);
       
@@ -484,13 +484,13 @@ export default function AutoCorrectionPage() {
       }, 1000); // 1 segundo - delay reduzido
       
       toast({
-        title: "🎯 Gabarito detectado!",
+        title: "🎯 Folha de respostas detectada!",
         description: "Capturando imagem automaticamente em 1 segundo...",
       });
     }
   };
 
-  // Função simples para detectar padrões que indicam um gabarito
+  // Função simples para detectar padrões que indicam uma folha de respostas
   const detectGradingPattern = (imageData: ImageData): boolean => {
     const data = imageData.data;
     const width = imageData.width;
@@ -1457,7 +1457,7 @@ export default function AutoCorrectionPage() {
                     size="lg"
                   >
                     <CheckCircle className="w-4 h-4 mr-2" />
-                    Usar esta imagem como gabarito respondido
+                    Usar esta imagem como folha de respostas
                   </Button>
                   
                   <div className="grid grid-cols-2 gap-3">
@@ -1508,7 +1508,7 @@ export default function AutoCorrectionPage() {
                 </Button>
               )}
 
-              {/* Botões para quando QR detectado mas precisa de gabarito */}
+              {/* Botões para quando QR detectado mas precisa de folha de respostas */}
               {step === 'need-answer-sheet' && examInfo && (
                 <div className="space-y-4">
                   <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
@@ -1524,7 +1524,7 @@ export default function AutoCorrectionPage() {
                   </div>
 
                   <div className="text-center text-muted-foreground">
-                    <p className="font-medium">🎯 Agora capture ou envie a prova respondida:</p>
+                    <p className="font-medium">🎯 Agora capture ou envie a folha de respostas:</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1536,7 +1536,7 @@ export default function AutoCorrectionPage() {
                       <div className="text-center">
                         <Camera className="w-6 h-6 mx-auto mb-2 text-green-600" />
                         <div className="text-sm font-medium">Capturar com Câmera</div>
-                        <div className="text-xs text-muted-foreground">Tirar foto da prova</div>
+                        <div className="text-xs text-muted-foreground">Tirar foto da folha de respostas</div>
                       </div>
                     </Button>
 
