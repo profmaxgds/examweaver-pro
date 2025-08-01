@@ -58,6 +58,7 @@ export default function AutoCorrectionPage() {
   // Estados principais
   const [step, setStep] = useState<'upload' | 'qr-scan' | 'photo-capture' | 'qr-detected' | 'scan-marks' | 'corrected' | 'need-answer-sheet' | 'essay-correction'>('upload');
   const [processedImage, setProcessedImage] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [examInfo, setExamInfo] = useState<ExamInfo | null>(null);
@@ -366,6 +367,11 @@ export default function AutoCorrectionPage() {
         if (blob) {
           const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
           setSelectedFile(file);
+          
+          // Criar preview da imagem capturada
+          const previewUrl = URL.createObjectURL(blob);
+          setPreviewImage(previewUrl);
+          
           stopCamera();
           
           // Se ainda não temos examInfo, tentar detectar QR code na imagem capturada
@@ -670,10 +676,10 @@ export default function AutoCorrectionPage() {
       setStep('need-answer-sheet'); // Novo step: precisa da imagem da prova respondida
       stopCamera(); // Parar a câmera após detectar
       
-      // Automaticamente iniciar captura do gabarito após 2 segundos
+      // Automaticamente iniciar captura do gabarito após 500ms (mais rápido)
       setTimeout(() => {
         startCamera('photo');
-      }, 2000);
+      }, 500);
       
       // Alertar sobre questões abertas
       if (essayQuestionsFound.length > 0) {
@@ -933,6 +939,7 @@ export default function AutoCorrectionPage() {
     setUseCamera(false);
     setScanMode('qr');
     setProcessedImage(null);
+    setPreviewImage(null);
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
@@ -1270,14 +1277,31 @@ export default function AutoCorrectionPage() {
               </div>
 
               {selectedFile && (
-                <div className="border rounded-lg p-4 bg-muted/50">
-                  <p className="text-sm font-medium">Arquivo selecionado:</p>
-                  <p className="text-sm text-muted-foreground">{selectedFile.name}</p>
-                  <p className="text-xs text-blue-600 mt-1">
-                    {selectedFile.type === 'image/heic' || selectedFile.name.toLowerCase().endsWith('.heic') 
-                      ? '📱 Arquivo HEIC será convertido automaticamente' 
-                      : '✅ Formato suportado'}
-                  </p>
+                <div className="border rounded-lg p-4 bg-muted/50 space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">Arquivo selecionado:</p>
+                    <p className="text-sm text-muted-foreground">{selectedFile.name}</p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      {selectedFile.type === 'image/heic' || selectedFile.name.toLowerCase().endsWith('.heic') 
+                        ? '📱 Arquivo HEIC será convertido automaticamente' 
+                        : '✅ Formato suportado'}
+                    </p>
+                  </div>
+                  
+                  {/* Preview da imagem */}
+                  {previewImage && (
+                    <div className="text-center">
+                      <p className="text-sm font-medium mb-2">Preview da imagem:</p>
+                      <img 
+                        src={previewImage} 
+                        alt="Preview da prova" 
+                        className="max-w-full max-h-48 rounded border mx-auto"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Esta imagem será pré-processada para detecção das marcações
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1314,10 +1338,13 @@ export default function AutoCorrectionPage() {
                 )}
                 {step === 'qr-detected' && examInfo && (
                   <>
-                    <p>✅ <strong>Imagem recebida!</strong></p>
+                    <p>✅ <strong>Imagem capturada!</strong></p>
                     <p>📋 Prova: {examInfo.examTitle}</p>
                     <p>👤 Aluno: {examInfo.studentName}</p>
-                    <p>🎯 <strong>Pronto para corrigir:</strong> Clique em "Corrigir Prova"</p>
+                    <p>🎯 <strong>Pronto para corrigir:</strong> A imagem será pré-processada para detecção</p>
+                    {essayQuestions.length > 0 && (
+                      <p className="text-orange-600 font-medium">⚠️ Esta prova contém {essayQuestions.length} questão(ões) aberta(s) que precisarão de OCR</p>
+                    )}
                   </>
                 )}
                 {step === 'scan-marks' && (

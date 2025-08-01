@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Camera, Upload, FileText, Brain, Check, X, RotateCcw } from 'lucide-react';
 import Tesseract from 'tesseract.js';
+import { HandwrittenOCR } from './HandwrittenOCR';
 
 interface Question {
   id: string;
@@ -263,74 +264,88 @@ export function EssayQuestionCorrection({
         </CardContent>
       </Card>
 
-      {/* Extração de texto */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="w-5 h-5" />
-            Resposta do Aluno
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Upload de imagem */}
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isProcessing}
-              className="flex items-center gap-2"
-            >
-              <Upload className="w-4 h-4" />
-              Fazer Upload da Resposta
-            </Button>
-          </div>
-          
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept="image/*"
-            className="hidden"
-            onChange={handleFileSelect}
-          />
+      {/* Componente OCR Avançado */}
+      <HandwrittenOCR
+        question={question}
+        onTextExtracted={(text) => {
+          setExtractedText(text);
+          // Gerar sugestão automaticamente após extrair texto
+          setTimeout(() => {
+            if (text && question.correct_answer) {
+              const similarity = calculateTextSimilarity(text, question.correct_answer);
+              const maxPoints = question.points;
+              
+              let scorePercentage;
+              if (similarity >= 90) scorePercentage = 100;
+              else if (similarity >= 80) scorePercentage = 90;
+              else if (similarity >= 70) scorePercentage = 80;
+              else if (similarity >= 60) scorePercentage = 70;
+              else if (similarity >= 50) scorePercentage = 60;
+              else if (similarity >= 40) scorePercentage = 50;
+              else if (similarity >= 30) scorePercentage = 40;
+              else if (similarity >= 20) scorePercentage = 30;
+              else if (similarity >= 10) scorePercentage = 20;
+              else scorePercentage = 10;
+              
+              const suggestedScore = Math.round((scorePercentage / 100) * maxPoints * 10) / 10;
+              
+              setSuggestionScore(suggestedScore);
+              setManualScore(suggestedScore);
+              
+              let feedback = `Similaridade com gabarito: ${similarity}%\n`;
+              if (similarity >= 80) {
+                feedback += "Resposta muito próxima ao gabarito esperado.";
+              } else if (similarity >= 60) {
+                feedback += "Resposta parcialmente correta, contém elementos do gabarito.";
+              } else if (similarity >= 40) {
+                feedback += "Resposta com alguns pontos corretos, mas incompleta.";
+              } else {
+                feedback += "Resposta distante do gabarito esperado.";
+              }
+              
+              setSuggestionFeedback(feedback);
+              setFeedback(feedback);
+            }
+          }, 500);
+        }}
+        isProcessing={isProcessing}
+      />
 
-          {/* Progress do OCR */}
-          {isProcessing && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Brain className="w-4 h-4 animate-pulse" />
-                <span className="text-sm">Processando... {processingProgress}%</span>
+      {/* Texto editável */}
+      {extractedText && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Resposta Extraída
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div>
+              <label className="text-sm font-medium">Texto do Aluno (editável):</label>
+              <Textarea
+                value={extractedText}
+                onChange={(e) => setExtractedText(e.target.value)}
+                placeholder="Cole ou digite a resposta do aluno aqui..."
+                rows={6}
+                className="mt-1"
+              />
+              
+              {/* Sugestão automática */}
+              <div className="mt-3">
+                <Button
+                  variant="outline"
+                  onClick={generateSuggestion}
+                  className="flex items-center gap-2"
+                >
+                  <Brain className="w-4 h-4" />
+                  Regenerar Sugestão
+                </Button>
               </div>
-              <Progress value={processingProgress} className="w-full" />
             </div>
-          )}
-
-          {/* Texto extraído */}
-          <div>
-            <label className="text-sm font-medium">Texto Extraído/Resposta do Aluno:</label>
-            <Textarea
-              value={extractedText}
-              onChange={(e) => setExtractedText(e.target.value)}
-              placeholder="Cole ou digite a resposta do aluno aqui..."
-              rows={6}
-              className="mt-1"
-            />
-          </div>
-
-          {/* Sugestão automática */}
-          {extractedText && (
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={generateSuggestion}
-                className="flex items-center gap-2"
-              >
-                <Brain className="w-4 h-4" />
-                Gerar Sugestão Automática
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Pontuação */}
       <Card>
