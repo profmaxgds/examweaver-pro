@@ -234,10 +234,8 @@ export default function AutoCorrectionPage() {
     scanIntervalRef.current = setInterval(() => {
       if (videoRef.current && videoRef.current.readyState >= 2) {
         scanVideoForQR();
-      } else {
-        console.log('Vídeo não está pronto ainda...');
       }
-    }, 200); // Escanear mais frequentemente para melhor detecção
+    }, 100); // Escanear muito mais frequentemente (10x por segundo)
   };
 
   // Função para escanear vídeo em busca de QR code
@@ -250,26 +248,25 @@ export default function AutoCorrectionPage() {
 
     if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
 
-    // Debug: verificar se o vídeo está sendo renderizado
-    console.log('Escaneando frame:', { 
-      videoWidth: video.videoWidth, 
-      videoHeight: video.videoHeight,
-      readyState: video.readyState 
-    });
+    // Usar resolução menor para escaneamento mais rápido
+    const scanWidth = 640;
+    const scanHeight = 480;
+    
+    canvas.width = scanWidth;
+    canvas.height = scanHeight;
+    context.drawImage(video, 0, 0, scanWidth, scanHeight);
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    const imageData = context.getImageData(0, 0, scanWidth, scanHeight);
+    
+    // Configurações otimizadas para velocidade
     const code = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: "dontInvert" // Melhorar detecção
+      inversionAttempts: "dontInvert"
     });
 
     if (code) {
       // QR code detectado!
-      console.log('QR code detectado automaticamente:', code.data);
-      playBeep(); // Fazer o som de bip
+      console.log('✅ QR code detectado:', code.data);
+      playBeep(); // Som de sucesso
       setIsScanning(false);
       if (scanIntervalRef.current) {
         clearInterval(scanIntervalRef.current);
@@ -820,11 +817,15 @@ export default function AutoCorrectionPage() {
                        {isScanning ? (
                          <div className="text-center space-y-2">
                            <div className="inline-flex items-center gap-2 text-green-600">
-                             <div className="animate-pulse w-2 h-2 bg-green-600 rounded-full"></div>
-                             <span className="text-sm">🔍 Escaneando QR Code automaticamente...</span>
+                             <div className="animate-pulse w-3 h-3 bg-green-600 rounded-full"></div>
+                             <div className="animate-spin w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full"></div>
+                             <span className="text-sm font-medium">🔍 Escaneando QR Code...</span>
                            </div>
-                           <Button variant="outline" onClick={stopCamera} size="sm">
-                             Parar Escaneamento
+                           <div className="text-xs text-green-600 mt-1">
+                             Posicione bem próximo à câmera
+                           </div>
+                           <Button variant="outline" onClick={stopCamera} size="sm" className="mt-2">
+                             ⏹ Parar Escaneamento
                            </Button>
                          </div>
                        ) : isProcessing ? (
@@ -860,10 +861,10 @@ export default function AutoCorrectionPage() {
               <div className="text-sm text-muted-foreground text-center space-y-1">
                  {step === 'capture' && (
                    <>
-                     <p>🎯 <strong>Etapa 1:</strong> Posicione o QR code da prova na câmera</p>
-                     <p>📋 O sistema detectará automaticamente e carregará o gabarito</p>
-                     <p>🔊 Você ouvirá um "bip" quando o QR code for detectado</p>
-                     <p className="text-xs text-muted-foreground">💡 Os marcadores âncora no gabarito ajudam na correção por posição</p>
+                     <p>🎯 <strong>Etapa 1:</strong> Posicione o QR code bem próximo à câmera</p>
+                     <p>📋 Detecção automática ultra-rápida em tempo real</p>
+                     <p>🔊 Som de "bip" quando detectado com sucesso</p>
+                     <p className="text-xs text-blue-600">💡 Marcadores âncora agora ficam apenas na região do gabarito</p>
                    </>
                  )}
                 {step === 'qr-detected' && examInfo && (

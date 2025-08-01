@@ -115,53 +115,59 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
             font-size: 10pt;
         }
         
-        /* Marcadores âncora para referência de posição */
+        /* Marcadores âncora APENAS na região do gabarito */
+        .answer-sheet-container {
+            position: relative;
+        }
+        
         .anchor-marker {
             position: absolute;
-            width: 8px;
-            height: 8px;
+            width: 6px;
+            height: 6px;
             background-color: #000;
             border-radius: 50%;
+            z-index: 10;
         }
         
         .top-left-anchor {
-            top: 10px;
-            left: 10px;
+            top: 5px;
+            left: 5px;
         }
         
         .top-right-anchor {
-            top: 10px;
-            right: 10px;
+            top: 5px;
+            right: 5px;
         }
         
         .bottom-left-anchor {
-            bottom: 10px;
-            left: 10px;
+            bottom: 5px;
+            left: 5px;
         }
         
         .bottom-right-anchor {
-            bottom: 10px;
-            right: 10px;
+            bottom: 5px;
+            right: 5px;
         }
 
-        /* Marcadores de referência na área do gabarito */
+        /* Marcadores de referência na grade de respostas */
         .grid-reference {
             position: absolute;
             background-color: #000;
+            z-index: 10;
         }
         
         .grid-ref-top {
-            width: 12px;
-            height: 3px;
-            top: -5px;
+            width: 8px;
+            height: 2px;
+            top: -3px;
             left: 50%;
             transform: translateX(-50%);
         }
         
         .grid-ref-left {
-            width: 3px;
-            height: 12px;
-            left: -5px;
+            width: 2px;
+            height: 8px;
+            left: -3px;
             top: 50%;
             transform: translateY(-50%);
         }
@@ -219,14 +225,14 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         <style>${styles}</style>
     </head>
     <body>
-        <!-- Marcadores âncora nas bordas da página -->
-        <div class="anchor-marker top-left-anchor"></div>
-        <div class="anchor-marker top-right-anchor"></div>
-        <div class="anchor-marker bottom-left-anchor"></div>
-        <div class="anchor-marker bottom-right-anchor"></div>
-        
         <div class="page-container">
             <div class="answer-sheet-container">
+                <!-- Marcadores âncora APENAS na região do gabarito -->
+                <div class="anchor-marker top-left-anchor"></div>
+                <div class="anchor-marker top-right-anchor"></div>
+                <div class="anchor-marker bottom-left-anchor"></div>
+                <div class="anchor-marker bottom-right-anchor"></div>
+                
                 <div class="qr-code-section">
                     <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(JSON.stringify({
                         examId: exam.id,
