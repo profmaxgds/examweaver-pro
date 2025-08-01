@@ -684,10 +684,10 @@ export default function AutoCorrectionPage() {
       setStep('need-answer-sheet'); // Novo step: precisa da imagem da prova respondida
       stopCamera(); // Parar a câmera após detectar
       
-      // Automaticamente iniciar captura do gabarito após 500ms (mais rápido)
+      // Automaticamente iniciar captura do gabarito após 3 segundos (tempo para ler)
       setTimeout(() => {
         startCamera('photo');
-      }, 500);
+      }, 3000);
       
       // Alertar sobre questões abertas
       if (essayQuestionsFound.length > 0) {
@@ -1368,7 +1368,7 @@ export default function AutoCorrectionPage() {
                      <p>📋 Prova: {examInfo.examTitle}</p>
                      <p>👤 Aluno: {examInfo.studentName}</p>
                      <p>📷 <strong>Próximo passo:</strong> Capture a prova respondida (QR + gabarito)</p>
-                     <p className="text-xs text-blue-600 mt-1">⏰ A câmera será aberta automaticamente em alguns segundos</p>
+                     <p className="text-xs text-blue-600 mt-1">⏰ A câmera será aberta automaticamente em 3 segundos</p>
                   </>
                 )}
                 {step === 'qr-detected' && examInfo && (
