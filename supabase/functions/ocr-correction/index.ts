@@ -12,92 +12,21 @@ serve(async (req) => {
   }
 
   try {
-    const { imageData, examId } = await req.json();
-
-    if (!imageData || !examId) {
-      throw new Error('Missing required parameters');
-    }
-
+    const requestData = await req.json();
+    
+    // Verificar se é o novo formato (fileName + examInfo) ou formato antigo (imageData + examId)
+    const isNewFormat = requestData.fileName && requestData.examInfo;
+    
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Buscar dados da prova
-    const { data: exam, error: examError } = await supabase
-      .from('exams')
-      .select('*')
-      .eq('id', examId)
-      .single();
-
-    if (examError || !exam) {
-      throw new Error('Exam not found');
+    if (isNewFormat) {
+      return await processNewFormat(supabase, requestData);
+    } else {
+      return await processLegacyFormat(supabase, requestData);
     }
-
-    // Processar QR Code para detectar versão da prova
-    const qrData = await extractQRCode(imageData);
-    let version = 1;
-    if (qrData) {
-      const versionMatch = qrData.match(/v(\d+)/);
-      if (versionMatch) {
-        version = parseInt(versionMatch[1]);
-      }
-    }
-
-    // Processar OCR para extrair respostas
-    const ocrResults = await processOCR(imageData);
-    
-    // Extrair dados do estudante
-    const studentInfo = extractStudentInfo(ocrResults);
-    
-    // Extrair respostas marcadas
-    const answers = extractAnswers(ocrResults, exam.question_ids.length);
-    
-    // Calcular pontuação
-    const { score, detailedResults } = await calculateScore(
-      supabase, 
-      exam, 
-      answers, 
-      version
-    );
-
-    // Determinar confiança do OCR
-    const confidenceScore = calculateConfidence(ocrResults, answers);
-
-    // Salvar correção
-    const { data: correction, error: correctionError } = await supabase
-      .from('corrections')
-      .insert({
-        exam_id: examId,
-        version,
-        student_name: studentInfo.name || 'Nome não identificado',
-        student_id: studentInfo.id || null,
-        answers: answers,
-        score,
-        ocr_data: ocrResults,
-        auto_corrected: true,
-        manual_review: confidenceScore < 0.8,
-        confidence_score: confidenceScore,
-        status: confidenceScore >= 0.8 ? 'completed' : 'pending'
-      })
-      .select()
-      .single();
-
-    if (correctionError) {
-      throw new Error('Failed to save correction');
-    }
-
-    return new Response(
-      JSON.stringify({
-        correction,
-        detailedResults,
-        needsReview: confidenceScore < 0.8,
-        confidence: confidenceScore
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
 
   } catch (error) {
     console.error('Error processing OCR correction:', error);
@@ -110,6 +39,143 @@ serve(async (req) => {
     );
   }
 });
+
+// Novo formato: processar arquivo do storage com examInfo
+async function processNewFormat(supabase: any, { fileName, mode, examInfo }: any) {
+  console.log('Processando novo formato:', { fileName, mode, examInfo });
+
+  if (!fileName || !examInfo) {
+    throw new Error('Parâmetros obrigatórios: fileName, examInfo');
+  }
+
+  // Baixar a imagem do storage
+  const { data: fileData, error: downloadError } = await supabase.storage
+    .from('correction-scans')
+    .download(fileName);
+
+  if (downloadError) {
+    console.error('Erro ao baixar arquivo:', downloadError);
+    throw new Error(`Erro ao baixar arquivo: ${downloadError.message}`);
+  }
+
+  // Converter para base64 para processamento
+  const arrayBuffer = await fileData.arrayBuffer();
+  const base64Image = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+  const dataUrl = `data:image/jpeg;base64,${base64Image}`;
+
+  console.log('Arquivo carregado, processando marcações...');
+
+  // Processar OCR para extrair respostas
+  const ocrResults = await processOCR(dataUrl);
+  
+  // Extrair respostas marcadas
+  const questionCount = Object.keys(examInfo.answerKey).length;
+  const detectedAnswers = extractAnswers(ocrResults, questionCount);
+
+  console.log('Marcações detectadas:', detectedAnswers);
+
+  const response = {
+    success: true,
+    detectedAnswers,
+    fileName,
+    examInfo,
+    processedAt: new Date().toISOString(),
+    ocrResults: ocrResults
+  };
+
+  return new Response(
+    JSON.stringify(response),
+    { 
+      headers: { 
+        ...corsHeaders, 
+        'Content-Type': 'application/json' 
+      } 
+    }
+  );
+}
+
+// Formato antigo: manter compatibilidade
+async function processLegacyFormat(supabase: any, { imageData, examId }: any) {
+  if (!imageData || !examId) {
+    throw new Error('Missing required parameters');
+  }
+
+  // Buscar dados da prova
+  const { data: exam, error: examError } = await supabase
+    .from('exams')
+    .select('*')
+    .eq('id', examId)
+    .single();
+
+  if (examError || !exam) {
+    throw new Error('Exam not found');
+  }
+
+  // Processar QR Code para detectar versão da prova
+  const qrData = await extractQRCode(imageData);
+  let version = 1;
+  if (qrData) {
+    const versionMatch = qrData.match(/v(\d+)/);
+    if (versionMatch) {
+      version = parseInt(versionMatch[1]);
+    }
+  }
+
+  // Processar OCR para extrair respostas
+  const ocrResults = await processOCR(imageData);
+  
+  // Extrair dados do estudante
+  const studentInfo = extractStudentInfo(ocrResults);
+  
+  // Extrair respostas marcadas
+  const answers = extractAnswers(ocrResults, exam.question_ids.length);
+  
+  // Calcular pontuação
+  const { score, detailedResults } = await calculateScore(
+    supabase, 
+    exam, 
+    answers, 
+    version
+  );
+
+  // Determinar confiança do OCR
+  const confidenceScore = calculateConfidence(ocrResults, answers);
+
+  // Salvar correção
+  const { data: correction, error: correctionError } = await supabase
+    .from('corrections')
+    .insert({
+      exam_id: examId,
+      version,
+      student_name: studentInfo.name || 'Nome não identificado',
+      student_id: studentInfo.id || null,
+      answers: answers,
+      score,
+      ocr_data: ocrResults,
+      auto_corrected: true,
+      manual_review: confidenceScore < 0.8,
+      confidence_score: confidenceScore,
+      status: confidenceScore >= 0.8 ? 'completed' : 'pending'
+    })
+    .select()
+    .single();
+
+  if (correctionError) {
+    throw new Error('Failed to save correction');
+  }
+
+  return new Response(
+    JSON.stringify({
+      correction,
+      detailedResults,
+      needsReview: confidenceScore < 0.8,
+      confidence: confidenceScore
+    }),
+    {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    }
+  );
+}
 
 async function extractQRCode(imageData: string): Promise<string | null> {
   try {

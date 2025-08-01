@@ -48,7 +48,7 @@ export default function AutoCorrectionPage() {
   const { toast } = useToast();
   
   // Estados principais
-  const [step, setStep] = useState<'upload' | 'qr-scan' | 'photo-capture' | 'qr-detected' | 'scan-marks' | 'corrected'>('upload');
+  const [step, setStep] = useState<'upload' | 'qr-scan' | 'photo-capture' | 'qr-detected' | 'scan-marks' | 'corrected' | 'need-answer-sheet'>('upload');
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [examInfo, setExamInfo] = useState<ExamInfo | null>(null);
@@ -346,10 +346,20 @@ export default function AutoCorrectionPage() {
           const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
           setSelectedFile(file);
           stopCamera();
-          toast({
-            title: "Foto capturada!",
-            description: "Agora você pode processar a correção.",
-          });
+          
+          // Se já temos examInfo (QR detectado), vamos para estado "pronto para corrigir"
+          if (examInfo) {
+            setStep('qr-detected');
+            toast({
+              title: "Gabarito capturado!",
+              description: "Pronto para correção automática.",
+            });
+          } else {
+            toast({
+              title: "Foto capturada!",
+              description: "Agora você pode processar a correção.",
+            });
+          }
         }
       }, 'image/jpeg', 0.8);
     }
@@ -498,7 +508,7 @@ export default function AutoCorrectionPage() {
       };
 
       setExamInfo(examInfo);
-      setStep('qr-detected');
+      setStep('need-answer-sheet'); // Novo step: precisa da imagem da prova respondida
       stopCamera(); // Parar a câmera após detectar
       
       toast({
@@ -908,12 +918,20 @@ export default function AutoCorrectionPage() {
                     <p>💡 Use boa iluminação para melhor resultado</p>
                   </>
                 )}
-                {step === 'qr-detected' && examInfo && (
+                {step === 'need-answer-sheet' && examInfo && (
                   <>
                     <p>✅ <strong>QR Code detectado!</strong></p>
                     <p>📋 Prova: {examInfo.examTitle}</p>
                     <p>👤 Aluno: {examInfo.studentName}</p>
-                    <p>🎯 <strong>Etapa 2:</strong> Agora detecte as marcações</p>
+                    <p>📷 <strong>Próximo passo:</strong> Capture ou envie a prova respondida</p>
+                  </>
+                )}
+                {step === 'qr-detected' && examInfo && (
+                  <>
+                    <p>✅ <strong>Imagem recebida!</strong></p>
+                    <p>📋 Prova: {examInfo.examTitle}</p>
+                    <p>👤 Aluno: {examInfo.studentName}</p>
+                    <p>🎯 <strong>Pronto para corrigir:</strong> Clique em "Corrigir Prova"</p>
                   </>
                 )}
                 {step === 'scan-marks' && (
@@ -922,6 +940,7 @@ export default function AutoCorrectionPage() {
               </div>
 
               {/* Botões baseados no estado */}
+              {/* Detectar QR Code de arquivo */}
               {selectedFile && step === 'upload' && (
                 <Button
                   onClick={async () => {
@@ -930,6 +949,7 @@ export default function AutoCorrectionPage() {
                       const qrCodeText = await readQRCodeFromFile(selectedFile);
                       if (qrCodeText) {
                         await processQRCodeData(qrCodeText);
+                        setSelectedFile(null); // Limpar arquivo após extrair QR
                       } else {
                         throw new Error('QR Code não encontrado no arquivo. Verifique se a imagem contém um QR code válido e bem visível.');
                       }
@@ -960,7 +980,43 @@ export default function AutoCorrectionPage() {
                 </Button>
               )}
 
-              {step === 'qr-detected' && examInfo && (
+              {/* Após capturar gabarito ou enviar arquivo - mostrar botão corrigir */}
+              {selectedFile && (step === 'need-answer-sheet' || step === 'photo-capture') && examInfo && (
+                <Button
+                  onClick={() => {
+                    setStep('qr-detected'); // Vai para estado pronto para corrigir
+                  }}
+                  className="w-full"
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Usar esta imagem como gabarito respondido
+                </Button>
+              )}
+
+              {/* Botão de corrigir prova */}
+              {step === 'qr-detected' && examInfo && selectedFile && (
+                <Button
+                  onClick={processCorrection}
+                  disabled={isProcessing}
+                  className="w-full bg-green-600 hover:bg-green-700"
+                  size="lg"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Corrigindo prova...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      Corrigir Prova Automaticamente
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {/* Botões para quando QR detectado mas precisa de gabarito */}
+              {step === 'need-answer-sheet' && examInfo && (
                 <div className="space-y-4">
                   <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
                     <div className="flex items-center gap-2 mb-2">
@@ -973,28 +1029,40 @@ export default function AutoCorrectionPage() {
                       <p><strong>Questões:</strong> {Object.keys(examInfo.answerKey).length}</p>
                     </div>
                   </div>
-                  
-                  <Button
-                    onClick={processCorrection}
-                    disabled={isProcessing}
-                    className="w-full"
-                  >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Detectando marcações...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="mr-2 h-4 w-4" />
-                        2. Processar Marcações
-                      </>
-                    )}
-                  </Button>
+
+                  <div className="text-center text-muted-foreground">
+                    <p className="font-medium">🎯 Agora capture ou envie a prova respondida:</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <Button
+                      onClick={() => startCamera('photo')}
+                      variant="outline"
+                      className="h-auto p-4"
+                    >
+                      <div className="text-center">
+                        <Camera className="w-6 h-6 mx-auto mb-2 text-green-600" />
+                        <div className="text-sm font-medium">Capturar com Câmera</div>
+                        <div className="text-xs text-muted-foreground">Tirar foto da prova</div>
+                      </div>
+                    </Button>
+
+                    <Button
+                      onClick={() => fileInputRef.current?.click()}
+                      variant="outline"
+                      className="h-auto p-4"
+                    >
+                      <div className="text-center">
+                        <FileImage className="w-6 h-6 mx-auto mb-2 text-blue-600" />
+                        <div className="text-sm font-medium">Enviar Arquivo</div>
+                        <div className="text-xs text-muted-foreground">JPG, PNG, HEIC</div>
+                      </div>
+                    </Button>
+                  </div>
                   
                   <Button
                     onClick={resetProcess}
-                    variant="outline"
+                    variant="ghost"
                     className="w-full"
                   >
                     Recomeçar Processo
