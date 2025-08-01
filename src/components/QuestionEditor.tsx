@@ -150,6 +150,17 @@ export function QuestionEditor({ onSave, initialData, loading }: QuestionEditorP
       });
       return;
     }
+    
+    // Validação específica para questões abertas (essay)
+    if (question.type === 'essay' && !question.correctAnswer?.trim()) {
+      toast({
+        title: "Resposta Esperada Necessária",
+        description: "Por favor, preencha a resposta esperada ou critérios de correção para questões abertas.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     onSave(question);
   };
 

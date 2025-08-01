@@ -38,6 +38,20 @@ export default function EditQuestionPage() {
   const [initialData, setInitialData] = useState<QuestionData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Função para tratar o correct_answer baseado no tipo da questão
+  const getCorrectAnswerForType = (questionData: QuestionData) => {
+    switch (questionData.type) {
+      case 'multiple_choice':
+        return questionData.options.filter((opt: any) => opt.isCorrect).map((opt: any) => opt.id);
+      case 'true_false':
+        return questionData.correctAnswer; // boolean ou string 'true'/'false'
+      case 'essay':
+        return questionData.correctAnswer || ''; // string com critérios ou resposta esperada
+      default:
+        return null;
+    }
+  };
+
   useEffect(() => {
     const fetchQuestion = async () => {
       if (!id || !user) return;
@@ -101,9 +115,7 @@ export default function EditQuestionPage() {
         content: questionData.content,
         type: questionData.type,
         options: questionData.type === 'multiple_choice' ? questionData.options.map(({ id, text }) => ({ id, text })) : null,
-        correct_answer: questionData.type === 'multiple_choice'
-          ? questionData.options.filter(opt => opt.isCorrect).map(opt => opt.id)
-          : questionData.correctAnswer,
+        correct_answer: getCorrectAnswerForType(questionData),
         category: questionData.category || null,
         subject: questionData.subject,
         difficulty: questionData.difficulty,

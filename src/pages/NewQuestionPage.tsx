@@ -13,12 +13,43 @@ export default function NewQuestionPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Função para tratar o correct_answer baseado no tipo da questão
+  const getCorrectAnswerForType = (questionData: any) => {
+    switch (questionData.type) {
+      case 'multiple_choice':
+        return questionData.options.filter((opt: any) => opt.isCorrect).map((opt: any) => opt.id);
+      case 'true_false':
+        return questionData.correctAnswer; // boolean ou string 'true'/'false'
+      case 'essay':
+        return questionData.correctAnswer || ''; // string com critérios ou resposta esperada
+      default:
+        return null;
+    }
+  };
+
   const handleSave = async (questionData: any) => {
     if (!user) return;
 
+    // Preparar dados para o banco
+    const dataToInsert = {
+      title: questionData.title,
+      content: questionData.content,
+      type: questionData.type,
+      options: questionData.type === 'multiple_choice' ? questionData.options.map(({ id, text }) => ({ id, text })) : null,
+      correct_answer: getCorrectAnswerForType(questionData),
+      category: questionData.category || null,
+      subject: questionData.subject,
+      difficulty: questionData.difficulty,
+      tags: questionData.tags,
+      points: questionData.points,
+      author_id: user.id
+    };
+
+    console.log('Dados a serem inseridos:', dataToInsert);
+
     const { data, error } = await supabase
       .from('questions')
-      .insert({ ...questionData, author_id: user.id })
+      .insert(dataToInsert)
       .select()
       .single();
 
