@@ -62,51 +62,100 @@ export function AutoCorrectionScanner() {
           toast.success('Foto capturada com sucesso!');
         }
       } else {
-        // Para browsers, usar getUserMedia
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: 'environment', // Câmera traseira
-            width: { ideal: 1920 },
-            height: { ideal: 1920 }
-          } 
-        });
+        // Para browsers móveis - melhor implementação
+        console.log('Tentando acessar câmera do browser...');
         
-        // Criar canvas para capturar frame
-        const video = document.createElement('video');
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        
-        video.srcObject = stream;
-        video.play();
-        
-        // Aguardar video carregar
-        await new Promise(resolve => {
-          video.onloadedmetadata = () => {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            resolve(true);
-          };
-        });
-        
-        // Capturar frame
-        context?.drawImage(video, 0, 0);
-        
-        // Parar stream
-        stream.getTracks().forEach(track => track.stop());
-        
-        // Converter para blob e file
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const file = new File([blob], `camera_web_${Date.now()}.jpg`, { type: 'image/jpeg' });
-            setSelectedFile(file);
-            setCorrectionResult(null);
-            toast.success('Foto capturada com sucesso!');
+        // Verificar se getUserMedia está disponível
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          toast.error('Câmera não disponível neste browser');
+          return;
+        }
+
+        // Solicitar permissões explicitamente
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+              facingMode: 'environment', // Câmera traseira preferencial
+              width: { ideal: 1920, max: 1920 },
+              height: { ideal: 1920, max: 1920 }
+            } 
+          });
+          
+          console.log('Stream da câmera obtido com sucesso');
+          
+          // Criar elementos necessários
+          const video = document.createElement('video');
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          
+          if (!context) {
+            throw new Error('Não foi possível criar contexto do canvas');
           }
-        }, 'image/jpeg', 0.9);
+          
+          video.srcObject = stream;
+          video.setAttribute('playsinline', 'true'); // Importante para iOS
+          video.setAttribute('autoplay', 'true');
+          video.setAttribute('muted', 'true');
+          
+          // Aguardar o vídeo carregar e estar pronto
+          await new Promise((resolve, reject) => {
+            video.onloadedmetadata = () => {
+              console.log('Metadata do vídeo carregada:', video.videoWidth, 'x', video.videoHeight);
+              canvas.width = video.videoWidth;
+              canvas.height = video.videoHeight;
+              
+              // Aguardar um pouco mais para garantir que o vídeo está renderizando
+              setTimeout(resolve, 1000);
+            };
+            video.onerror = (err) => {
+              console.error('Erro no vídeo:', err);
+              reject(new Error('Erro ao carregar vídeo'));
+            };
+            
+            // Timeout de segurança
+            setTimeout(() => reject(new Error('Timeout ao carregar vídeo')), 10000);
+          });
+          
+          // Capturar o frame atual
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          console.log('Frame capturado do vídeo');
+          
+          // Parar todas as tracks do stream
+          stream.getTracks().forEach(track => {
+            console.log('Parando track:', track.kind);
+            track.stop();
+          });
+          
+          // Converter canvas para blob e depois para File
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const file = new File([blob], `camera_web_${Date.now()}.jpg`, { type: 'image/jpeg' });
+              console.log('Arquivo criado:', file.name, file.size, 'bytes');
+              setSelectedFile(file);
+              setCorrectionResult(null);
+              toast.success('Foto capturada com sucesso!');
+            } else {
+              throw new Error('Erro ao criar blob da imagem');
+            }
+          }, 'image/jpeg', 0.9);
+          
+        } catch (permissionError) {
+          console.error('Erro de permissão da câmera:', permissionError);
+          
+          if (permissionError.name === 'NotAllowedError') {
+            toast.error('Permissão de câmera negada. Verifique as configurações do browser e permita o acesso à câmera.');
+          } else if (permissionError.name === 'NotFoundError') {
+            toast.error('Nenhuma câmera encontrada no dispositivo.');
+          } else if (permissionError.name === 'NotSupportedError') {
+            toast.error('Câmera não suportada neste browser.');
+          } else {
+            toast.error(`Erro ao acessar câmera: ${permissionError.message}`);
+          }
+        }
       }
     } catch (error) {
-      console.error('Erro ao capturar foto:', error);
-      toast.error('Erro ao acessar a câmera. Verifique as permissões.');
+      console.error('Erro geral ao capturar foto:', error);
+      toast.error('Erro ao acessar a câmera. Tente novamente.');
     }
   };
 
@@ -275,13 +324,23 @@ export function AutoCorrectionScanner() {
                 className="mt-1"
                 style={{ display: Capacitor.isNativePlatform() ? 'none' : 'block' }}
               />
-              
-              <p className="text-sm text-muted-foreground">
-                {Capacitor.isNativePlatform() 
-                  ? 'Use os botões acima para capturar ou selecionar uma imagem da folha de respostas'
-                  : 'Selecione uma imagem clara da folha de respostas com QR code visível'
-                }
-              </p>
+               
+               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+                 <p className="font-medium text-blue-800 mb-1">📱 Para usar a câmera no seu dispositivo:</p>
+                 <ul className="text-blue-700 space-y-1 ml-4">
+                   <li>• Clique em "Tirar Foto" e permita o acesso à câmera quando solicitado</li>
+                   <li>• No Safari/iOS: Toque no ícone "Aa" na barra de endereço {'>'}  Configurações do Site {'>'}  Câmera: Permitir</li>
+                   <li>• No Chrome/Android: Toque no ícone de cadeado/câmera na barra de endereço {'>'}  Permitir câmera</li>
+                   <li>• Certifique-se de que está usando HTTPS (URL deve começar com https://)</li>
+                 </ul>
+               </div>
+               
+               <p className="text-sm text-muted-foreground">
+                 {Capacitor.isNativePlatform() 
+                   ? 'Use os botões acima para capturar ou selecionar uma imagem da folha de respostas'
+                   : 'Use "Tirar Foto" para acessar a câmera ou "Galeria" para selecionar uma imagem existente'
+                 }
+               </p>
             </div>
           </div>
 
