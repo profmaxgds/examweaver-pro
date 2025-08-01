@@ -161,32 +161,34 @@ export default function CorrectionsManagementPage() {
     try {
       setLoading(true);
 
-      // Carregar correções com dados dos exames
+      // Carregar todas as correções primeiro
       const { data: correctionsData, error: correctionsError } = await supabase
         .from('exam_corrections')
-        .select(`
-          *,
-          exams!inner(
-            id,
-            title,
-            subject,
-            target_class_id,
-            institutions
-          )
-        `)
+        .select('*')
         .eq('author_id', user!.id)
         .order('correction_date', { ascending: false });
 
       if (correctionsError) throw correctionsError;
-      setCorrections(correctionsData as any[]);
+
+      // Carregar dados dos exames
+      const examIds = [...new Set(correctionsData.map(c => c.exam_id))];
+      const { data: examsData, error: examsError } = await supabase
+        .from('exams')
+        .select('*')
+        .in('id', examIds);
+
+      if (examsError) throw examsError;
+
+      // Combinar os dados
+      const correctionsWithExams = correctionsData.map(correction => ({
+        ...correction,
+        exam: examsData.find(exam => exam.id === correction.exam_id)
+      }));
+
+      setCorrections(correctionsWithExams as any[]);
 
       // Carregar exames únicos para o filtro
-      const uniqueExams = correctionsData
-        .map((c: any) => c.exams)
-        .filter((exam, index, self) => 
-          index === self.findIndex(e => e.id === exam.id)
-        );
-      setExams(uniqueExams);
+      setExams(examsData || []);
 
       // Carregar turmas
       const { data: classesData } = await supabase
@@ -197,9 +199,9 @@ export default function CorrectionsManagementPage() {
 
       // Carregar instituições únicas
       const uniqueInstitutions = [...new Set(
-        correctionsData
-          .map((c: any) => c.exams?.institutions)
-          .filter(Boolean)
+        examsData
+          ?.map(exam => exam.institutions)
+          .filter(Boolean) || []
       )];
       setInstitutions(uniqueInstitutions);
 
@@ -223,7 +225,7 @@ export default function CorrectionsManagementPage() {
       filtered = filtered.filter(correction =>
         correction.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         correction.student_identification?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (examId ? false : (correction as any).exams?.title?.toLowerCase().includes(searchTerm.toLowerCase()))
+        (examId ? false : (correction as any).exam?.title?.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
 
@@ -237,21 +239,21 @@ export default function CorrectionsManagementPage() {
     // Filtro por prova
     if (selectedExamFilter !== 'all') {
       filtered = filtered.filter(correction =>
-        (correction as any).exams?.id === selectedExamFilter
+        (correction as any).exam?.id === selectedExamFilter
       );
     }
 
     // Filtro por turma
     if (selectedClassFilter !== 'all') {
       filtered = filtered.filter(correction =>
-        (correction as any).exams?.target_class_id === selectedClassFilter
+        (correction as any).exam?.target_class_id === selectedClassFilter
       );
     }
 
     // Filtro por instituição
     if (selectedInstitutionFilter !== 'all') {
       filtered = filtered.filter(correction =>
-        (correction as any).exams?.institutions === selectedInstitutionFilter
+        (correction as any).exam?.institutions === selectedInstitutionFilter
       );
     }
 
@@ -684,14 +686,14 @@ export default function CorrectionsManagementPage() {
                       {correction.student_name}
                     </TableCell>
                     <TableCell>{correction.student_identification}</TableCell>
-                    {!examId && (
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{(correction as any).exams?.title}</p>
-                          <p className="text-sm text-muted-foreground">{(correction as any).exams?.subject}</p>
-                        </div>
-                      </TableCell>
-                    )}
+                     {!examId && (
+                       <TableCell>
+                         <div>
+                           <p className="font-medium">{(correction as any).exam?.title}</p>
+                           <p className="text-sm text-muted-foreground">{(correction as any).exam?.subject}</p>
+                         </div>
+                       </TableCell>
+                     )}
                     <TableCell>
                       <Badge variant={correction.percentage >= 60 ? "default" : "destructive"}>
                         {correction.score.toFixed(1)}/{correction.max_score}
