@@ -244,3 +244,4 @@ async function fallbackGenericAnalysis(examInfo: any): Promise<Record<string, st
   
   console.log(`✅ Análise fallback completa: ${Object.keys(detectedAnswers).length}/${questionCount} respostas geradas`);
   return detectedAnswers;
+}
