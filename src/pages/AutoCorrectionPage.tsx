@@ -348,49 +348,66 @@ export default function AutoCorrectionPage() {
     }
   };
 
-  // Função para escanear QR code em tempo real
-  const scanForQRCode = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current || step !== 'qr-scan') return;
+  // Função otimizada para escaneamento de QR code ultra-rápido (baseada no código anterior)
+  const scanVideoForQR = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current || !isScanning || step !== 'qr-scan') return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const context = canvas.getContext('2d');
 
-    if (!context || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+    if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // Usar resolução muito pequena para máxima velocidade (baseado no código anterior)
+    const scanWidth = 320;
+    const scanHeight = 240;
+    
+    canvas.width = scanWidth;
+    canvas.height = scanHeight;
+    
+    // Desenhar com suavização desabilitada para velocidade máxima
+    context.imageSmoothingEnabled = false;
+    context.drawImage(video, 0, 0, scanWidth, scanHeight);
 
-    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(imageData.data, imageData.width, imageData.height);
+    const imageData = context.getImageData(0, 0, scanWidth, scanHeight);
+    
+    // Tentar múltiplas configurações para máxima compatibilidade (como no código anterior)
+    const configurations = [
+      { inversionAttempts: "dontInvert" as const },
+      { inversionAttempts: "onlyInvert" as const },
+      { inversionAttempts: "attemptBoth" as const }
+    ];
 
-    if (code) {
-      console.log('📱 QR Code detectado:', code.data);
-      
-      const qrData = extractQRCodeData(code.data);
-      if (qrData) {
-        setIsScanning(false);
-        if (scanIntervalRef.current) {
-          clearInterval(scanIntervalRef.current);
-        }
+    for (const config of configurations) {
+      try {
+        const code = jsQR(imageData.data, imageData.width, imageData.height, config);
         
-        // Buscar dados da prova
-        fetchExamDataFromQR(qrData).then(success => {
-          if (success) {
-            setStep('real-time-correction');
-            startRealTimeCorrection();
+        if (code && code.data && code.data.trim()) {
+          console.log('✅ QR code detectado instantaneamente:', code.data);
+          setIsScanning(false);
+          if (scanIntervalRef.current) {
+            clearInterval(scanIntervalRef.current);
+            scanIntervalRef.current = null;
           }
-        });
-      } else {
-        toast({
-          title: "QR Code Inválido",
-          description: "Este QR code não é de uma prova válida.",
-          variant: "destructive",
-        });
+          
+          // Processar dados do QR code
+          const qrData = extractQRCodeData(code.data);
+          if (qrData) {
+            fetchExamDataFromQR(qrData).then(success => {
+              if (success) {
+                setStep('real-time-correction');
+                startRealTimeCorrection();
+              }
+            });
+          }
+          return; // Sair da função após detecção
+        }
+      } catch (error) {
+        // Continuar para próxima configuração
+        continue;
       }
     }
-  }, [step]);
+  }, [step, isScanning]);
 
   // Iniciar escaneamento de QR code
   const startQRScanning = async () => {
@@ -402,7 +419,7 @@ export default function AutoCorrectionPage() {
       
       // Aguardar um pouco para o vídeo carregar e reduzir intervalo para leitura mais rápida
       setTimeout(() => {
-        scanIntervalRef.current = setInterval(scanForQRCode, 50); // 20 FPS para leitura mais rápida
+        scanIntervalRef.current = setInterval(scanVideoForQR, 50); // 20 FPS para leitura mais rápida
       }, 300);
 
       toast({
