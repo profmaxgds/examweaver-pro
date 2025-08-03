@@ -279,7 +279,7 @@ export default function AutoCorrectionPage() {
     }
   };
 
-  // Iniciar câmera para QR ou foto
+  // Iniciar câmera para QR ou foto (otimizado para mobile)
   const startCamera = async (mode: 'qr' | 'photo') => {
     setScanMode(mode);
     try {
@@ -287,14 +287,15 @@ export default function AutoCorrectionPage() {
         throw new Error('Camera API não suportada neste navegador');
       }
 
-      console.log(`📷 Acessando câmera para ${mode === 'qr' ? 'QR Code' : 'captura de foto'}...`);
+      console.log(`📷 Acessando câmera mobile para ${mode === 'qr' ? 'QR Code' : 'captura de foto'}...`);
       
+      // Configurações otimizadas para dispositivos móveis
       const constraints = {
         video: {
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30 }
+          facingMode: mode === 'qr' ? 'environment' : 'environment', // Câmera traseira para melhor qualidade
+          width: { ideal: 1920, max: 1920 }, // Resolução alta para melhor detecção
+          height: { ideal: 1080, max: 1080 },
+          frameRate: { ideal: 30, max: 30 }
         }
       };
 
@@ -308,8 +309,9 @@ export default function AutoCorrectionPage() {
       }
       
       toast({
-        title: mode === 'qr' ? "📷 Escaneamento QR ativo!" : "📷 Câmera ativa!",
-        description: mode === 'qr' ? "Aproxime o QR code da câmera" : "Posicione a prova para capturar",
+        title: mode === 'qr' ? "📷 Câmera QR ativa!" : "📷 Câmera captura ativa!",
+        description: mode === 'qr' ? "Posicione o QR code da prova" : "Posicione a prova respondida",
+        duration: 2000,
       });
 
     } catch (error) {
@@ -1158,46 +1160,87 @@ export default function AutoCorrectionPage() {
             <CardContent className="space-y-4">
               <div className="text-center space-y-4">
                 {!useCamera ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Botão para escanear QR code */}
-                    <Card className="p-4 border-2 border-dashed border-blue-300 hover:border-blue-500 transition-colors cursor-pointer"
+                  <div className="grid grid-cols-1 gap-4">
+                    {/* Botão para escanear QR code - otimizado para mobile */}
+                    <Card className="p-6 border-2 border-dashed border-blue-300 hover:border-blue-500 transition-colors cursor-pointer touch-manipulation"
                           onClick={() => startCamera('qr')}>
-                      <div className="text-center space-y-3">
-                        <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                          <QrCode className="w-6 h-6 text-blue-600" />
+                      <div className="text-center space-y-4">
+                        <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+                          <QrCode className="w-8 h-8 text-blue-600" />
                         </div>
                         <div>
-                          <h3 className="font-medium text-blue-900">Escanear QR Code</h3>
-                          <p className="text-sm text-blue-600">Detectar QR da prova ao vivo</p>
+                          <h3 className="font-semibold text-lg text-blue-900">Escanear QR Code</h3>
+                          <p className="text-sm text-blue-600">Detectar QR da prova com câmera</p>
+                          <p className="text-xs text-gray-500 mt-1">📱 Otimizado para celular</p>
                         </div>
                       </div>
                     </Card>
 
-                    {/* Botão para capturar resposta */}
-                    <Card className="p-4 border-2 border-dashed border-green-300 hover:border-green-500 transition-colors cursor-pointer"
+                    {/* Botão para capturar resposta - otimizado para mobile */}
+                    <Card className="p-6 border-2 border-dashed border-green-300 hover:border-green-500 transition-colors cursor-pointer touch-manipulation"
                           onClick={() => startCamera('photo')}>
-                      <div className="text-center space-y-3">
-                        <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                          <Camera className="w-6 h-6 text-green-600" />
+                      <div className="text-center space-y-4">
+                        <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                          <Camera className="w-8 h-8 text-green-600" />
                         </div>
                         <div>
-                          <h3 className="font-medium text-green-900">Capturar Resposta</h3>
+                          <h3 className="font-semibold text-lg text-green-900">Capturar Gabarito</h3>
                           <p className="text-sm text-green-600">Tirar foto da prova respondida</p>
+                          <p className="text-xs text-gray-500 mt-1">🎯 Detecção automática avançada</p>
+                        </div>
+                      </div>
+                    </Card>
+                    
+                    {/* Botão para upload de arquivo */}
+                    <Card className="p-4 border-2 border-dashed border-purple-300 hover:border-purple-500 transition-colors cursor-pointer touch-manipulation"
+                          onClick={() => fileInputRef.current?.click()}>
+                      <div className="text-center space-y-3">
+                        <div className="mx-auto w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+                          <Upload className="w-6 h-6 text-purple-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-purple-900">Enviar Arquivo</h3>
+                          <p className="text-sm text-purple-600">JPG, PNG ou HEIC</p>
                         </div>
                       </div>
                     </Card>
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="relative w-full max-w-md mx-auto">
+                    {/* Cabeçalho da câmera com informações */}
+                    <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          {scanMode === 'qr' ? (
+                            <QrCode className="w-5 h-5 text-blue-600" />
+                          ) : (
+                            <Camera className="w-5 h-5 text-green-600" />
+                          )}
+                          <span className="text-sm font-medium">
+                            {scanMode === 'qr' ? 'Modo QR Code' : 'Modo Captura'}
+                          </span>
+                        </div>
+                        <Button
+                          onClick={stopCamera}
+                          variant="outline"
+                          size="sm"
+                          className="text-xs"
+                        >
+                          Fechar
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Container do vídeo otimizado para mobile */}
+                    <div className="relative w-full max-w-sm mx-auto">
                       <video
                         ref={videoRef}
                         autoPlay
                         playsInline
                         muted
                         controls={false}
-                        className="w-full rounded-lg border bg-black"
-                        style={{ aspectRatio: '16/9' }}
+                        className="w-full rounded-lg border bg-black touch-manipulation"
+                        style={{ aspectRatio: '4/3' }}
                       />
                       
                       {/* Guias visuais para captura */}
@@ -1273,20 +1316,36 @@ export default function AutoCorrectionPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="flex gap-2">
+                        <div className="flex flex-col gap-3 w-full">
                           {scanMode === 'qr' ? (
-                            <Button onClick={() => setIsScanning(true)} size="sm" className="bg-blue-600 hover:bg-blue-700">
-                              <ScanLine className="w-4 h-4 mr-2" />
-                              Iniciar Scan QR
+                            <Button
+                              onClick={() => {
+                                setIsScanning(true);
+                                startAutoScan();
+                              }}
+                              className="w-full py-4 text-lg bg-blue-600 hover:bg-blue-700 touch-manipulation"
+                              size="lg"
+                            >
+                              <QrCode className="w-6 h-6 mr-2" />
+                              📱 Iniciar Escaneamento
                             </Button>
                           ) : (
-                            <Button onClick={capturePhoto} size="sm" className="bg-green-600 hover:bg-green-700">
-                              <Camera className="w-4 h-4 mr-2" />
-                              Capturar Foto
+                            <Button
+                              onClick={capturePhoto}
+                              className="w-full py-4 text-lg bg-green-600 hover:bg-green-700 touch-manipulation"
+                              size="lg"
+                            >
+                              <Camera className="w-6 h-6 mr-2" />
+                              📷 Capturar Foto
                             </Button>
                           )}
-                          <Button variant="outline" onClick={stopCamera} size="sm">
-                            Cancelar
+                          
+                          <Button
+                            onClick={stopCamera}
+                            variant="outline"
+                            className="w-full touch-manipulation"
+                          >
+                            ❌ Fechar Câmera
                           </Button>
                         </div>
                       )}

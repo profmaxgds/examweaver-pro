@@ -254,5 +254,55 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    /* Mobile optimizations */
+    touch-action: manipulation;
+    -webkit-overflow-scrolling: touch;
   }
+}
+
+/* Mobile-specific styles for camera and touch interface */
+@media screen and (max-width: 768px) {
+  .container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  
+  /* Ensure camera takes full width on mobile */
+  video {
+    width: 100% !important;
+    max-width: 100% !important;
+    object-fit: cover;
+  }
+  
+  /* Make buttons more accessible on mobile */
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Touch optimization */
+  .touch-manipulation {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Prevent zoom on mobile inputs */
+input[type="color"],
+input[type="date"],
+input[type="datetime"],
+input[type="datetime-local"],
+input[type="email"],
+input[type="month"],
+input[type="number"],
+input[type="password"],
+input[type="search"],
+input[type="tel"],
+input[type="text"],
+input[type="time"],
+input[type="url"],
+input[type="week"],
+select,
+textarea {
+  font-size: 16px;
 }
