@@ -31,6 +31,7 @@ interface ExamData {
   selectedQuestions: Question[]; shuffleQuestions: boolean; shuffleOptions: boolean;
   versions: number; layout: string; header_id?: string; qr_enabled: boolean;
   time_limit?: number; generation_mode?: 'versions' | 'class'; target_class_id?: string;
+  professor_name?: string;
 }
 
 // Função de embaralhamento determinístico para garantir consistência
@@ -208,6 +209,7 @@ export default function EditExamPage() {
         time_limit: exam.time_limit,
         generation_mode: (exam.generation_mode as 'versions' | 'class') || 'versions',
         target_class_id: exam.target_class_id,
+        professor_name: (exam as any).professor_name,
       });
 
     } catch (error) {
@@ -242,6 +244,7 @@ export default function EditExamPage() {
         time_limit: examData.time_limit || null,
         generation_mode: examData.generation_mode,
         target_class_id: examData.generation_mode === 'class' ? examData.target_class_id : null,
+        professor_name: examData.professor_name || null,
       };
 
       const { error } = await supabase

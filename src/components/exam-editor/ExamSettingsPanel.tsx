@@ -135,6 +135,15 @@ export function ExamSettingsPanel() {
                   <Input id="examDate" type="date" value={examData.examDate} onChange={(e) => setExamData(prev => prev ? { ...prev, examDate: e.target.value } : prev)} />
               </div>
               <div>
+                  <Label htmlFor="professor">Professor</Label>
+                  <Input 
+                    id="professor" 
+                    value={examData.professor_name || ''} 
+                    onChange={(e) => setExamData(prev => prev ? { ...prev, professor_name: e.target.value } : prev)} 
+                    placeholder="Nome do professor" 
+                  />
+              </div>
+              <div>
                   <Label htmlFor="timeLimit">Tempo Limite (minutos)</Label>
                   <Input id="timeLimit" type="number" value={examData.time_limit || ''} onChange={(e) => setExamData(prev => prev ? { ...prev, time_limit: e.target.value ? parseInt(e.target.value) : undefined } : prev)} placeholder="Ex: 120" />
               </div>

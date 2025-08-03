@@ -31,6 +31,7 @@ interface ExamData {
   time_limit?: number;
   generation_mode?: 'versions' | 'class';
   target_class_id?: string;
+  professor_name?: string;
 }
 
 interface ExamEditorContextType {
