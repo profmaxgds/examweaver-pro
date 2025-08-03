@@ -360,8 +360,13 @@ export default function EditExamPage() {
         }
 
         // PASSO 2: PROCESSAR CONFORME O MODO
+        console.log('🔍 Generation mode:', examData.generation_mode);
+        console.log('🔍 Target class ID:', examData.target_class_id);
+        console.log('🔍 Versions:', examData.versions);
+        
         if (examData.generation_mode === 'class') {
             // MODO TURMA - BUSCAR ALUNOS DA TURMA
+            console.log('📚 Executando modo TURMA');
             toast({ title: "Buscando alunos...", description: "Carregando lista da turma" });
             
             const { data: students, error: studentsError } = await supabase
@@ -381,6 +386,7 @@ export default function EditExamPage() {
             
         } else {
             // MODO VERSÕES - PREPARAR GABARITOS DAS VERSÕES
+            console.log('📄 Executando modo VERSÕES');
             toast({ title: "Preparando versões...", description: `Processando ${examData.versions} versões` });
             await prepareVersionExams();
         }
