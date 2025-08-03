@@ -174,10 +174,6 @@ function EditExamPageContent() {
                   <Button onClick={handlePrepareExams} disabled={loading || isPreparing}>
                     {isPreparing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Preparando...</> : 'Preparar Provas'}
                   </Button>
-                  {/* Botão salvar manual */}
-                  <Button variant="outline" onClick={handleSave} disabled={loading || isPreparing}>
-                    {loading ? 'Salvando...' : 'Salvar Alterações'}
-                  </Button>
                 </>
               )}
             </div>
@@ -482,53 +478,61 @@ export default function EditExamPage() {
   const prepareVersionExams = async () => {
     if (!examData || !user) return;
     
-    for (let version = 1; version <= examData.versions; version++) {
-      await createVersionAnswerKey(version);
-    }
-  };
-
-  // Função para criar gabarito de versão se não existir
-  const createVersionAnswerKey = async (version: number) => {
-    if (!examData || !user) return;
-
-    // Verificar se já existe gabarito para esta versão
-    const { data: existing } = await supabase
+    // Primeiro, limpar registros de versões existentes
+    const { error: deleteError } = await supabase
       .from('student_exams')
-      .select('id')
+      .delete()
       .eq('exam_id', examData.id)
-      .eq('student_id', `version-${version}`)
-      .eq('author_id', user.id)
-      .single();
+      .like('student_id', 'version-%');
+      
+    if (deleteError) {
+      console.warn('Aviso ao limpar versões existentes:', deleteError);
+    }
+    
+    // Criar novos registros para cada versão
+    const versionInstances = [];
+    for (let version = 1; version <= examData.versions; version++) {
+      const versionSeed = `${examData.id}-version-${version}`;
+      const shuffledQuestions = examData.shuffleQuestions ? seededShuffle(examData.selectedQuestions, versionSeed) : examData.selectedQuestions;
+      const shuffled_question_ids = shuffledQuestions.map(q => q.id);
 
-    if (existing) return; // Já existe
+      const shuffled_options_map: { [key: string]: string[] } = {};
+      const answer_key: { [key: string]: any } = {};
 
-    // Criar gabarito para a versão
-    const versionSeed = `${examData.id}-version-${version}`;
-    const shuffledQuestions = examData.shuffleQuestions ? seededShuffle(examData.selectedQuestions, versionSeed) : examData.selectedQuestions;
-    const shuffled_question_ids = shuffledQuestions.map(q => q.id);
-
-    const shuffled_options_map: { [key: string]: string[] } = {};
-    const answer_key: { [key: string]: any } = {};
-
-    shuffledQuestions.forEach(q => {
-      if (q.type === 'multiple_choice' && q.options) {
-        const questionSeed = `${versionSeed}-${q.id}`;
-        const shuffledOpts = examData.shuffleOptions ? seededShuffle(q.options, questionSeed) : q.options;
-        shuffled_options_map[q.id] = shuffledOpts.map(opt => opt.id);
+      shuffledQuestions.forEach(q => {
+        // Adicionar TODAS as questões no answer_key (múltipla escolha, verdadeiro/falso, abertas)
         answer_key[q.id] = q.correct_answer;
-      }
-    });
+        
+        // Apenas questões múltipla escolha precisam de embaralhamento de opções
+        if (q.type === 'multiple_choice' && q.options) {
+          const questionSeed = `${versionSeed}-${q.id}`;
+          const shuffledOpts = examData.shuffleOptions ? seededShuffle(q.options, questionSeed) : q.options;
+          shuffled_options_map[q.id] = shuffledOpts.map(opt => opt.id);
+        }
+      });
 
-    await supabase.from('student_exams').insert({
-      exam_id: examData.id,
-      student_id: `version-${version}`, // ID especial para versões
-      author_id: user.id,
-      shuffled_question_ids,
-      shuffled_options_map,
-      answer_key
-    });
+      versionInstances.push({
+        exam_id: examData.id,
+        student_id: `version-${version}`,
+        author_id: user.id,
+        shuffled_question_ids,
+        shuffled_options_map,
+        answer_key
+      });
+    }
+    
+    // Inserir todas as versões de uma vez
+    const { error: insertError } = await supabase
+      .from('student_exams')
+      .insert(versionInstances);
+      
+    if (insertError) {
+      console.error('❌ Erro na inserção das versões:', insertError);
+      throw insertError;
+    }
+    
+    console.log(`✅ ${examData.versions} versões criadas com sucesso!`);
   };
-
 
   const openPrintDialog = (htmlContent: string) => {
     const printWindow = window.open('', '_blank');
@@ -568,11 +572,6 @@ export default function EditExamPage() {
     if (!examData) return;
     setLoading(true);
     try {
-        // Criar gabarito para versão se não existir
-        if (typeof id === 'number' && !includeAnswers) {
-            await createVersionAnswerKey(id);
-        }
-
         const payload = typeof id === 'string'
             ? { studentExamId: id, includeAnswers } // Para turma, 'id' é o student_exam_id
             : { examId: examData.id, version: id, includeAnswers }; // Para versões, 'id' é o número da versão
@@ -739,7 +738,6 @@ export default function EditExamPage() {
             const zip = new JSZip();
             
             for (let version = 1; version <= examData.versions; version++) {
-                await createVersionAnswerKey(version);
                 const htmlProva = await callGeneratePdfFunction({ examId: examData.id, version: version, includeAnswers: false });
                 const htmlGabarito = await callGeneratePdfFunction({ examId: examData.id, version: version, includeAnswers: true });
                 zip.file(`Versao_${version}_Prova.html`, htmlProva);
