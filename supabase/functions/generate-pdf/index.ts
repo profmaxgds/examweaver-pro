@@ -298,7 +298,7 @@ serve(async (req) => {
                         id: student.student_id || 'N/A',
                         course: student.course || 'N/A',
                         class: student.class?.name || 'N/A',
-                        qrId: `${exam.id}-${student.id}`
+                        qrId: null // Será preenchido após inserção no banco
                     };
                     
                     // USAR COORDENADAS PRÉ-CALCULADAS DO BANCO
@@ -379,8 +379,8 @@ serve(async (req) => {
                         .eq('exam_id', examId)
                         .eq('student_id', student.id);
                     
-                    // Salvar no banco de dados - student_exams
-                    const { error: dbError } = await supabase
+                    // Salvar no banco de dados - student_exams e obter o ID real
+                    const { data: insertedData, error: dbError } = await supabase
                         .from('student_exams')
                         .insert({
                             exam_id: examId,
@@ -395,24 +395,76 @@ serve(async (req) => {
                             }, {}),
                             answer_key: answerKey,
                             bubble_coordinates: bubbleCoordinates,
-                            version_id: studentInfo.qrId
-                        });
+                            version_id: null // Para alunos, version_id deve ser null
+                        })
+                        .select('id')
+                        .single();
                     
                     if (dbError) {
                         console.error('Erro ao salvar no banco:', dbError);
                         throw new Error(`Erro ao salvar dados do aluno: ${dbError.message}`);
                     }
                     
-                    console.log(`✓ Dados salvos para ${student.name}`);
+                    // AGORA temos o ID real do student_exams
+                    const realStudentExamId = insertedData.id;
+                    console.log(`✓ Student exam criado com ID: ${realStudentExamId}`);
+                    
+                    // Atualizar studentInfo com o ID real para regeração do QR code
+                    studentInfo.qrId = realStudentExamId;
+                    
+                    // REGERAR HTML com o QR code correto
+                    const correctedHtmlContent = generateExamHTML(exam, studentQuestions, 1, includeAnswers, studentInfo);
+                    
+                    // REGERAR arquivos com o HTML correto
+                    const { htmlBytes: correctedHtmlBytes, pdfBytes: correctedPdfBytes } = await generatePDFFromHTML(correctedHtmlContent, studentInfo.name);
+                    
+                    // REUPLOAD do HTML corrigido
+                    const { error: correctedHtmlUploadError } = await supabase.storage
+                        .from('generated-exams')
+                        .upload(htmlFilePath, correctedHtmlBytes, {
+                            contentType: 'text/html',
+                            upsert: true
+                        });
+                    
+                    if (correctedHtmlUploadError) {
+                        console.error(`Erro ao reupload HTML corrigido para ${student.name}:`, correctedHtmlUploadError);
+                    } else {
+                        console.log(`✓ HTML corrigido salvo para ${student.name}`);
+                    }
+                    
+                    // REUPLOAD do PDF corrigido (se existir)
+                    let finalPdfUrl = pdfUrl;
+                    if (correctedPdfBytes) {
+                        const pdfFileName = `${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.pdf`;
+                        const pdfFilePath = `${examId}/pdf/${pdfFileName}`;
+                        
+                        const { error: correctedPdfUploadError } = await supabase.storage
+                            .from('generated-exams')
+                            .upload(pdfFilePath, correctedPdfBytes, {
+                                contentType: 'application/pdf',
+                                upsert: true
+                            });
+                        
+                        if (correctedPdfUploadError) {
+                            console.warn(`Aviso: Falha ao reupload PDF corrigido para ${student.name}:`, correctedPdfUploadError);
+                        } else {
+                            const { data: correctedPdfUrlData } = supabase.storage
+                                .from('generated-exams')
+                                .getPublicUrl(pdfFilePath);
+                            finalPdfUrl = correctedPdfUrlData.publicUrl;
+                            console.log(`✓ PDF corrigido salvo para ${student.name}`);
+                        }
+                    }
                     
                     results.push({
                         studentId: student.id,
                         studentName: student.name,
+                        studentExamId: realStudentExamId, // ID real da tabela student_exams
                         htmlUrl: htmlUrlData.publicUrl,
-                        pdfUrl: pdfUrl,
+                        pdfUrl: finalPdfUrl,
                         bubbleCoordinates: Object.keys(bubbleCoordinates).length,
                         success: true,
-                        hasPdf: !!pdfUrl
+                        hasPdf: !!finalPdfUrl
                     });
                     
                 } catch (studentError) {
@@ -469,7 +521,7 @@ serve(async (req) => {
             id: preparedExamData.student?.student_id || 'N/A',
             course: preparedExamData.student?.course || 'N/A',
             class: preparedExamData.student?.class?.name || 'N/A',
-            qrId: preparedExamData.id 
+            qrId: studentExamId // Usar o studentExamId real que foi passado como parâmetro
         };
         
         if (generatePDF) {
