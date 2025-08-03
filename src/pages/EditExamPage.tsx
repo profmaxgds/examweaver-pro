@@ -389,11 +389,14 @@ export default function EditExamPage() {
             const answer_key: { [key: string]: any } = {};
 
             shuffledQuestions.forEach(q => {
+                // Adicionar TODAS as questões no answer_key (múltipla escolha, verdadeiro/falso, abertas)
+                answer_key[q.id] = q.correct_answer;
+                
+                // Apenas questões múltipla escolha precisam de embaralhamento de opções
                 if (q.type === 'multiple_choice' && q.options) {
                     const questionSeed = `${studentSeed}-${q.id}`;
                     const shuffledOpts = examData.shuffleOptions ? seededShuffle(q.options, questionSeed) : q.options;
                     shuffled_options_map[q.id] = shuffledOpts.map(opt => opt.id);
-                    answer_key[q.id] = q.correct_answer;
                 }
             });
 
