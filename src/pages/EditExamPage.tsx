@@ -483,7 +483,8 @@ export default function EditExamPage() {
       .from('student_exams')
       .delete()
       .eq('exam_id', examData.id)
-      .like('student_id', 'version-%');
+      .is('student_id', null) // Versões têm student_id = null
+      .not('version_id', 'is', null); // E têm version_id preenchido
       
     if (deleteError) {
       console.warn('Aviso ao limpar versões existentes:', deleteError);
@@ -513,7 +514,8 @@ export default function EditExamPage() {
 
       versionInstances.push({
         exam_id: examData.id,
-        student_id: `version-${version}`,
+        student_id: null, // Versões não têm student_id específico
+        version_id: `version-${version}`, // Usar a coluna version_id para identificar versões
         author_id: user.id,
         shuffled_question_ids,
         shuffled_options_map,
