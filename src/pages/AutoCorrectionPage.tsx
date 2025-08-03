@@ -29,6 +29,8 @@ interface ExamInfo {
   answerKey: Record<string, string>;
   version?: number;
   bubbleCoordinates?: any; // Coordenadas das bolhas para overlay visual
+  examHeader?: any; // Header/cabeçalho da prova com layout
+  examLayout?: string; // Layout da prova (single_column, double_column, etc.)
   bubbleCoordinatesSearch?: { examId: string; studentId: string }; // Para buscar coordenadas no edge function
 }
 
@@ -622,10 +624,13 @@ export default function AutoCorrectionPage() {
 
       console.log('Dados extraídos do QR:', qrData);
 
-      // Buscar dados da prova
+      // Buscar dados da prova com header
       const { data: examData, error: examError } = await supabase
         .from('exams')
-        .select('*')
+        .select(`
+          *,
+          exam_headers!left(*)
+        `)
         .eq('id', qrData.examId)
         .eq('author_id', user!.id)
         .single();
@@ -701,6 +706,9 @@ export default function AutoCorrectionPage() {
         studentName: studentData?.name || 'Aluno não identificado',
         answerKey: studentExam.answer_key as Record<string, string>,
         version: qrData.version || 1,
+        bubbleCoordinates: studentExam.bubble_coordinates,
+        examHeader: examData.exam_headers || null,
+        examLayout: examData.layout || 'single_column',
         bubbleCoordinatesSearch: {
           examId: qrData.examId,
           studentId: typeof studentExam.student_id === 'string' ? studentExam.student_id : studentExam.student_id
@@ -1322,12 +1330,24 @@ export default function AutoCorrectionPage() {
                           </div>
                         </div>
                         ) : (
-                         // Máscara da folha de resposta baseada na imagem de referência
+                         // Máscara dinâmica da folha de resposta baseada no layout e coordenadas reais
                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                            <div className="relative">
                              {showAlignmentOverlay && examInfo?.bubbleCoordinates ? (
-                               // Máscara precisa com coordenadas da folha de resposta
+                               // Máscara precisa baseada no layout e header da prova
                                <div className="relative w-80 h-60 border-4 border-green-400 rounded-lg bg-green-400/10">
+                                 {/* Header dinâmico baseado no exam_header */}
+                                 {examInfo?.examHeader && (
+                                   <div className="absolute top-2 left-2 right-2 border-2 border-green-400/60 rounded bg-green-400/10 p-1">
+                                     <div className="text-xs text-green-300 text-center font-bold">
+                                       {examInfo.examHeader.institution || 'INSTITUIÇÃO'}
+                                     </div>
+                                     <div className="text-xs text-green-300 text-center">
+                                       {examInfo.examTitle}
+                                     </div>
+                                   </div>
+                                 )}
+
                                  {/* QR Code no canto superior esquerdo */}
                                  <div className="absolute top-2 left-2 w-12 h-12 border-2 border-green-400 rounded bg-green-400/20">
                                    <div className="absolute top-1 left-1 right-1 bottom-1 border border-green-300 rounded">
@@ -1337,39 +1357,60 @@ export default function AutoCorrectionPage() {
                                    </div>
                                  </div>
 
-                                 {/* Área das questões - lado esquerdo */}
-                                 <div className="absolute top-16 left-4 space-y-2">
-                                   {Object.entries(examInfo.bubbleCoordinates).slice(0, 4).map(([questionNum, options]: [string, any], index) => (
-                                     <div key={questionNum} className="flex items-center gap-2">
-                                       {/* Número da questão */}
-                                       <div className="w-4 h-4 bg-green-600 text-white text-xs flex items-center justify-center rounded-sm font-bold">
-                                         {String(index + 1).padStart(2, '0')}
-                                       </div>
-                                       {/* Bolhas das opções */}
-                                       <div className="flex gap-1">
-                                         {Object.entries(options).map(([letter, coords]: [string, any]) => (
-                                           <div 
-                                             key={`${questionNum}-${letter}`}
-                                             className="w-3 h-3 border border-green-400 rounded-sm bg-green-300/20 flex items-center justify-center"
-                                           >
-                                             <div className="w-1.5 h-1.5 bg-green-400 rounded-full opacity-60"></div>
+                                 {/* Layout responsivo das questões baseado no examLayout */}
+                                 {examInfo?.examLayout === 'double_column' ? (
+                                   // Layout de duas colunas
+                                   <>
+                                     {/* Coluna esquerda */}
+                                     <div className="absolute top-16 left-4 space-y-2">
+                                       {Object.entries(examInfo.bubbleCoordinates).slice(0, Math.ceil(Object.keys(examInfo.bubbleCoordinates).length / 2)).map(([questionNum, options]: [string, any], index) => (
+                                         <div key={questionNum} className="flex items-center gap-2">
+                                           <div className="w-4 h-4 bg-green-600 text-white text-xs flex items-center justify-center rounded-sm font-bold">
+                                             {String(index + 1).padStart(2, '0')}
                                            </div>
-                                         ))}
-                                       </div>
-                                     </div>
-                                   ))}
-                                 </div>
-
-                                 {/* Área das questões - lado direito (se houver mais questões) */}
-                                 {Object.keys(examInfo.bubbleCoordinates).length > 4 && (
-                                   <div className="absolute top-16 right-4 space-y-2">
-                                     {Object.entries(examInfo.bubbleCoordinates).slice(4).map(([questionNum, options]: [string, any], index) => (
-                                       <div key={questionNum} className="flex items-center gap-2">
-                                         {/* Número da questão */}
-                                         <div className="w-4 h-4 bg-green-600 text-white text-xs flex items-center justify-center rounded-sm font-bold">
-                                           {String(index + 5).padStart(2, '0')}
+                                           <div className="flex gap-1">
+                                             {Object.entries(options).map(([letter, coords]: [string, any]) => (
+                                               <div 
+                                                 key={`${questionNum}-${letter}`}
+                                                 className="w-3 h-3 border border-green-400 rounded-sm bg-green-300/20 flex items-center justify-center"
+                                               >
+                                                 <div className="w-1.5 h-1.5 bg-green-400 rounded-full opacity-60"></div>
+                                               </div>
+                                             ))}
+                                           </div>
                                          </div>
-                                         {/* Bolhas das opções */}
+                                       ))}
+                                     </div>
+
+                                     {/* Coluna direita */}
+                                     <div className="absolute top-16 right-4 space-y-2">
+                                       {Object.entries(examInfo.bubbleCoordinates).slice(Math.ceil(Object.keys(examInfo.bubbleCoordinates).length / 2)).map(([questionNum, options]: [string, any], index) => (
+                                         <div key={questionNum} className="flex items-center gap-2">
+                                           <div className="w-4 h-4 bg-green-600 text-white text-xs flex items-center justify-center rounded-sm font-bold">
+                                             {String(Math.ceil(Object.keys(examInfo.bubbleCoordinates).length / 2) + index + 1).padStart(2, '0')}
+                                           </div>
+                                           <div className="flex gap-1">
+                                             {Object.entries(options).map(([letter, coords]: [string, any]) => (
+                                               <div 
+                                                 key={`${questionNum}-${letter}`}
+                                                 className="w-3 h-3 border border-green-400 rounded-sm bg-green-300/20 flex items-center justify-center"
+                                               >
+                                                 <div className="w-1.5 h-1.5 bg-green-400 rounded-full opacity-60"></div>
+                                               </div>
+                                             ))}
+                                           </div>
+                                         </div>
+                                       ))}
+                                     </div>
+                                   </>
+                                 ) : (
+                                   // Layout de coluna única
+                                   <div className="absolute top-16 left-4 space-y-2">
+                                     {Object.entries(examInfo.bubbleCoordinates).map(([questionNum, options]: [string, any], index) => (
+                                       <div key={questionNum} className="flex items-center gap-2">
+                                         <div className="w-4 h-4 bg-green-600 text-white text-xs flex items-center justify-center rounded-sm font-bold">
+                                           {String(index + 1).padStart(2, '0')}
+                                         </div>
                                          <div className="flex gap-1">
                                            {Object.entries(options).map(([letter, coords]: [string, any]) => (
                                              <div 
@@ -1451,7 +1492,7 @@ export default function AutoCorrectionPage() {
                                    : 'text-orange-300 bg-orange-900/80'
                                }`}>
                                  {showAlignmentOverlay && examInfo?.bubbleCoordinates ? 
-                                   '🎯 Alinhe a folha de resposta com a máscara. QR no canto esquerdo, questões visíveis.' : 
+                                   `🎯 Alinhe a folha com a máscara baseada no layout ${examInfo.examLayout || 'padrão'}. QR visível, questões alinhadas com as bolhas.` : 
                                    '📋 Posicione a folha de resposta com QR visível no canto superior esquerdo'
                                  }
                                </div>
