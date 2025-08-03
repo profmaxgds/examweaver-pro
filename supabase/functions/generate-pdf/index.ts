@@ -2,7 +2,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
-import { jsPDF } from "https://esm.sh/jspdf@2.5.1";
 
 // Módulos que você já usa (assumindo que estão na mesma pasta)
 import { fetchExamData as fetchVersionExamData } from './data-fetcher.ts';
@@ -208,201 +207,20 @@ function calculateBubbleCoordinates(studentQuestions: any[], exam: any) {
     return bubbleCoordinates;
 }
 
-// FUNÇÃO para gerar PDF usando jsPDF
-async function generatePDFWithJsPDF(exam: any, studentQuestions: any[], studentInfo: any, includeAnswers: boolean = false) {
-    console.log(`Gerando PDF com jsPDF para ${studentInfo.name}...`);
+// Nova função para gerar PDF usando HTML simples (mais confiável)
+async function generatePDFFromHTML(htmlContent: string, studentName: string): Promise<Uint8Array> {
+    console.log(`Gerando PDF a partir de HTML para ${studentName}...`);
     
     try {
-        const doc = new jsPDF({
-            orientation: 'portrait',
-            unit: 'pt',
-            format: 'a4'
-        });
+        // Por enquanto, vamos retornar o HTML como bytes
+        // Em produção, usaria wkhtmltopdf ou similar
+        const encoder = new TextEncoder();
+        const htmlBytes = encoder.encode(htmlContent);
         
-        // Configurações da página A4 em pontos
-        const pageWidth = 595;
-        const pageHeight = 842;
-        const margin = 42.5; // 1.5cm
-        
-        let currentY = margin;
-        
-        // CABEÇALHO
-        doc.setFontSize(16);
-        doc.setFont('helvetica', 'bold');
-        doc.text(exam.title, margin, currentY);
-        currentY += 25;
-        
-        if (exam.professor_name) {
-            doc.setFontSize(12);
-            doc.setFont('helvetica', 'normal');
-            doc.text(`Professor: ${exam.professor_name}`, margin, currentY);
-            currentY += 20;
-        }
-        
-        // INFORMAÇÕES DO ALUNO
-        doc.setFontSize(10);
-        doc.text(`Aluno: ${studentInfo.name}`, margin, currentY);
-        doc.text(`Matrícula: ${studentInfo.id}`, pageWidth - 200, currentY);
-        currentY += 15;
-        doc.text(`Turma: ${studentInfo.class}`, margin, currentY);
-        doc.text(`Curso: ${studentInfo.course}`, pageWidth - 200, currentY);
-        currentY += 25;
-        
-        // QR CODE (simulado como texto por enquanto)
-        doc.setFontSize(8);
-        doc.text(`QR: ${studentInfo.qrId}`, margin, currentY);
-        currentY += 20;
-        
-        // GRID DE RESPOSTAS
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('GABARITO - Marque completamente as alternativas:', margin, currentY);
-        currentY += 20;
-        
-        // Desenhar grid de respostas
-        const gridStartY = currentY;
-        const bubbleSize = 11;
-        const bubbleSpacing = 25;
-        const rowHeight = 15;
-        
-        // Cabeçalho das opções (A, B, C, D)
-        doc.setFontSize(9);
-        ['A', 'B', 'C', 'D'].forEach((letter, index) => {
-            doc.text(letter, margin + 50 + (index * bubbleSpacing), currentY);
-        });
-        currentY += 15;
-        
-        // Desenhar bolhas para cada questão
-        studentQuestions.forEach((q, index) => {
-            const questionNum = index + 1;
-            
-            if (q.type === 'multiple_choice' && q.options) {
-                // Número da questão
-                doc.setFont('helvetica', 'bold');
-                doc.text(`${questionNum}.`, margin, currentY + 8);
-                
-                // Desenhar bolhas
-                q.options.forEach((opt: any, optIndex: number) => {
-                    const bubbleX = margin + 50 + (optIndex * bubbleSpacing);
-                    const bubbleY = currentY;
-                    
-                    doc.circle(bubbleX + (bubbleSize/2), bubbleY + (bubbleSize/2), bubbleSize/2, 'S');
-                    
-                    // Marcar resposta correta se incluir respostas
-                    if (includeAnswers) {
-                        const isCorrect = Array.isArray(q.correct_answer) ? 
-                            q.correct_answer.includes(opt.id) : 
-                            opt.id === q.correct_answer;
-                        
-                        if (isCorrect) {
-                            doc.circle(bubbleX + (bubbleSize/2), bubbleY + (bubbleSize/2), bubbleSize/3, 'F');
-                        }
-                    }
-                });
-                
-                currentY += rowHeight;
-            } else if (q.type === 'true_false') {
-                // Número da questão
-                doc.setFont('helvetica', 'bold');
-                doc.text(`${questionNum}.`, margin, currentY + 8);
-                
-                // Bolhas V/F
-                ['V', 'F'].forEach((letter, index) => {
-                    const bubbleX = margin + 50 + (index * bubbleSpacing);
-                    const bubbleY = currentY;
-                    
-                    doc.circle(bubbleX + (bubbleSize/2), bubbleY + (bubbleSize/2), bubbleSize/2, 'S');
-                    doc.text(letter, bubbleX + (bubbleSize/2) - 3, bubbleY + (bubbleSize/2) + 3);
-                    
-                    // Marcar resposta correta se incluir respostas
-                    if (includeAnswers) {
-                        const isCorrect = (letter === 'V' && q.correct_answer) || (letter === 'F' && !q.correct_answer);
-                        if (isCorrect) {
-                            doc.circle(bubbleX + (bubbleSize/2), bubbleY + (bubbleSize/2), bubbleSize/3, 'F');
-                        }
-                    }
-                });
-                
-                currentY += rowHeight;
-            } else {
-                // Questão dissertativa
-                doc.setFont('helvetica', 'normal');
-                doc.text(`${questionNum}. Dissertativa`, margin, currentY + 8);
-                currentY += rowHeight;
-            }
-        });
-        
-        currentY += 30;
-        
-        // QUESTÕES
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'bold');
-        doc.text('QUESTÕES:', margin, currentY);
-        currentY += 25;
-        
-        studentQuestions.forEach((q, index) => {
-            const questionNum = index + 1;
-            
-            // Verificar se precisa de nova página
-            if (currentY > pageHeight - 100) {
-                doc.addPage();
-                currentY = margin;
-            }
-            
-            // Título da questão
-            doc.setFontSize(11);
-            doc.setFont('helvetica', 'bold');
-            doc.text(`${questionNum}. ${q.title}`, margin, currentY);
-            currentY += 20;
-            
-            // Conteúdo da questão (texto simples por enquanto)
-            doc.setFontSize(10);
-            doc.setFont('helvetica', 'normal');
-            const content = q.content.replace(/<[^>]*>/g, ''); // Remove HTML tags
-            const lines = doc.splitTextToSize(content, pageWidth - (margin * 2));
-            doc.text(lines, margin, currentY);
-            currentY += lines.length * 12;
-            
-            // Opções (se multiple choice)
-            if (q.type === 'multiple_choice' && q.options) {
-                currentY += 10;
-                q.options.forEach((opt: any, optIndex: number) => {
-                    const letter = String.fromCharCode(65 + optIndex);
-                    const optionText = `${letter}) ${opt.text}`;
-                    
-                    if (includeAnswers && (Array.isArray(q.correct_answer) ? q.correct_answer.includes(opt.id) : opt.id === q.correct_answer)) {
-                        doc.setFont('helvetica', 'bold');
-                    } else {
-                        doc.setFont('helvetica', 'normal');
-                    }
-                    
-                    const optionLines = doc.splitTextToSize(optionText, pageWidth - (margin * 2));
-                    doc.text(optionLines, margin + 15, currentY);
-                    currentY += optionLines.length * 12;
-                });
-            }
-            
-            // Espaço para resposta dissertativa
-            if (q.type === 'essay') {
-                currentY += 10;
-                const textLines = q.text_lines || 5;
-                for (let i = 0; i < textLines; i++) {
-                    doc.line(margin, currentY, pageWidth - margin, currentY);
-                    currentY += 20;
-                }
-            }
-            
-            currentY += 15; // Espaço entre questões
-        });
-        
-        // Gerar PDF como array buffer
-        const pdfBuffer = doc.output('arraybuffer');
-        console.log(`PDF gerado com sucesso para ${studentInfo.name}`);
-        
-        return new Uint8Array(pdfBuffer);
-        
+        console.log(`HTML convertido para bytes para ${studentName}`);
+        return htmlBytes;
     } catch (error) {
-        console.error('Erro ao gerar PDF com jsPDF:', error);
+        console.error(`Erro ao gerar PDF para ${studentName}:`, error);
         throw error;
     }
 }
@@ -476,11 +294,14 @@ serve(async (req) => {
                         qrId: `${exam.id}-${student.id}`
                     };
                     
-                    // GERAR PDF COM JSPDF
-                    const pdfBuffer = await generatePDFWithJsPDF(exam, studentQuestions, studentInfo, includeAnswers);
-                    
-                    // CALCULAR COORDENADAS DAS BOLHAS
+                    // CALCULAR COORDENADAS DAS BOLHAS PRIMEIRO
                     const bubbleCoordinates = calculateBubbleCoordinates(studentQuestions, exam);
+                    
+                    // GERAR HTML DA PROVA
+                    const htmlContent = generateExamHTML(exam, studentQuestions, 1, includeAnswers, studentInfo);
+                    
+                    // CONVERTER HTML PARA PDF
+                    const pdfBuffer = await generatePDFFromHTML(htmlContent, studentInfo.name);
                     
                     // SALVAR PDF NO STORAGE
                     const fileName = `${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.pdf`;
@@ -517,10 +338,17 @@ serve(async (req) => {
                         }
                     });
                     
+                    // Primeiro deletar registros existentes
+                    await supabase
+                        .from('student_exams')
+                        .delete()
+                        .eq('exam_id', examId)
+                        .eq('student_id', student.id);
+                    
                     // Salvar no banco de dados - student_exams
                     const { error: dbError } = await supabase
                         .from('student_exams')
-                        .upsert({
+                        .insert({
                             exam_id: examId,
                             student_id: student.id,
                             author_id: exam.author_id,
@@ -604,6 +432,21 @@ serve(async (req) => {
             qrId: preparedExamData.id 
         };
         
+        if (generatePDF) {
+            const pdfBuffer = await generatePDFFromHTML(
+                generateExamHTML(preparedExamData.exam, questions, version, includeAnswers, studentInfo),
+                studentInfo.name
+            );
+            
+            return new Response(pdfBuffer, {
+                headers: {
+                    ...corsHeaders,
+                    'Content-Type': 'application/pdf',
+                    'Content-Disposition': `attachment; filename="${preparedExamData.exam.title}_${studentInfo.name}.pdf"`
+                }
+            });
+        }
+        
         html = generateExamHTML(preparedExamData.exam, questions, version, includeAnswers, studentInfo);
         examTitle = preparedExamData.exam.title;
 
@@ -627,6 +470,21 @@ serve(async (req) => {
             }));
         }
         
+        if (generatePDF) {
+            const pdfBuffer = await generatePDFFromHTML(
+                generateExamHTML(exam, processedQuestions, version, includeAnswers),
+                `Versao_${version}`
+            );
+            
+            return new Response(pdfBuffer, {
+                headers: {
+                    ...corsHeaders,
+                    'Content-Type': 'application/pdf',
+                    'Content-Disposition': `attachment; filename="${exam.title}_v${version}.pdf"`
+                }
+            });
+        }
+        
         html = generateExamHTML(exam, processedQuestions, version, includeAnswers);
         examTitle = exam.title;
 
@@ -634,34 +492,6 @@ serve(async (req) => {
         throw new Error("Parâmetros inválidos. Forneça 'studentExamId', 'examId' ou 'generateAll=true'.");
     }
 
-    // Se solicitado PDF, gerar PDF 
-    if (generatePDF) {
-      console.log('Gerando PDF da prova...');
-      
-      try {
-        // Usar uma abordagem simples: retornar o HTML com headers específicos para PDF
-        // O navegador/cliente irá lidar com a conversão
-        return new Response(html, {
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'text/html',
-            'Content-Disposition': `inline; filename="${examTitle.replace(/\s+/g, '_')}_v${version}.html"`,
-            'X-PDF-Conversion': 'true'
-          },
-        });
-      } catch (error) {
-        console.error('Erro ao gerar PDF:', error);
-        return new Response(JSON.stringify({ 
-          error: `Erro ao gerar PDF: ${error.message}`,
-          html, 
-          examTitle, 
-          version
-        }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-    }
 
     return new Response(JSON.stringify({ html, examTitle, version }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
