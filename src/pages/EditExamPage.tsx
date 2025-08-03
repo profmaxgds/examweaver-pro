@@ -400,6 +400,7 @@ export default function EditExamPage() {
             // CALCULAR COORDENADAS DAS BOLHAS (PAPEL A4 PADRÃO)
             const bubbleCoordinates = calculateBubbleCoordinatesA4(shuffledQuestions);
             console.log('🔧 Coordenadas calculadas:', Object.keys(bubbleCoordinates).length, 'questões');
+            console.log('🔧 Exemplo de coordenadas:', bubbleCoordinates['1'] || 'Nenhuma coordenada para questão 1');
 
             instancesToUpsert.push({
                 exam_id: examData.id,
@@ -423,11 +424,19 @@ export default function EditExamPage() {
         }
 
         // Agora inserir os novos registros
+        console.log('📝 Inserindo', instancesToUpsert.length, 'registros no banco');
+        console.log('📝 Primeiro registro (exemplo):', JSON.stringify(instancesToUpsert[0], null, 2));
+        
         const { error: insertError } = await supabase
             .from('student_exams')
             .insert(instancesToUpsert);
             
-        if (insertError) throw insertError;
+        if (insertError) {
+            console.error('❌ Erro na inserção:', insertError);
+            throw insertError;
+        }
+        
+        console.log('✅ Inserção concluída com sucesso!');
 
         toast({ 
             title: "Sucesso!", 
