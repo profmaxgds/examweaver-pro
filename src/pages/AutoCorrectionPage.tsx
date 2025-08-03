@@ -1536,7 +1536,7 @@ export default function AutoCorrectionPage() {
               <CardContent>
                 <EssayQuestionCorrection
                   question={essayQuestions[currentEssayIndex]}
-                  onScore={handleEssayScore}
+                  onScoreSubmit={handleEssayScore}
                   onSkip={skipEssayQuestion}
                 />
               </CardContent>
