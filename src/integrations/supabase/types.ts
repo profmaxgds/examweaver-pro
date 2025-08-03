@@ -120,6 +120,66 @@ export type Database = {
           },
         ]
       }
+      credit_settings: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          setting_name: string
+          setting_value: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          setting_name: string
+          setting_value: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          setting_name?: string
+          setting_value?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      credit_transactions: {
+        Row: {
+          admin_id: string | null
+          amount: number
+          correction_id: string | null
+          created_at: string
+          description: string | null
+          id: string
+          transaction_type: string
+          user_id: string
+        }
+        Insert: {
+          admin_id?: string | null
+          amount: number
+          correction_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          transaction_type: string
+          user_id: string
+        }
+        Update: {
+          admin_id?: string | null
+          amount?: number
+          correction_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          transaction_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       exam_corrections: {
         Row: {
           answers: Json
@@ -236,6 +296,7 @@ export type Database = {
           institutions: string | null
           instructions: string | null
           layout: string | null
+          professor_name: string | null
           qr_code_data: string | null
           qr_enabled: boolean | null
           question_ids: string[]
@@ -264,6 +325,7 @@ export type Database = {
           institutions?: string | null
           instructions?: string | null
           layout?: string | null
+          professor_name?: string | null
           qr_code_data?: string | null
           qr_enabled?: boolean | null
           question_ids: string[]
@@ -292,6 +354,7 @@ export type Database = {
           institutions?: string | null
           instructions?: string | null
           layout?: string | null
+          professor_name?: string | null
           qr_code_data?: string | null
           qr_enabled?: boolean | null
           question_ids?: string[]
@@ -359,10 +422,17 @@ export type Database = {
         Row: {
           created_at: string
           credits: number | null
+          email: string | null
           id: string
           institution: string | null
+          is_professor: boolean | null
+          last_login: string | null
           name: string
+          pai_id: string | null
+          registration_date: string | null
+          status: string | null
           subjects: string[] | null
+          theme_preference: string | null
           total_corrections: number | null
           updated_at: string
           user_id: string
@@ -370,10 +440,17 @@ export type Database = {
         Insert: {
           created_at?: string
           credits?: number | null
+          email?: string | null
           id?: string
           institution?: string | null
+          is_professor?: boolean | null
+          last_login?: string | null
           name: string
+          pai_id?: string | null
+          registration_date?: string | null
+          status?: string | null
           subjects?: string[] | null
+          theme_preference?: string | null
           total_corrections?: number | null
           updated_at?: string
           user_id: string
@@ -381,15 +458,30 @@ export type Database = {
         Update: {
           created_at?: string
           credits?: number | null
+          email?: string | null
           id?: string
           institution?: string | null
+          is_professor?: boolean | null
+          last_login?: string | null
           name?: string
+          pai_id?: string | null
+          registration_date?: string | null
+          status?: string | null
           subjects?: string[] | null
+          theme_preference?: string | null
           total_corrections?: number | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_pai_id_fkey"
+            columns: ["pai_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       questions: {
         Row: {
@@ -488,32 +580,38 @@ export type Database = {
         Row: {
           answer_key: Json
           author_id: string
+          bubble_coordinates: Json | null
           created_at: string
           exam_id: string
           id: string
           shuffled_options_map: Json
           shuffled_question_ids: string[]
-          student_id: string
+          student_id: string | null
+          version_id: string | null
         }
         Insert: {
           answer_key: Json
           author_id: string
+          bubble_coordinates?: Json | null
           created_at?: string
           exam_id: string
           id?: string
           shuffled_options_map: Json
           shuffled_question_ids: string[]
-          student_id: string
+          student_id?: string | null
+          version_id?: string | null
         }
         Update: {
           answer_key?: Json
           author_id?: string
+          bubble_coordinates?: Json | null
           created_at?: string
           exam_id?: string
           id?: string
           shuffled_options_map?: Json
           shuffled_question_ids?: string[]
-          student_id?: string
+          student_id?: string | null
+          version_id?: string | null
         }
         Relationships: [
           {
@@ -599,17 +697,89 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          assigned_by: string | null
+          created_at: string
+          id: string
+          professor_id: string | null
+          role: Database["public"]["Enums"]["user_role"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          assigned_by?: string | null
+          created_at?: string
+          id?: string
+          professor_id?: string | null
+          role: Database["public"]["Enums"]["user_role"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          assigned_by?: string | null
+          created_at?: string
+          id?: string
+          professor_id?: string | null
+          role?: Database["public"]["Enums"]["user_role"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      consume_credits: {
+        Args: {
+          user_uuid: string
+          amount: number
+          correction_type: string
+          correction_id_param?: string
+        }
+        Returns: boolean
+      }
+      count_professor_corretors: {
+        Args: { professor_uuid: string }
+        Returns: number
+      }
+      get_credit_settings: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string
+          setting_name: string
+          setting_value: number
+          description: string
+        }[]
+      }
+      get_user_credits: {
+        Args: { user_uuid: string }
+        Returns: number
+      }
+      is_admin: {
+        Args: { user_uuid: string }
+        Returns: boolean
+      }
+      is_admin_user: {
+        Args: { user_uuid: string }
+        Returns: boolean
+      }
+      is_professor: {
+        Args: { user_uuid: string }
+        Returns: boolean
+      }
+      update_credit_setting: {
+        Args: { setting_name_param: string; new_value: number }
+        Returns: boolean
+      }
     }
     Enums: {
       correction_status: "pending" | "completed" | "pending_review"
       difficulty_level: "easy" | "medium" | "hard" | "custom"
       question_type: "multiple_choice" | "true_false" | "essay" | "fill_blanks"
+      user_role: "admin" | "professor" | "corretor"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -740,6 +910,7 @@ export const Constants = {
       correction_status: ["pending", "completed", "pending_review"],
       difficulty_level: ["easy", "medium", "hard", "custom"],
       question_type: ["multiple_choice", "true_false", "essay", "fill_blanks"],
+      user_role: ["admin", "professor", "corretor"],
     },
   },
 } as const
