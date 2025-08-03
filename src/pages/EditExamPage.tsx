@@ -648,37 +648,53 @@ export default function EditExamPage() {
             
             console.log('Resposta da geração em lote:', response.data);
             
-            // Baixar PDFs e criar ZIP
+            // Baixar arquivos HTML e criar ZIP
             const zip = new JSZip();
             const results = response.data.results;
-            const successfulResults = results.filter((r: any) => !r.error && r.pdfUrl);
+            const successfulResults = results.filter((r: any) => !r.error && (r.examUrl || r.answerKeyUrl));
             
             if (successfulResults.length === 0) {
-                throw new Error('Nenhum PDF foi gerado com sucesso');
+                throw new Error('Nenhum arquivo foi gerado com sucesso');
             }
             
             toast({ 
-                title: "PDFs Gerados!", 
-                description: `${successfulResults.length} de ${results.length} PDFs gerados. Baixando arquivos...` 
+                title: "Arquivos Gerados!", 
+                description: `${successfulResults.length} provas e gabaritos gerados. Baixando arquivos...` 
             });
             
-            // Baixar cada PDF e adicionar ao ZIP
+            // Baixar cada prova e gabarito HTML e adicionar ao ZIP
             for (const result of successfulResults) {
                 try {
-                    console.log(`Baixando PDF para ${result.studentName}: ${result.pdfUrl}`);
-                    
-                    const pdfResponse = await fetch(result.pdfUrl);
-                    if (!pdfResponse.ok) {
-                        console.error(`Erro ao baixar PDF para ${result.studentName}:`, pdfResponse.status);
-                        continue;
+                    // Baixar prova
+                    if (result.examUrl) {
+                        console.log(`Baixando prova para ${result.studentName}: ${result.examUrl}`);
+                        
+                        const examResponse = await fetch(result.examUrl);
+                        if (examResponse.ok) {
+                            const examBlob = await examResponse.blob();
+                            const examFileName = `PROVA_${result.studentName.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
+                            zip.file(examFileName, examBlob);
+                        } else {
+                            console.error(`Erro ao baixar prova para ${result.studentName}:`, examResponse.status);
+                        }
                     }
                     
-                    const pdfBlob = await pdfResponse.blob();
-                    const fileName = `${result.studentName.replace(/[^a-zA-Z0-9]/g, '_')}_prova.pdf`;
-                    zip.file(fileName, pdfBlob);
+                    // Baixar gabarito
+                    if (result.answerKeyUrl) {
+                        console.log(`Baixando gabarito para ${result.studentName}: ${result.answerKeyUrl}`);
+                        
+                        const answerKeyResponse = await fetch(result.answerKeyUrl);
+                        if (answerKeyResponse.ok) {
+                            const answerKeyBlob = await answerKeyResponse.blob();
+                            const answerKeyFileName = `GABARITO_${result.studentName.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
+                            zip.file(answerKeyFileName, answerKeyBlob);
+                        } else {
+                            console.error(`Erro ao baixar gabarito para ${result.studentName}:`, answerKeyResponse.status);
+                        }
+                    }
                     
                 } catch (downloadError) {
-                    console.error(`Erro ao baixar PDF para ${result.studentName}:`, downloadError);
+                    console.error(`Erro ao baixar arquivos para ${result.studentName}:`, downloadError);
                 }
             }
             
@@ -692,7 +708,7 @@ export default function EditExamPage() {
             const zipBlob = await zip.generateAsync({ type: 'blob' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(zipBlob);
-            link.download = `${examData.title.replace(/\s/g, '_')}_provas_turma.zip`;
+            link.download = `${examData.title.replace(/\s/g, '_')}_provas_e_gabaritos_HTML.zip`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
