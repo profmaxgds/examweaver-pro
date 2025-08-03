@@ -38,6 +38,26 @@ interface StudentInfo {
  * Gera o HTML final da prova com base nos dados fornecidos, incluindo âncoras de deteção.
  */
 export function generateExamHTML(exam: ExamData, questions: Question[], version: number, includeAnswers: boolean, studentInfo?: StudentInfo): string {
+    console.log('=== generateExamHTML CHAMADO ===');
+    console.log(`Exam title: ${exam?.title || 'N/A'}`);
+    console.log(`Questions count: ${questions?.length || 0}`);
+    console.log(`Version: ${version}, Include answers: ${includeAnswers}`);
+    console.log(`Student info:`, studentInfo?.name || 'N/A');
+    
+    if (!exam || !questions || questions.length === 0) {
+        console.error('ERRO: Dados inválidos passados para generateExamHTML');
+        console.error('Exam:', exam);
+        console.error('Questions:', questions);
+        return `
+        <!DOCTYPE html>
+        <html><head><title>Erro</title></head>
+        <body>
+            <h1>Erro na geração da prova</h1>
+            <p>Dados inválidos: exam=${!!exam}, questions=${questions?.length || 0}</p>
+        </body></html>
+        `;
+    }
+    
     const header = exam.exam_headers || exam.header;
     const isDoubleColumn = exam.layout === 'double_column';
     const totalQuestions = questions.length;
@@ -346,7 +366,11 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
                         const numLines = q.text_lines || 5;
                         optionsHTML = `<div class="essay-lines">${Array(numLines).fill().map(() => `<div class="essay-line"></div>`).join('')}</div>`;
                     }
-                    return `<div class="question"><div class="question-header">Questão ${questionNumber} (${q.points.toFixed(2)} pts)</div><div class="question-content">${questionContent}</div>${optionsHTML}</div>`;
+                    return `<div class="question">
+                        <div class="question-header">Questão ${questionNumber} (${q.points?.toFixed ? q.points.toFixed(2) : q.points || 1} pts)</div>
+                        <div class="question-content">${questionContent}</div>
+                        ${optionsHTML}
+                    </div>`;
                 }).join('')}
             </div>
 

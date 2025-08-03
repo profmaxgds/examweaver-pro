@@ -112,6 +112,16 @@ async function fetchBatchExamData(supabase: SupabaseClient, examId: string) {
         }
         
         console.log(`Encontradas ${questions.length} questões`);
+        if (questions.length > 0) {
+            console.log('Primeira questão detalhes:', {
+                id: questions[0].id,
+                title: questions[0].title,
+                type: questions[0].type,
+                hasOptions: !!questions[0].options,
+                optionsCount: questions[0].options?.length || 0,
+                hasCorrectAnswer: !!questions[0].correct_answer
+            });
+        }
         
         // Buscar todos os alunos da turma
         const { data: students, error: studentsError } = await supabase
@@ -359,12 +369,16 @@ serve(async (req) => {
                     // Atualizar studentInfo com o ID real para regeração do QR code
                     studentInfo.qrId = realStudentExamId;
                     
-                    // GERAR PROVA (sem respostas)
+                    // GERAR PROVA (sem respostas) - adicionar logs para debug
+                    console.log(`Gerando prova para ${student.name} com ${studentQuestions.length} questões`);
+                    console.log('Primeira questão:', studentQuestions[0]?.title, 'tipo:', studentQuestions[0]?.type);
+                    
                     const examHtmlContent = generateExamHTML(exam, studentQuestions, 1, false, studentInfo);
                     const examEncoder = new TextEncoder();
                     const examHtmlBytes = examEncoder.encode(examHtmlContent);
                     
                     // GERAR GABARITO (com respostas marcadas)
+                    console.log(`Gerando gabarito para ${student.name} com respostas corretas`);
                     const answerKeyHtmlContent = generateExamHTML(exam, studentQuestions, 1, true, studentInfo);
                     const answerKeyEncoder = new TextEncoder();
                     const answerKeyHtmlBytes = answerKeyEncoder.encode(answerKeyHtmlContent);
