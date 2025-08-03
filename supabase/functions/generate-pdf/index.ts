@@ -66,54 +66,83 @@ async function fetchPreparedExamData(supabase: SupabaseClient, studentExamId: st
 async function fetchBatchExamData(supabase: SupabaseClient, examId: string) {
     console.log('Buscando dados completos da prova para geração em lote:', examId);
     
-    // Buscar a prova
-    const { data: exam, error: examError } = await supabase
-        .from('exams')
-        .select('*')
-        .eq('id', examId)
-        .single();
-    
-    if (examError) throw new Error(`Prova não encontrada: ${examError.message}`);
-    
-    // Buscar o cabeçalho se existir
-    if (exam.header_id) {
-        const { data: headerData, error: headerError } = await supabase
-            .from('exam_headers')
+    try {
+        // Buscar a prova
+        const { data: exam, error: examError } = await supabase
+            .from('exams')
             .select('*')
-            .eq('id', exam.header_id)
+            .eq('id', examId)
             .single();
         
-        if (!headerError && headerData) {
-            exam.header = headerData;
+        if (examError) {
+            console.error('Erro ao buscar prova:', examError);
+            throw new Error(`Prova não encontrada: ${examError.message}`);
         }
+        
+        console.log('Prova encontrada:', exam.title);
+        
+        // Verificar se tem turma configurada
+        if (!exam.target_class_id) {
+            throw new Error('Esta prova não está configurada para uma turma específica');
+        }
+        
+        // Buscar o cabeçalho se existir
+        if (exam.header_id) {
+            const { data: headerData, error: headerError } = await supabase
+                .from('exam_headers')
+                .select('*')
+                .eq('id', exam.header_id)
+                .single();
+            
+            if (!headerError && headerData) {
+                exam.header = headerData;
+                console.log('Cabeçalho encontrado:', headerData.name);
+            }
+        }
+        
+        // Buscar todas as questões
+        const { data: questions, error: questionsError } = await supabase
+            .from('questions')
+            .select('*')
+            .in('id', exam.question_ids);
+        
+        if (questionsError) {
+            console.error('Erro ao buscar questões:', questionsError);
+            throw new Error(`Erro ao buscar questões: ${questionsError.message}`);
+        }
+        
+        console.log(`Encontradas ${questions.length} questões`);
+        
+        // Buscar todos os alunos da turma
+        const { data: students, error: studentsError } = await supabase
+            .from('students')
+            .select(`
+                id,
+                name,
+                student_id,
+                course,
+                email,
+                class:classes(name)
+            `)
+            .eq('class_id', exam.target_class_id);
+        
+        if (studentsError) {
+            console.error('Erro ao buscar alunos:', studentsError);
+            throw new Error(`Erro ao buscar alunos: ${studentsError.message}`);
+        }
+        
+        console.log(`Encontrados ${students.length} alunos para processamento`);
+        
+        if (students.length === 0) {
+            throw new Error('Nenhum aluno encontrado na turma selecionada');
+        }
+        
+        return { exam, questions, students };
+        
+    } catch (error) {
+        console.error('Erro em fetchBatchExamData:', error);
+        throw error;
     }
-    
-    // Buscar todas as questões
-    const { data: questions, error: questionsError } = await supabase
-        .from('questions')
-        .select('*')
-        .in('id', exam.question_ids);
-    
-    if (questionsError) throw new Error(`Erro ao buscar questões: ${questionsError.message}`);
-    
-    // Buscar todos os alunos da turma
-    const { data: students, error: studentsError } = await supabase
-        .from('students')
-        .select(`
-            id,
-            name,
-            student_id,
-            course,
-            email,
-            class:classes(name)
-        `)
-        .eq('class_id', exam.target_class_id);
-    
-    if (studentsError) throw new Error(`Erro ao buscar alunos: ${studentsError.message}`);
-    
-    console.log(`Encontrados ${students.length} alunos para processamento`);
-    
-    return { exam, questions, students };
 }
 
 // FUNÇÃO para medir coordenadas das bolhas usando Puppeteer

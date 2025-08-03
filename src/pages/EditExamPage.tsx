@@ -455,12 +455,30 @@ export default function EditExamPage() {
 
   const generateAllPDFs = async () => {
     if (!examData) return;
+    
+    // Verificação 1: Se é modo turma, verificar se provas foram preparadas
+    if (examData.generation_mode === 'class' && examData.target_class_id) {
+        const { data: preparedExams, error } = await supabase
+            .from('student_exams')
+            .select('id')
+            .eq('exam_id', examData.id);
+            
+        if (error || !preparedExams || preparedExams.length === 0) {
+            toast({ 
+                title: "Ação Necessária", 
+                description: "Primeiro você precisa 'Preparar Provas para a Turma' antes de gerar os PDFs.",
+                variant: "destructive" 
+            });
+            return;
+        }
+    }
+    
     setLoading(true);
     toast({ title: "Iniciando Geração", description: "Processando PDFs no servidor..." });
     
     try {
         if (examData.generation_mode === 'class' && examData.target_class_id) {
-            // NOVA FUNCIONALIDADE: Usar geração em lote no servidor
+            // GERAÇÃO EM LOTE PARA TURMA
             console.log('Chamando geração em lote para a prova:', examData.id);
             
             const response = await supabase.functions.invoke('generate-pdf', { 
@@ -471,12 +489,19 @@ export default function EditExamPage() {
                 } 
             });
             
+            console.log('Resposta raw da edge function:', response);
+            
             if (response.error) {
-                throw new Error(response.error.message);
+                console.error('Erro na edge function:', response.error);
+                throw new Error(`Erro no servidor: ${response.error.message}`);
             }
             
-            if (!response.data || !response.data.success) {
-                throw new Error(response.data?.error || 'Erro desconhecido na geração');
+            if (!response.data) {
+                throw new Error('Nenhum dado retornado do servidor');
+            }
+            
+            if (!response.data.success) {
+                throw new Error(response.data.error || 'Erro desconhecido na geração');
             }
             
             console.log('Resposta da geração em lote:', response.data);
@@ -548,7 +573,7 @@ export default function EditExamPage() {
             }
             
         } else {
-            // Modo por versões (código original)
+            // GERAÇÃO POR VERSÕES (HTML)
             const zip = new JSZip();
             
             for (let version = 1; version <= examData.versions; version++) {
@@ -573,9 +598,16 @@ export default function EditExamPage() {
 
     } catch (error: any) {
         console.error('Erro completo na geração em lote:', error);
+        
+        // Mensagem de erro mais específica
+        let errorMessage = error.message;
+        if (error.message.includes('Edge Function returned a non-2xx status code')) {
+            errorMessage = 'Erro no servidor ao processar PDFs. Verifique os logs da função.';
+        }
+        
         toast({ 
             title: "Erro ao gerar PDFs", 
-            description: error.message, 
+            description: errorMessage, 
             variant: "destructive" 
         });
     } finally {
