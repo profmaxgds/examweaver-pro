@@ -304,59 +304,6 @@ serve(async (req) => {
                     // USAR COORDENADAS PRÉ-CALCULADAS DO BANCO
                     const bubbleCoordinates = getBubbleCoordinatesFromDB({ bubble_coordinates: {} }); // Por enquanto vazio, mas virá do banco
                     
-                    // GERAR HTML DA PROVA
-                    const htmlContent = generateExamHTML(exam, studentQuestions, 1, includeAnswers, studentInfo);
-                    
-                    // PROCESSAR ARQUIVOS (HTML + PDF)
-                    const { htmlBytes, pdfBytes } = await generatePDFFromHTML(htmlContent, studentInfo.name);
-                    
-                    // SALVAR HTML NO STORAGE (sempre funciona)
-                    const htmlFileName = `${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.html`;
-                    const htmlFilePath = `${examId}/html/${htmlFileName}`;
-                    
-                    const { error: htmlUploadError } = await supabase.storage
-                        .from('generated-exams')
-                        .upload(htmlFilePath, htmlBytes, {
-                            contentType: 'text/html',
-                            upsert: true
-                        });
-                    
-                    if (htmlUploadError) {
-                        console.error(`Erro ao salvar HTML para ${student.name}:`, htmlUploadError);
-                        throw new Error(`Erro ao salvar HTML: ${htmlUploadError.message}`);
-                    }
-                    
-                    // TENTAR SALVAR PDF (se foi gerado)
-                    let pdfUrl = null;
-                    if (pdfBytes) {
-                        const pdfFileName = `${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.pdf`;
-                        const pdfFilePath = `${examId}/pdf/${pdfFileName}`;
-                        
-                        const { error: pdfUploadError } = await supabase.storage
-                            .from('generated-exams')
-                            .upload(pdfFilePath, pdfBytes, {
-                                contentType: 'application/pdf',
-                                upsert: true
-                            });
-                        
-                        if (pdfUploadError) {
-                            console.warn(`Aviso: Falha ao salvar PDF para ${student.name}:`, pdfUploadError);
-                        } else {
-                            const { data: pdfUrlData } = supabase.storage
-                                .from('generated-exams')
-                                .getPublicUrl(pdfFilePath);
-                            pdfUrl = pdfUrlData.publicUrl;
-                            console.log(`✓ PDF salvo: ${pdfFileName}`);
-                        }
-                    }
-                    
-                    // OBTER URL DO HTML
-                    const { data: htmlUrlData } = supabase.storage
-                        .from('generated-exams')
-                        .getPublicUrl(htmlFilePath);
-                    
-                    console.log(`✓ HTML salvo: ${htmlFileName}`);
-                    
                     // Criar gabarito (answer key)
                     const answerKey: any = {};
                     studentQuestions.forEach((q, index) => {
@@ -412,59 +359,67 @@ serve(async (req) => {
                     // Atualizar studentInfo com o ID real para regeração do QR code
                     studentInfo.qrId = realStudentExamId;
                     
-                    // REGERAR HTML com o QR code correto
-                    const correctedHtmlContent = generateExamHTML(exam, studentQuestions, 1, includeAnswers, studentInfo);
+                    // GERAR PROVA (sem respostas)
+                    const examHtmlContent = generateExamHTML(exam, studentQuestions, 1, false, studentInfo);
+                    const examEncoder = new TextEncoder();
+                    const examHtmlBytes = examEncoder.encode(examHtmlContent);
                     
-                    // REGERAR arquivos com o HTML correto
-                    const { htmlBytes: correctedHtmlBytes, pdfBytes: correctedPdfBytes } = await generatePDFFromHTML(correctedHtmlContent, studentInfo.name);
+                    // GERAR GABARITO (com respostas marcadas)
+                    const answerKeyHtmlContent = generateExamHTML(exam, studentQuestions, 1, true, studentInfo);
+                    const answerKeyEncoder = new TextEncoder();
+                    const answerKeyHtmlBytes = answerKeyEncoder.encode(answerKeyHtmlContent);
                     
-                    // REUPLOAD do HTML corrigido
-                    const { error: correctedHtmlUploadError } = await supabase.storage
+                    // SALVAR PROVA NO STORAGE
+                    const examFileName = `PROVA_${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.html`;
+                    const examFilePath = `${examId}/provas/${examFileName}`;
+                    
+                    const { error: examUploadError } = await supabase.storage
                         .from('generated-exams')
-                        .upload(htmlFilePath, correctedHtmlBytes, {
+                        .upload(examFilePath, examHtmlBytes, {
                             contentType: 'text/html',
                             upsert: true
                         });
                     
-                    if (correctedHtmlUploadError) {
-                        console.error(`Erro ao reupload HTML corrigido para ${student.name}:`, correctedHtmlUploadError);
-                    } else {
-                        console.log(`✓ HTML corrigido salvo para ${student.name}`);
+                    if (examUploadError) {
+                        console.error(`Erro ao salvar prova para ${student.name}:`, examUploadError);
+                        throw new Error(`Erro ao salvar prova: ${examUploadError.message}`);
                     }
                     
-                    // REUPLOAD do PDF corrigido (se existir)
-                    let finalPdfUrl = pdfUrl;
-                    if (correctedPdfBytes) {
-                        const pdfFileName = `${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.pdf`;
-                        const pdfFilePath = `${examId}/pdf/${pdfFileName}`;
-                        
-                        const { error: correctedPdfUploadError } = await supabase.storage
-                            .from('generated-exams')
-                            .upload(pdfFilePath, correctedPdfBytes, {
-                                contentType: 'application/pdf',
-                                upsert: true
-                            });
-                        
-                        if (correctedPdfUploadError) {
-                            console.warn(`Aviso: Falha ao reupload PDF corrigido para ${student.name}:`, correctedPdfUploadError);
-                        } else {
-                            const { data: correctedPdfUrlData } = supabase.storage
-                                .from('generated-exams')
-                                .getPublicUrl(pdfFilePath);
-                            finalPdfUrl = correctedPdfUrlData.publicUrl;
-                            console.log(`✓ PDF corrigido salvo para ${student.name}`);
-                        }
+                    // SALVAR GABARITO NO STORAGE
+                    const answerKeyFileName = `GABARITO_${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.html`;
+                    const answerKeyFilePath = `${examId}/gabaritos/${answerKeyFileName}`;
+                    
+                    const { error: answerKeyUploadError } = await supabase.storage
+                        .from('generated-exams')
+                        .upload(answerKeyFilePath, answerKeyHtmlBytes, {
+                            contentType: 'text/html',
+                            upsert: true
+                        });
+                    
+                    if (answerKeyUploadError) {
+                        console.error(`Erro ao salvar gabarito para ${student.name}:`, answerKeyUploadError);
+                        throw new Error(`Erro ao salvar gabarito: ${answerKeyUploadError.message}`);
                     }
+                    
+                    // OBTER URLs dos arquivos
+                    const { data: examUrlData } = supabase.storage
+                        .from('generated-exams')
+                        .getPublicUrl(examFilePath);
+                    
+                    const { data: answerKeyUrlData } = supabase.storage
+                        .from('generated-exams')
+                        .getPublicUrl(answerKeyFilePath);
+                    
+                    console.log(`✓ Prova salva: ${examFileName}`);
+                    console.log(`✓ Gabarito salvo: ${answerKeyFileName}`);
                     
                     results.push({
                         studentId: student.id,
                         studentName: student.name,
-                        studentExamId: realStudentExamId, // ID real da tabela student_exams
-                        htmlUrl: htmlUrlData.publicUrl,
-                        pdfUrl: finalPdfUrl,
-                        bubbleCoordinates: Object.keys(bubbleCoordinates).length,
-                        success: true,
-                        hasPdf: !!finalPdfUrl
+                        studentExamId: realStudentExamId,
+                        examUrl: examUrlData.publicUrl,
+                        answerKeyUrl: answerKeyUrlData.publicUrl,
+                        success: true
                     });
                     
                 } catch (studentError) {
@@ -485,13 +440,13 @@ serve(async (req) => {
             
             return new Response(JSON.stringify({
                 success: true,
-                message: 'Arquivos gerados e salvos!',
+                message: 'Provas e gabaritos gerados em HTML!',
                 results,
                 totalStudents: students.length,
                 successCount: results.filter(r => r.success).length,
                 errorCount: results.filter(r => !r.success).length,
-                htmlCount: results.filter(r => r.success).length,
-                pdfCount: results.filter(r => r.success && r.hasPdf).length
+                examCount: results.filter(r => r.success).length,
+                answerKeyCount: results.filter(r => r.success).length
             }), {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });

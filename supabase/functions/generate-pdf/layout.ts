@@ -112,7 +112,8 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         .answer-row .anchor-marker-vertical { width: var(--anchor-width); height: var(--bubble-size); margin-right: var(--anchor-margin-right); }
         .answer-row .q-number { font-weight: bold; font-size: 10pt; text-align: left; width: var(--q-number-width); margin-right: var(--q-number-margin-right); }
         .answer-row .options-bubbles { display: flex; align-items: center; }
-        .answer-row .bubble { width: var(--bubble-size); height: var(--bubble-size); border: var(--bubble-border); margin: var(--bubble-margin); }
+        .answer-row .bubble { width: var(--bubble-size); height: var(--bubble-size); border: var(--bubble-border); margin: var(--bubble-margin); background-color: white; }
+        .answer-row .bubble.correct-answer { background-color: #000 !important; -webkit-print-color-adjust: exact !important; }
         .answer-row .essay-indicator { font-family: var(--font-main); font-size: 9pt; color: #555; font-style: italic; margin-left: 5px; }
 
         .answer-row-horizontal-anchors { display: flex; align-items: center; margin-top: 8px; height: 10px; padding-left: var(--total-left-spacing); }
@@ -196,9 +197,24 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
                     columnHTML += `<div class="options-bubbles">`;
                     for (let j = 0; j < maxOptions; j++) {
                         const optionLetter = String.fromCharCode(65 + j); // A, B, C, D...
+                        
+                        // Verificar se é a resposta correta para destacar no gabarito
+                        let isCorrectAnswer = false;
+                        if (includeAnswers && q) {
+                            if (q.type === 'multiple_choice') {
+                                const correctOption = q.options?.find((opt: any) => 
+                                    Array.isArray(q.correct_answer) ? q.correct_answer.includes(opt.id) : opt.id === q.correct_answer
+                                );
+                                isCorrectAnswer = correctOption && j < q.options.length && q.options[j].id === correctOption.id;
+                            } else if (q.type === 'true_false') {
+                                isCorrectAnswer = (j === 0 && q.correct_answer === true) || (j === 1 && q.correct_answer === false);
+                            }
+                        }
+                        
+                        const bubbleClass = isCorrectAnswer ? 'bubble correct-answer' : 'bubble';
                         columnHTML += j < actualOptions
-                            ? `<div class="bubble" data-question="${i}" data-option="${optionLetter}"></div>`
-                            : `<div class="bubble" style="visibility: hidden;" data-question="${i}" data-option="${optionLetter}"></div>`;
+                            ? `<div class="${bubbleClass}" data-question="${i}" data-option="${optionLetter}"></div>`
+                            : `<div class="${bubbleClass}" style="visibility: hidden;" data-question="${i}" data-option="${optionLetter}"></div>`;
                     }
                     columnHTML += `</div>`;
                 }

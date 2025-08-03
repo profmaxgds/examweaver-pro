@@ -77,7 +77,7 @@ export function PdfGenerationPanel() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Button onClick={generateAllPDFs} disabled={isLoading} className="w-full">
-            {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</> : 'Gerar e Baixar Todas as Provas (.zip)'}
+            {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</> : 'Gerar Provas e Gabaritos (HTML)'}
           </Button>
           
           <div className="grid gap-4 max-h-96 overflow-y-auto pr-2">
