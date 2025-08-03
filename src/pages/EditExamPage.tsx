@@ -456,23 +456,101 @@ export default function EditExamPage() {
   const generateAllPDFs = async () => {
     if (!examData) return;
     setLoading(true);
-    toast({ title: "Iniciando Geração", description: "Preparando arquivos para download..." });
+    toast({ title: "Iniciando Geração", description: "Processando PDFs no servidor..." });
+    
     try {
-        const zip = new JSZip();
-        
         if (examData.generation_mode === 'class' && examData.target_class_id) {
-            const { data: preparedExams, error } = await supabase.from('student_exams').select('id, student:students(name)').eq('exam_id', examData.id);
-            if (error) throw error;
-            if (!preparedExams || preparedExams.length === 0) {
-                toast({ title: "Atenção", description: "Nenhuma prova preparada encontrada. Clique em 'Preparar Provas' primeiro.", variant: "destructive" });
-                return;
+            // NOVA FUNCIONALIDADE: Usar geração em lote no servidor
+            console.log('Chamando geração em lote para a prova:', examData.id);
+            
+            const response = await supabase.functions.invoke('generate-pdf', { 
+                body: { 
+                    examId: examData.id, 
+                    generateAll: true,
+                    includeAnswers: false 
+                } 
+            });
+            
+            if (response.error) {
+                throw new Error(response.error.message);
             }
-            for (const pExam of preparedExams) {
-                const html = await callGeneratePdfFunction({ studentExamId: pExam.id, includeAnswers: false });
-                zip.file(`${pExam.student.name.replace(/\s/g, '_')}_prova.html`, html);
+            
+            if (!response.data || !response.data.success) {
+                throw new Error(response.data?.error || 'Erro desconhecido na geração');
             }
+            
+            console.log('Resposta da geração em lote:', response.data);
+            
+            // Baixar PDFs e criar ZIP
+            const zip = new JSZip();
+            const results = response.data.results;
+            const successfulResults = results.filter((r: any) => !r.error && r.pdfUrl);
+            
+            if (successfulResults.length === 0) {
+                throw new Error('Nenhum PDF foi gerado com sucesso');
+            }
+            
+            toast({ 
+                title: "PDFs Gerados!", 
+                description: `${successfulResults.length} de ${results.length} PDFs gerados. Baixando arquivos...` 
+            });
+            
+            // Baixar cada PDF e adicionar ao ZIP
+            for (const result of successfulResults) {
+                try {
+                    console.log(`Baixando PDF para ${result.studentName}: ${result.pdfUrl}`);
+                    
+                    const pdfResponse = await fetch(result.pdfUrl);
+                    if (!pdfResponse.ok) {
+                        console.error(`Erro ao baixar PDF para ${result.studentName}:`, pdfResponse.status);
+                        continue;
+                    }
+                    
+                    const pdfBlob = await pdfResponse.blob();
+                    const fileName = `${result.studentName.replace(/[^a-zA-Z0-9]/g, '_')}_prova.pdf`;
+                    zip.file(fileName, pdfBlob);
+                    
+                } catch (downloadError) {
+                    console.error(`Erro ao baixar PDF para ${result.studentName}:`, downloadError);
+                }
+            }
+            
+            // Verificar se pelo menos um arquivo foi adicionado ao ZIP
+            const filesInZip = Object.keys(zip.files).length;
+            if (filesInZip === 0) {
+                throw new Error('Nenhum arquivo pôde ser baixado para o ZIP');
+            }
+            
+            // Gerar e baixar ZIP
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(zipBlob);
+            link.download = `${examData.title.replace(/\s/g, '_')}_provas_turma.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            
+            toast({ 
+                title: "Sucesso!", 
+                description: `ZIP criado com ${filesInZip} PDFs. Download iniciado!` 
+            });
+            
+            // Mostrar relatório de erros se houver
+            const errorResults = results.filter((r: any) => r.error);
+            if (errorResults.length > 0) {
+                console.warn('Erros na geração:', errorResults);
+                toast({ 
+                    title: "Alguns PDFs falharam", 
+                    description: `${errorResults.length} alunos tiveram erro na geração`,
+                    variant: "destructive" 
+                });
+            }
+            
         } else {
-            // Para provas por versão, criar gabaritos e gerar PDFs
+            // Modo por versões (código original)
+            const zip = new JSZip();
+            
             for (let version = 1; version <= examData.versions; version++) {
                 await createVersionAnswerKey(version);
                 const htmlProva = await callGeneratePdfFunction({ examId: examData.id, version: version, includeAnswers: false });
@@ -480,19 +558,26 @@ export default function EditExamPage() {
                 zip.file(`Versao_${version}_Prova.html`, htmlProva);
                 zip.file(`Versao_${version}_Gabarito.html`, htmlGabarito);
             }
+            
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(zipBlob);
+            link.download = `${examData.title.replace(/\s/g, '_')}_provas.zip`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            
+            toast({ title: "Sucesso!", description: "ZIP com todas as versões gerado!" });
         }
-        
-        const zipBlob = await zip.generateAsync({ type: 'blob' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(zipBlob);
-        link.download = `${examData.title.replace(/\s/g, '_')}_provas.zip`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(link.href);
 
-    } catch(error: any) {
-        toast({ title: "Erro ao gerar ZIP", description: error.message, variant: "destructive" });
+    } catch (error: any) {
+        console.error('Erro completo na geração em lote:', error);
+        toast({ 
+            title: "Erro ao gerar PDFs", 
+            description: error.message, 
+            variant: "destructive" 
+        });
     } finally {
         setLoading(false);
     }

@@ -195,9 +195,10 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
                     const actualOptions = q.type === 'true_false' ? 2 : (Array.isArray(q.options) ? q.options.length : 5);
                     columnHTML += `<div class="options-bubbles">`;
                     for (let j = 0; j < maxOptions; j++) {
+                        const optionLetter = String.fromCharCode(65 + j); // A, B, C, D...
                         columnHTML += j < actualOptions
-                            ? `<div class="bubble"></div>`
-                            : `<div class="bubble" style="visibility: hidden;"></div>`;
+                            ? `<div class="bubble" data-question="${i}" data-option="${optionLetter}"></div>`
+                            : `<div class="bubble" style="visibility: hidden;" data-question="${i}" data-option="${optionLetter}"></div>`;
                     }
                     columnHTML += `</div>`;
                 }
