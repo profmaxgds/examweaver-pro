@@ -249,10 +249,19 @@ export default function AutoCorrectionPage() {
         if (scanMode === 'photo' && examInfo?.bubbleCoordinates) {
           setShowAlignmentOverlay(true);
           console.log('🎯 Overlay de alinhamento ativado - coordenadas disponíveis');
+          toast({
+            title: "🎯 Coordenadas Ativas",
+            description: "Posicione a prova usando os pontos de referência verdes para precisão máxima",
+            duration: 4000,
+          });
         } else if (scanMode === 'photo') {
-          setTimeout(() => {
-            startAnswerSheetDetection();
-          }, 1000);
+          // NÃO fazer detecção automática - apenas mostrar interface para captura manual
+          console.log('📷 Modo captura manual ativo');
+          toast({
+            title: "📷 Modo Manual",
+            description: "Posicione a prova e clique em 'Capturar' quando estiver alinhada",
+            duration: 4000,
+          });
         }
       } catch (error) {
         console.error('Erro ao reproduzir vídeo:', error);
@@ -438,18 +447,18 @@ export default function AutoCorrectionPage() {
     }, 50); // 20x por segundo para detecção instantânea
   };
 
-  // Função para detectar automaticamente a folha de respostas quando a câmera está ativa
+  // FUNÇÃO DESABILITADA: Detecção automática removida para permitir captura manual controlada
   const startAnswerSheetDetection = () => {
-    if (scanIntervalRef.current) return;
-    
-    console.log('🎯 Iniciando detecção automática da folha de respostas...');
-    setAutoDetectGrading(true);
-    
-    scanIntervalRef.current = setInterval(() => {
-      if (videoRef.current && videoRef.current.readyState >= 2) {
-        detectAnswerSheetStructure();
-      }
-    }, 100); // Detectar a cada 100ms
+    console.log('⚠️ Detecção automática desabilitada - usando apenas captura manual');
+    // Esta função foi desabilitada para permitir melhor controle manual
+    // if (scanIntervalRef.current) return;
+    // console.log('🎯 Iniciando detecção automática da folha de respostas...');
+    // setAutoDetectGrading(true);
+    // scanIntervalRef.current = setInterval(() => {
+    //   if (videoRef.current && videoRef.current.readyState >= 2) {
+    //     detectAnswerSheetStructure();
+    //   }
+    // }, 100);
   };
 
   // Função para detectar estrutura similar à folha de respostas gerada
@@ -1317,25 +1326,45 @@ export default function AutoCorrectionPage() {
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <div className="relative">
                             {showAlignmentOverlay && examInfo?.bubbleCoordinates ? (
-                              // Overlay de alinhamento preciso quando coordenadas disponíveis
-                              <div className="w-64 h-48 border-4 border-green-400 rounded-lg bg-green-400/20 animate-pulse">
-                                {/* Pontos de ancoragem para alinhamento */}
+                              // Overlay de alinhamento preciso com coordenadas reais das bolhas
+                              <div className="relative w-80 h-60 border-4 border-green-400 rounded-lg bg-green-400/10">
+                                {/* Cantos de referência para alinhamento */}
                                 <div className="absolute -top-1 -left-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
                                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
                                 <div className="absolute -bottom-1 -left-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
                                 <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
                                 
-                                {/* Grade simulando posições das bolhas */}
-                                <div className="absolute inset-4 grid grid-cols-5 gap-1">
-                                  {Array.from({ length: 25 }, (_, i) => (
-                                    <div key={i} className="w-1.5 h-1.5 bg-green-300 rounded-full opacity-60"></div>
-                                  ))}
-                                </div>
+                                {/* Renderizar bolhas nas posições reais */}
+                                {Object.entries(examInfo.bubbleCoordinates).map(([questionNum, options]: [string, any]) => 
+                                  Object.entries(options).map(([letter, coords]: [string, any]) => (
+                                    <div 
+                                      key={`${questionNum}-${letter}`}
+                                      className="absolute w-2 h-2 bg-green-300 rounded-full opacity-80 animate-pulse"
+                                      style={{
+                                        left: `${(coords.x / 595) * 100}%`,  // Converter coordenadas de PDF para percentual
+                                        top: `${(coords.y / 842) * 100}%`,
+                                        transform: 'translate(-50%, -50%)'
+                                      }}
+                                      title={`Q${questionNum}-${letter}`}
+                                    >
+                                      <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 text-xs text-green-300 font-bold">
+                                        {letter}
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
                                 
                                 {/* Indicador de coordenadas ativas */}
                                 <div className="absolute top-1 left-1/2 transform -translate-x-1/2">
-                                  <div className="bg-green-500 text-white text-xs px-2 py-1 rounded-full font-bold">
-                                    🎯 COORDENADAS ATIVAS
+                                  <div className="bg-green-500 text-white text-xs px-3 py-1 rounded-full font-bold">
+                                    🎯 COORDENADAS PRECISAS ATIVAS
+                                  </div>
+                                </div>
+                                
+                                {/* Indicador de número de questões */}
+                                <div className="absolute bottom-1 right-2">
+                                  <div className="bg-green-600 text-white text-xs px-2 py-1 rounded font-bold">
+                                    {Object.keys(examInfo.bubbleCoordinates).length} questões
                                   </div>
                                 </div>
                               </div>
@@ -1359,10 +1388,10 @@ export default function AutoCorrectionPage() {
                               </div>
                             )}
                             
-                            <div className="absolute -bottom-10 left-1/2 transform -translate-x-1/2 text-xs text-green-300 font-bold bg-black/50 px-2 py-1 rounded text-center">
+                            <div className="absolute -bottom-12 left-1/2 transform -translate-x-1/2 text-xs text-green-300 font-bold bg-black/80 px-3 py-2 rounded text-center max-w-xs">
                               {showAlignmentOverlay && examInfo?.bubbleCoordinates ? 
-                                '🎯 Alinhe com os pontos verdes para precisão máxima' : 
-                                'Posicione a prova com QR e gabarito aqui'
+                                '🎯 Alinhe a prova com os pontos verdes das bolhas. Quando estiver bem posicionado, clique em "Capturar"' : 
+                                'Posicione a prova com QR no canto e gabarito visível, depois clique em "Capturar"'
                               }
                             </div>
                           </div>
@@ -1416,23 +1445,41 @@ export default function AutoCorrectionPage() {
                             <>
                               <Button
                                 onClick={capturePhoto}
-                                className="w-full py-4 text-lg bg-green-600 hover:bg-green-700 touch-manipulation"
+                                className={`w-full py-4 text-lg touch-manipulation transition-all ${
+                                  showAlignmentOverlay && examInfo?.bubbleCoordinates 
+                                    ? 'bg-green-600 hover:bg-green-700 shadow-lg shadow-green-500/30' 
+                                    : 'bg-orange-600 hover:bg-orange-700'
+                                }`}
                                 size="lg"
                               >
                                 <Camera className="w-6 h-6 mr-2" />
                                 {showAlignmentOverlay && examInfo?.bubbleCoordinates ? 
-                                  '🎯 Capturar com Alinhamento Preciso' : 
-                                  '📷 Capturar Gabarito'
+                                  '🎯 Capturar com Coordenadas Precisas' : 
+                                  '📷 Capturar Folha de Respostas'
                                 }
                               </Button>
                               
                               {showAlignmentOverlay && examInfo?.bubbleCoordinates && (
-                                <div className="text-center space-y-1">
-                                  <p className="text-sm text-green-600 font-bold">
-                                    🎯 Modo Alinhamento Ativo
+                                <div className="text-center space-y-2 p-3 bg-green-50 rounded-lg border-2 border-green-200">
+                                  <p className="text-sm text-green-700 font-bold flex items-center justify-center gap-2">
+                                    🎯 Modo Coordenadas Ativas
                                   </p>
-                                  <p className="text-xs text-green-700">
-                                    Coordenadas disponíveis - Precisão máxima!
+                                  <p className="text-xs text-green-600">
+                                    Sistema detectou {Object.keys(examInfo.bubbleCoordinates).length} questões com posicionamento preciso das bolhas
+                                  </p>
+                                  <p className="text-xs text-green-500 italic">
+                                    Alinhe a prova com os pontos verdes para máxima precisão na correção
+                                  </p>
+                                </div>
+                              )}
+                              
+                              {!showAlignmentOverlay && (
+                                <div className="text-center space-y-1 p-2 bg-orange-50 rounded border border-orange-200">
+                                  <p className="text-sm text-orange-700 font-bold">
+                                    ⚠️ Modo Básico
+                                  </p>
+                                  <p className="text-xs text-orange-600">
+                                    Posicione bem a prova e clique quando estiver alinhada
                                   </p>
                                 </div>
                               )}
