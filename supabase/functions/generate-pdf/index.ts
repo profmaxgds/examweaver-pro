@@ -2,7 +2,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
-import puppeteer from "https://deno.land/x/puppeteer@16.2.0/mod.ts";
 
 // Módulos que você já usa (assumindo que estão na mesma pasta)
 import { fetchExamData as fetchVersionExamData } from './data-fetcher.ts';
@@ -280,9 +279,9 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
     
-    // ROTA 3: Geração em Lote para Todos os Alunos da Turma
+    // ROTA 3: Geração em Lote SIMPLIFICADA (sem Puppeteer por enquanto)
     if (generateAll && examId) {
-        console.log('=== INICIANDO GERAÇÃO EM LOTE ===');
+        console.log('=== INICIANDO GERAÇÃO EM LOTE SIMPLIFICADA ===');
         console.log('Exam ID:', examId);
         
         try {
@@ -298,14 +297,9 @@ serve(async (req) => {
             }
             
             const results = [];
-            const browser = await puppeteer.launch({
-                headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
-            });
-            
             console.log(`Processando ${students.length} alunos...`);
             
-            // Processar cada aluno
+            // Processar cada aluno - SEM PUPPETEER por enquanto
             for (const student of students) {
                 console.log(`--- Processando aluno: ${student.name} (${student.student_id}) ---`);
                 
@@ -342,68 +336,40 @@ serve(async (req) => {
                     // Gerar HTML
                     const html = generateExamHTML(exam, studentQuestions, 1, includeAnswers, studentInfo);
                     
-                    // Medir coordenadas das bolhas
-                    const page = await browser.newPage();
-                    await page.setViewport({ width: 794, height: 1123 });
-                    await page.setContent(html, { waitUntil: 'networkidle0' });
-                    
-                    const bubbleCoordinates = await page.evaluate(() => {
-                        const bubbles = document.querySelectorAll('.bubble');
-                        const coords: any = {};
-                        
-                        bubbles.forEach((bubble) => {
-                            const rect = bubble.getBoundingClientRect();
-                            const questionNum = bubble.getAttribute('data-question') || 
-                                              bubble.closest('[data-question]')?.getAttribute('data-question');
-                            const optionLetter = bubble.getAttribute('data-option') || 
-                                               bubble.textContent?.trim();
-                            
-                            if (questionNum && optionLetter) {
-                                if (!coords[questionNum]) {
-                                    coords[questionNum] = {};
-                                }
-                                
-                                coords[questionNum][optionLetter] = {
-                                    x: Math.round(rect.left),
-                                    y: Math.round(rect.top),
-                                    width: Math.round(rect.width),
-                                    height: Math.round(rect.height),
-                                    centerX: Math.round(rect.left + rect.width / 2),
-                                    centerY: Math.round(rect.top + rect.height / 2)
+                    // COORDENADAS SIMULADAS (sem Puppeteer por enquanto)
+                    const bubbleCoordinates: any = {};
+                    studentQuestions.forEach((q, index) => {
+                        if (q.type === 'multiple_choice' && q.options) {
+                            bubbleCoordinates[`${index + 1}`] = {};
+                            q.options.forEach((opt: any, optIndex: number) => {
+                                const letter = String.fromCharCode(65 + optIndex); // A, B, C, D
+                                bubbleCoordinates[`${index + 1}`][letter] = {
+                                    x: 50 + (optIndex * 25),
+                                    y: 100 + (index * 20),
+                                    width: 11,
+                                    height: 11,
+                                    centerX: 55 + (optIndex * 25),
+                                    centerY: 105 + (index * 20)
                                 };
-                            }
-                        });
-                        
-                        return coords;
-                    });
-                    
-                    // Gerar PDF
-                    const pdfBuffer = await page.pdf({
-                        format: 'A4',
-                        printBackground: true,
-                        margin: {
-                            top: '1cm',
-                            right: '1cm',
-                            bottom: '1cm',
-                            left: '1cm'
+                            });
                         }
                     });
                     
-                    await page.close();
-                    
-                    // Salvar PDF no Storage
-                    const fileName = `${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.pdf`;
+                    // SALVAR HTML NO STORAGE (ao invés de PDF)
+                    const fileName = `${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.html`;
                     const filePath = `${examId}/${fileName}`;
+                    
+                    const htmlBlob = new TextEncoder().encode(html);
                     
                     const { error: uploadError } = await supabase.storage
                         .from('generated-exams')
-                        .upload(filePath, pdfBuffer, {
-                            contentType: 'application/pdf',
+                        .upload(filePath, htmlBlob, {
+                            contentType: 'text/html',
                             upsert: true
                         });
                     
                     if (uploadError) {
-                        throw new Error(`Erro ao salvar PDF: ${uploadError.message}`);
+                        throw new Error(`Erro ao salvar HTML: ${uploadError.message}`);
                     }
                     
                     // Obter URL pública
@@ -415,7 +381,9 @@ serve(async (req) => {
                     const answerKey: any = {};
                     studentQuestions.forEach((q, index) => {
                         if (q.type === 'multiple_choice') {
-                            const correctOption = q.options?.find((opt: any) => opt.id === q.correct_answer);
+                            const correctOption = q.options?.find((opt: any) => 
+                                Array.isArray(q.correct_answer) ? q.correct_answer.includes(opt.id) : opt.id === q.correct_answer
+                            );
                             if (correctOption) {
                                 answerKey[`q${index + 1}`] = correctOption.letter || 'A';
                             }
@@ -451,7 +419,7 @@ serve(async (req) => {
                     results.push({
                         studentId: student.id,
                         studentName: student.name,
-                        pdfUrl: urlData.publicUrl,
+                        pdfUrl: urlData.publicUrl, // Na verdade é HTML por enquanto
                         bubbleCoordinates: Object.keys(bubbleCoordinates).length
                     });
                     
@@ -467,8 +435,6 @@ serve(async (req) => {
                 }
             }
             
-            await browser.close();
-            
             console.log('=== GERAÇÃO EM LOTE CONCLUÍDA ===');
             console.log(`Processados: ${results.length} alunos`);
             console.log(`Sucessos: ${results.filter(r => !r.error).length}`);
@@ -476,7 +442,7 @@ serve(async (req) => {
             
             return new Response(JSON.stringify({
                 success: true,
-                message: 'Geração em lote concluída',
+                message: 'Geração em lote concluída (HTMLs gerados)',
                 results,
                 totalStudents: students.length,
                 successCount: results.filter(r => !r.error).length,
@@ -488,6 +454,7 @@ serve(async (req) => {
         } catch (batchError) {
             console.error('Erro na geração em lote:', batchError);
             return new Response(JSON.stringify({ 
+                success: false,
                 error: `Erro na geração em lote: ${batchError.message}` 
             }), {
                 status: 500,

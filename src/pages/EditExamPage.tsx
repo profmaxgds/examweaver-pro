@@ -574,23 +574,25 @@ export default function EditExamPage() {
                 description: `${successfulResults.length} de ${results.length} PDFs gerados. Baixando arquivos...` 
             });
             
-            // Baixar cada PDF e adicionar ao ZIP
+            // Baixar cada arquivo e adicionar ao ZIP
             for (const result of successfulResults) {
                 try {
-                    console.log(`Baixando PDF para ${result.studentName}: ${result.pdfUrl}`);
+                    console.log(`Baixando arquivo para ${result.studentName}: ${result.pdfUrl}`);
                     
-                    const pdfResponse = await fetch(result.pdfUrl);
-                    if (!pdfResponse.ok) {
-                        console.error(`Erro ao baixar PDF para ${result.studentName}:`, pdfResponse.status);
+                    const fileResponse = await fetch(result.pdfUrl);
+                    if (!fileResponse.ok) {
+                        console.error(`Erro ao baixar arquivo para ${result.studentName}:`, fileResponse.status);
                         continue;
                     }
                     
-                    const pdfBlob = await pdfResponse.blob();
-                    const fileName = `${result.studentName.replace(/[^a-zA-Z0-9]/g, '_')}_prova.pdf`;
-                    zip.file(fileName, pdfBlob);
+                    const fileBlob = await fileResponse.blob();
+                    // Detectar se é HTML ou PDF pela URL
+                    const isHtml = result.pdfUrl.includes('.html');
+                    const fileName = `${result.studentName.replace(/[^a-zA-Z0-9]/g, '_')}_prova.${isHtml ? 'html' : 'pdf'}`;
+                    zip.file(fileName, fileBlob);
                     
                 } catch (downloadError) {
-                    console.error(`Erro ao baixar PDF para ${result.studentName}:`, downloadError);
+                    console.error(`Erro ao baixar arquivo para ${result.studentName}:`, downloadError);
                 }
             }
             
