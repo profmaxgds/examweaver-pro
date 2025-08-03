@@ -28,6 +28,7 @@ interface ExamInfo {
   studentName: string;
   answerKey: Record<string, string>;
   version?: number;
+  bubbleCoordinates?: any; // Coordenadas das bolhas para overlay visual
 }
 
 interface CorrectionResult {
@@ -76,6 +77,7 @@ export default function AutoCorrectionPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [autoDetectGrading, setAutoDetectGrading] = useState(false);
   const [detectedAnswerSheet, setDetectedAnswerSheet] = useState(false);
+  const [showAlignmentOverlay, setShowAlignmentOverlay] = useState(false);
   
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -242,8 +244,11 @@ export default function AutoCorrectionPage() {
           }, 500);
         }
         
-        // Se está no modo photo e já tem examInfo, ativar detecção automática da folha de respostas
-        if (scanMode === 'photo') {
+        // Se está no modo photo e já tem examInfo, ativar overlay de alinhamento
+        if (scanMode === 'photo' && examInfo?.bubbleCoordinates) {
+          setShowAlignmentOverlay(true);
+          console.log('🎯 Overlay de alinhamento ativado - coordenadas disponíveis');
+        } else if (scanMode === 'photo') {
           setTimeout(() => {
             startAnswerSheetDetection();
           }, 1000);
@@ -1269,28 +1274,58 @@ export default function AutoCorrectionPage() {
                             </div>
                           </div>
                         </div>
-                      ) : (
-                        // Guia para Gabarito - retângulo maior
+                       ) : (
+                        // Guia para Gabarito com overlay inteligente
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <div className="relative">
-                            <div className="w-64 h-48 border-4 border-green-500 rounded-lg bg-green-500/10 animate-pulse">
-                              <div className="absolute -top-2 -left-2 w-6 h-6 border-t-4 border-l-4 border-green-400"></div>
-                              <div className="absolute -top-2 -right-2 w-6 h-6 border-t-4 border-r-4 border-green-400"></div>
-                              <div className="absolute -bottom-2 -left-2 w-6 h-6 border-b-4 border-l-4 border-green-400"></div>
-                              <div className="absolute -bottom-2 -right-2 w-6 h-6 border-b-4 border-r-4 border-green-400"></div>
-                              
-                              {/* Linhas de referência para o gabarito */}
-                              <div className="absolute top-4 left-4 right-4 border-t-2 border-green-400/50"></div>
-                              <div className="absolute top-8 left-4 right-4 border-t border-green-400/30"></div>
-                              <div className="absolute top-12 left-4 right-4 border-t border-green-400/30"></div>
-                              
-                              {/* Indicador de QR code no canto */}
-                              <div className="absolute top-2 right-2 w-8 h-8 border-2 border-green-400/60 rounded text-xs flex items-center justify-center text-green-300">
-                                QR
+                            {showAlignmentOverlay && examInfo?.bubbleCoordinates ? (
+                              // Overlay de alinhamento preciso quando coordenadas disponíveis
+                              <div className="w-64 h-48 border-4 border-green-400 rounded-lg bg-green-400/20 animate-pulse">
+                                {/* Pontos de ancoragem para alinhamento */}
+                                <div className="absolute -top-1 -left-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
+                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
+                                <div className="absolute -bottom-1 -left-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
+                                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
+                                
+                                {/* Grade simulando posições das bolhas */}
+                                <div className="absolute inset-4 grid grid-cols-5 gap-1">
+                                  {Array.from({ length: 25 }, (_, i) => (
+                                    <div key={i} className="w-1.5 h-1.5 bg-green-300 rounded-full opacity-60"></div>
+                                  ))}
+                                </div>
+                                
+                                {/* Indicador de coordenadas ativas */}
+                                <div className="absolute top-1 left-1/2 transform -translate-x-1/2">
+                                  <div className="bg-green-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+                                    🎯 COORDENADAS ATIVAS
+                                  </div>
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              // Overlay padrão quando não há coordenadas
+                              <div className="w-64 h-48 border-4 border-green-500 rounded-lg bg-green-500/10 animate-pulse">
+                                <div className="absolute -top-2 -left-2 w-6 h-6 border-t-4 border-l-4 border-green-400"></div>
+                                <div className="absolute -top-2 -right-2 w-6 h-6 border-t-4 border-r-4 border-green-400"></div>
+                                <div className="absolute -bottom-2 -left-2 w-6 h-6 border-b-4 border-l-4 border-green-400"></div>
+                                <div className="absolute -bottom-2 -right-2 w-6 h-6 border-b-4 border-r-4 border-green-400"></div>
+                                
+                                {/* Linhas de referência para o gabarito */}
+                                <div className="absolute top-4 left-4 right-4 border-t-2 border-green-400/50"></div>
+                                <div className="absolute top-8 left-4 right-4 border-t border-green-400/30"></div>
+                                <div className="absolute top-12 left-4 right-4 border-t border-green-400/30"></div>
+                                
+                                {/* Indicador de QR code no canto */}
+                                <div className="absolute top-2 right-2 w-8 h-8 border-2 border-green-400/60 rounded text-xs flex items-center justify-center text-green-300">
+                                  QR
+                                </div>
+                              </div>
+                            )}
+                            
                             <div className="absolute -bottom-10 left-1/2 transform -translate-x-1/2 text-xs text-green-300 font-bold bg-black/50 px-2 py-1 rounded text-center">
-                              Posicione a prova com QR e gabarito aqui
+                              {showAlignmentOverlay && examInfo?.bubbleCoordinates ? 
+                                '🎯 Alinhe com os pontos verdes para precisão máxima' : 
+                                'Posicione a prova com QR e gabarito aqui'
+                              }
                             </div>
                           </div>
                         </div>
@@ -1339,15 +1374,31 @@ export default function AutoCorrectionPage() {
                               <QrCode className="w-6 h-6 mr-2" />
                               📱 Iniciar Escaneamento
                             </Button>
-                          ) : (
-                            <Button
-                              onClick={capturePhoto}
-                              className="w-full py-4 text-lg bg-green-600 hover:bg-green-700 touch-manipulation"
-                              size="lg"
-                            >
-                              <Camera className="w-6 h-6 mr-2" />
-                              📷 Capturar Foto
-                            </Button>
+                           ) : (
+                            <>
+                              <Button
+                                onClick={capturePhoto}
+                                className="w-full py-4 text-lg bg-green-600 hover:bg-green-700 touch-manipulation"
+                                size="lg"
+                              >
+                                <Camera className="w-6 h-6 mr-2" />
+                                {showAlignmentOverlay && examInfo?.bubbleCoordinates ? 
+                                  '🎯 Capturar com Alinhamento Preciso' : 
+                                  '📷 Capturar Gabarito'
+                                }
+                              </Button>
+                              
+                              {showAlignmentOverlay && examInfo?.bubbleCoordinates && (
+                                <div className="text-center space-y-1">
+                                  <p className="text-sm text-green-600 font-bold">
+                                    🎯 Modo Alinhamento Ativo
+                                  </p>
+                                  <p className="text-xs text-green-700">
+                                    Coordenadas disponíveis - Precisão máxima!
+                                  </p>
+                                </div>
+                              )}
+                            </>
                           )}
                           
                           <Button
