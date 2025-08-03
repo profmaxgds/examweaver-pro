@@ -151,88 +151,6 @@ function getBubbleCoordinatesFromDB(studentExamData: any) {
     return studentExamData.bubble_coordinates || {};
 }
 
-// Função para gerar PDF usando API confiável 
-async function generatePDFFromHTML(htmlContent: string, studentName: string): Promise<{ htmlBytes: Uint8Array, pdfBytes?: Uint8Array }> {
-    console.log(`Processando arquivos para ${studentName}...`);
-    
-    try {
-        // SEMPRE salvar HTML (garantido que funciona)
-        const encoder = new TextEncoder();
-        const htmlBytes = encoder.encode(htmlContent);
-        
-        // TENTAR gerar PDF usando múltiplas APIs como fallback
-        let pdfBytes: Uint8Array | undefined;
-        
-        // Lista de APIs para tentar (em ordem de preferência)
-        const pdfApis = [
-            {
-                name: 'PDFShift',
-                url: 'https://api.pdfshift.io/v3/convert/pdf',
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Basic ' + btoa('api:demo') // Demo key
-                },
-                body: {
-                    source: htmlContent,
-                    format: 'A4',
-                    margin: '1cm',
-                    print_background: true
-                }
-            },
-            {
-                name: 'HTML/CSS to PDF',
-                url: 'https://htmlcsstoimage.com/demo_run',
-                method: 'POST', 
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: {
-                    html: htmlContent,
-                    css: '',
-                    device_scale: 1,
-                    format: 'pdf'
-                }
-            }
-        ];
-        
-        for (const api of pdfApis) {
-            try {
-                console.log(`Tentando ${api.name} para ${studentName}...`);
-                
-                const response = await fetch(api.url, {
-                    method: api.method,
-                    headers: api.headers,
-                    body: JSON.stringify(api.body),
-                    timeout: 30000 // 30 segundos timeout
-                });
-                
-                if (response.ok) {
-                    const arrayBuffer = await response.arrayBuffer();
-                    pdfBytes = new Uint8Array(arrayBuffer);
-                    console.log(`✓ PDF gerado com ${api.name} para ${studentName}`);
-                    break; // Parar no primeiro sucesso
-                } else {
-                    console.warn(`${api.name} falhou para ${studentName}: ${response.status} ${response.statusText}`);
-                }
-            } catch (apiError) {
-                console.warn(`Erro em ${api.name} para ${studentName}:`, apiError);
-                continue; // Tentar próxima API
-            }
-        }
-        
-        if (!pdfBytes) {
-            console.warn(`Todas as APIs falharam para ${studentName}, mantendo apenas HTML`);
-        }
-        
-        return { htmlBytes, pdfBytes };
-    } catch (error) {
-        console.error(`Erro crítico ao processar arquivos para ${studentName}:`, error);
-        throw error;
-    }
-}
-
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -240,16 +158,16 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { examId, version = 1, includeAnswers = false, studentExamId, generatePDF = false, generateAll = false } = body;
+    const { examId, version = 1, includeAnswers = false, studentExamId, format = 'html', generateAll = false } = body;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
     
-    // ROTA 3: Geração em Lote SIMPLIFICADA (sem Puppeteer por enquanto)
+    // ROTA 3: Geração em Lote SIMPLIFICADA (apenas HTML)
     if (generateAll && examId) {
-        console.log('=== INICIANDO GERAÇÃO EM LOTE SIMPLIFICADA ===');
+        console.log('=== INICIANDO GERAÇÃO EM LOTE HTML ===');
         console.log('Exam ID:', examId);
         
         try {
@@ -267,7 +185,7 @@ serve(async (req) => {
             const results = [];
             console.log(`Processando ${students.length} alunos...`);
             
-            // Processar cada aluno - SEM PUPPETEER por enquanto
+            // Processar cada aluno - apenas HTML
             for (const student of students) {
                 console.log(`--- Processando aluno: ${student.name} (${student.student_id}) ---`);
                 
@@ -295,315 +213,248 @@ serve(async (req) => {
                     // Criar info do aluno para o HTML
                     const studentInfo = {
                         name: student.name,
-                        id: student.student_id || 'N/A',
-                        course: student.course || 'N/A',
-                        class: student.class?.name || 'N/A',
-                        qrId: null // Será preenchido após inserção no banco
+                        student_id: student.student_id || 'N/A'
                     };
                     
-                    // USAR COORDENADAS PRÉ-CALCULADAS DO BANCO
-                    const bubbleCoordinates = getBubbleCoordinatesFromDB({ bubble_coordinates: {} }); // Por enquanto vazio, mas virá do banco
-                    
                     // GERAR HTML DA PROVA
-                    const htmlContent = generateExamHTML(exam, studentQuestions, 1, includeAnswers, studentInfo);
+                    const htmlContent = generateExamHTML(
+                      exam,
+                      studentQuestions,
+                      parseInt(student.student_id || '1'),
+                      false,
+                      studentInfo
+                    );
                     
-                    // PROCESSAR ARQUIVOS (HTML + PDF)
-                    const { htmlBytes, pdfBytes } = await generatePDFFromHTML(htmlContent, studentInfo.name);
-                    
-                    // SALVAR HTML NO STORAGE (sempre funciona)
-                    const htmlFileName = `${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.html`;
-                    const htmlFilePath = `${examId}/html/${htmlFileName}`;
+                    // Upload apenas HTML content
+                    const htmlFileName = `exam_${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().getTime()}.html`;
+                    const htmlBytes = new TextEncoder().encode(htmlContent);
                     
                     const { error: htmlUploadError } = await supabase.storage
-                        .from('generated-exams')
-                        .upload(htmlFilePath, htmlBytes, {
+                        .from('exam-files')
+                        .upload(htmlFileName, htmlBytes, {
                             contentType: 'text/html',
                             upsert: true
                         });
-                    
+
                     if (htmlUploadError) {
-                        console.error(`Erro ao salvar HTML para ${student.name}:`, htmlUploadError);
-                        throw new Error(`Erro ao salvar HTML: ${htmlUploadError.message}`);
-                    }
-                    
-                    // TENTAR SALVAR PDF (se foi gerado)
-                    let pdfUrl = null;
-                    if (pdfBytes) {
-                        const pdfFileName = `${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.pdf`;
-                        const pdfFilePath = `${examId}/pdf/${pdfFileName}`;
-                        
-                        const { error: pdfUploadError } = await supabase.storage
-                            .from('generated-exams')
-                            .upload(pdfFilePath, pdfBytes, {
-                                contentType: 'application/pdf',
-                                upsert: true
-                            });
-                        
-                        if (pdfUploadError) {
-                            console.warn(`Aviso: Falha ao salvar PDF para ${student.name}:`, pdfUploadError);
-                        } else {
-                            const { data: pdfUrlData } = supabase.storage
-                                .from('generated-exams')
-                                .getPublicUrl(pdfFilePath);
-                            pdfUrl = pdfUrlData.publicUrl;
-                            console.log(`✓ PDF salvo: ${pdfFileName}`);
-                        }
-                    }
-                    
-                    // OBTER URL DO HTML
-                    const { data: htmlUrlData } = supabase.storage
-                        .from('generated-exams')
-                        .getPublicUrl(htmlFilePath);
-                    
-                    console.log(`✓ HTML salvo: ${htmlFileName}`);
-                    
-                    // Criar gabarito (answer key)
-                    const answerKey: any = {};
-                    studentQuestions.forEach((q, index) => {
-                        if (q.type === 'multiple_choice') {
-                            const correctOption = q.options?.find((opt: any) => 
-                                Array.isArray(q.correct_answer) ? q.correct_answer.includes(opt.id) : opt.id === q.correct_answer
-                            );
-                            if (correctOption) {
-                                answerKey[`q${index + 1}`] = correctOption.letter || 'A';
-                            }
-                        } else if (q.type === 'true_false') {
-                            answerKey[`q${index + 1}`] = q.correct_answer ? 'V' : 'F';
-                        }
-                    });
-                    
-                    // Primeiro deletar registros existentes
-                    await supabase
-                        .from('student_exams')
-                        .delete()
-                        .eq('exam_id', examId)
-                        .eq('student_id', student.id);
-                    
-                    // Salvar no banco de dados - student_exams e obter o ID real
-                    const { data: insertedData, error: dbError } = await supabase
-                        .from('student_exams')
-                        .insert({
-                            exam_id: examId,
-                            student_id: student.id,
-                            author_id: exam.author_id,
-                            shuffled_question_ids: studentQuestions.map(q => q.id),
-                            shuffled_options_map: studentQuestions.reduce((acc: any, q) => {
-                                if (q.options) {
-                                    acc[q.id] = q.options.map((opt: any) => opt.id);
-                                }
-                                return acc;
-                            }, {}),
-                            answer_key: answerKey,
-                            bubble_coordinates: bubbleCoordinates,
-                            version_id: null // Para alunos, version_id deve ser null
-                        })
-                        .select('id')
-                        .single();
-                    
-                    if (dbError) {
-                        console.error('Erro ao salvar no banco:', dbError);
-                        throw new Error(`Erro ao salvar dados do aluno: ${dbError.message}`);
-                    }
-                    
-                    // AGORA temos o ID real do student_exams
-                    const realStudentExamId = insertedData.id;
-                    console.log(`✓ Student exam criado com ID: ${realStudentExamId}`);
-                    
-                    // Atualizar studentInfo com o ID real para regeração do QR code
-                    studentInfo.qrId = realStudentExamId;
-                    
-                    // REGERAR HTML com o QR code correto
-                    const correctedHtmlContent = generateExamHTML(exam, studentQuestions, 1, includeAnswers, studentInfo);
-                    
-                    // REGERAR arquivos com o HTML correto
-                    const { htmlBytes: correctedHtmlBytes, pdfBytes: correctedPdfBytes } = await generatePDFFromHTML(correctedHtmlContent, studentInfo.name);
-                    
-                    // REUPLOAD do HTML corrigido
-                    const { error: correctedHtmlUploadError } = await supabase.storage
-                        .from('generated-exams')
-                        .upload(htmlFilePath, correctedHtmlBytes, {
-                            contentType: 'text/html',
-                            upsert: true
-                        });
-                    
-                    if (correctedHtmlUploadError) {
-                        console.error(`Erro ao reupload HTML corrigido para ${student.name}:`, correctedHtmlUploadError);
+                        console.error(`❌ Erro ao fazer upload do HTML para ${student.name}:`, htmlUploadError);
                     } else {
-                        console.log(`✓ HTML corrigido salvo para ${student.name}`);
-                    }
-                    
-                    // REUPLOAD do PDF corrigido (se existir)
-                    let finalPdfUrl = pdfUrl;
-                    if (correctedPdfBytes) {
-                        const pdfFileName = `${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.pdf`;
-                        const pdfFilePath = `${examId}/pdf/${pdfFileName}`;
+                        console.log(`✅ HTML enviado com sucesso para ${student.name}: ${htmlFileName}`);
+                        const htmlUrl = supabase.storage.from('exam-files').getPublicUrl(htmlFileName).data.publicUrl;
                         
-                        const { error: correctedPdfUploadError } = await supabase.storage
-                            .from('generated-exams')
-                            .upload(pdfFilePath, correctedPdfBytes, {
-                                contentType: 'application/pdf',
+                        // Criar gabarito (answer key)
+                        const answerKey: any = {};
+                        studentQuestions.forEach((q, index) => {
+                            if (q.type === 'multiple_choice') {
+                                const correctOption = q.options?.find((opt: any) => 
+                                    Array.isArray(q.correct_answer) ? q.correct_answer.includes(opt.id) : opt.id === q.correct_answer
+                                );
+                                if (correctOption) {
+                                    answerKey[`q${index + 1}`] = correctOption.letter || 'A';
+                                }
+                            } else if (q.type === 'true_false') {
+                                answerKey[`q${index + 1}`] = q.correct_answer ? 'V' : 'F';
+                            }
+                        });
+                        
+                        // Primeiro deletar registros existentes
+                        await supabase
+                            .from('student_exams')
+                            .delete()
+                            .eq('exam_id', examId)
+                            .eq('student_id', student.id);
+                        
+                        // Salvar no banco de dados
+                        const { data: insertedExam, error: dbError } = await supabase
+                            .from('student_exams')
+                            .insert({
+                                exam_id: examId,
+                                student_id: student.id,
+                                author_id: exam.author_id,
+                                shuffled_question_ids: studentQuestions.map(q => q.id),
+                                shuffled_options_map: studentQuestions.reduce((acc: any, q) => {
+                                    if (q.options) {
+                                        acc[q.id] = q.options.map((opt: any) => opt.id);
+                                    }
+                                    return acc;
+                                }, {}),
+                                answer_key: answerKey,
+                                bubble_coordinates: {},
+                                version_id: null
+                            })
+                            .select('id')
+                            .single();
+                        
+                        if (dbError) {
+                            console.error('Erro ao salvar no banco:', dbError);
+                            throw new Error(`Erro ao salvar dados do aluno: ${dbError.message}`);
+                        }
+                        
+                        // Re-generate final HTML with correct QR codes
+                        const finalHtmlContent = generateExamHTML(
+                          exam,
+                          studentQuestions,
+                          parseInt(student.student_id || '1'),
+                          false,
+                          studentInfo
+                        );
+
+                        const finalHtmlFileName = `final_exam_${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().getTime()}.html`;
+                        const finalHtmlBytes = new TextEncoder().encode(finalHtmlContent);
+                        
+                        await supabase.storage
+                            .from('exam-files')
+                            .upload(finalHtmlFileName, finalHtmlBytes, {
+                                contentType: 'text/html',
                                 upsert: true
                             });
-                        
-                        if (correctedPdfUploadError) {
-                            console.warn(`Aviso: Falha ao reupload PDF corrigido para ${student.name}:`, correctedPdfUploadError);
-                        } else {
-                            const { data: correctedPdfUrlData } = supabase.storage
-                                .from('generated-exams')
-                                .getPublicUrl(pdfFilePath);
-                            finalPdfUrl = correctedPdfUrlData.publicUrl;
-                            console.log(`✓ PDF corrigido salvo para ${student.name}`);
-                        }
+                        const finalHtmlUrl = supabase.storage.from('exam-files').getPublicUrl(finalHtmlFileName).data.publicUrl;
+
+                        // Update student_exams with file URLs
+                        await supabase
+                            .from('student_exams')
+                            .update({
+                                html_url: finalHtmlUrl
+                            })
+                            .eq('id', insertedExam.id);
+
+                        results.push({
+                            student: student.name,
+                            success: true,
+                            htmlUrl: finalHtmlUrl,
+                            studentExamId: insertedExam.id
+                        });
                     }
-                    
-                    results.push({
-                        studentId: student.id,
-                        studentName: student.name,
-                        studentExamId: realStudentExamId, // ID real da tabela student_exams
-                        htmlUrl: htmlUrlData.publicUrl,
-                        pdfUrl: finalPdfUrl,
-                        bubbleCoordinates: Object.keys(bubbleCoordinates).length,
-                        success: true,
-                        hasPdf: !!finalPdfUrl
-                    });
-                    
                 } catch (studentError) {
-                    console.error(`Erro ao processar aluno ${student.name}:`, studentError);
+                    console.error(`❌ Erro ao processar estudante ${student.name}:`, studentError);
                     results.push({
-                        studentId: student.id,
-                        studentName: student.name,
-                        error: studentError.message,
-                        success: false
+                        student: student.name,
+                        success: false,
+                        error: studentError instanceof Error ? studentError.message : 'Erro desconhecido',
+                        htmlUrl: null,
+                        studentExamId: null
                     });
                 }
             }
             
-            console.log('=== GERAÇÃO EM LOTE CONCLUÍDA ===');
-            console.log(`Processados: ${results.length} alunos`);
-            console.log(`Sucessos: ${results.filter(r => r.success).length}`);
-            console.log(`Erros: ${results.filter(r => !r.success).length}`);
-            
-            return new Response(JSON.stringify({
-                success: true,
-                message: 'Arquivos gerados e salvos!',
-                results,
-                totalStudents: students.length,
-                successCount: results.filter(r => r.success).length,
-                errorCount: results.filter(r => !r.success).length,
-                htmlCount: results.filter(r => r.success).length,
-                pdfCount: results.filter(r => r.success && r.hasPdf).length
-            }), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            });
+            return new Response(
+                JSON.stringify({
+                    success: true,
+                    message: `HTMLs gerados para ${results.filter(r => r.success).length}/${results.length} estudantes`,
+                    results: results,
+                    totalStudents: students.length,
+                    successfulGenerations: results.filter(r => r.success).length,
+                    failedGenerations: results.filter(r => !r.success).length
+                }),
+                {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                }
+            );
             
         } catch (batchError) {
-            console.error('Erro na geração em lote:', batchError);
-            return new Response(JSON.stringify({ 
-                success: false,
-                error: `Erro na geração em lote: ${batchError.message}` 
-            }), {
-                status: 500,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            });
+            console.error('❌ Erro na geração em lote:', batchError);
+            return new Response(
+                JSON.stringify({
+                    success: false,
+                    error: batchError instanceof Error ? batchError.message : 'Erro desconhecido na geração em lote',
+                    details: 'Verifique os logs do servidor para mais informações'
+                }),
+                {
+                    status: 500,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                }
+            );
         }
     }
     
-    let html: string;
-    let examTitle: string;
-    
-    // ROTA 1: Geração por Turma (a prova já foi preparada)
-    if (studentExamId) {
-        console.log('Iniciando geração por ALUNO:', studentExamId);
-        const { preparedExamData, questions } = await fetchPreparedExamData(supabase, studentExamId);
+    // ROTA 1: Gerar por versão usando examId
+    if (examId && !studentExamId) {
+        console.log('Gerando exame por versão:', { examId, version, includeAnswers });
         
-        const studentInfo = {
-            name: preparedExamData.student?.name || 'N/A',
-            id: preparedExamData.student?.student_id || 'N/A',
-            course: preparedExamData.student?.course || 'N/A',
-            class: preparedExamData.student?.class?.name || 'N/A',
-            qrId: studentExamId // Usar o studentExamId real que foi passado como parâmetro
-        };
-        
-        if (generatePDF) {
-            const { htmlBytes, pdfBytes } = await generatePDFFromHTML(
-                generateExamHTML(preparedExamData.exam, questions, version, includeAnswers, studentInfo),
-                studentInfo.name
-            );
-            
-            // Priorizar PDF se disponível, senão HTML
-            const responseBytes = pdfBytes || htmlBytes;
-            const contentType = pdfBytes ? 'application/pdf' : 'text/html';
-            const fileExtension = pdfBytes ? 'pdf' : 'html';
-            
-            return new Response(responseBytes, {
-                headers: {
-                    ...corsHeaders,
-                    'Content-Type': contentType,
-                    'Content-Disposition': `attachment; filename="${preparedExamData.exam.title}_${studentInfo.name}.${fileExtension}"`
-                }
-            });
-        }
-        
-        html = generateExamHTML(preparedExamData.exam, questions, version, includeAnswers, studentInfo);
-        examTitle = preparedExamData.exam.title;
-
-    // ROTA 2: Geração por Versão (seu código original)
-    } else if (examId) {
-        console.log('Iniciando geração por VERSÃO:', examId, ' v', version);
         const { exam, questions } = await fetchVersionExamData(supabase, examId);
-
+        
+        // Shuffle questions if needed
         const originalOrderMap = new Map(exam.question_ids.map((id: string, index: number) => [id, index]));
-        let processedQuestions = [...questions].sort((a, b) => (originalOrderMap.get(a.id) ?? Infinity) - (originalOrderMap.get(b.id) ?? Infinity));
-
-        if (exam.shuffle_questions) { // Embaralha para todas as versões
-            processedQuestions = shuffleArray(processedQuestions, version);
+        let orderedQuestions = [...questions].sort((a, b) => (originalOrderMap.get(a.id) ?? Infinity) - (originalOrderMap.get(b.id) ?? Infinity));
+        
+        if (exam.shuffle_questions) {
+            orderedQuestions = shuffleArray(orderedQuestions, version);
         }
+        
         if (exam.shuffle_options) {
-            processedQuestions = processedQuestions.map(q => ({
+            orderedQuestions = orderedQuestions.map(q => ({
                 ...q,
                 options: q.options && Array.isArray(q.options)
-                    ? shuffleArray(q.options, (version * 100) + parseInt(q.id.slice(-4), 16))
+                    ? shuffleArray(q.options, version + parseInt(q.id.slice(-4), 16))
                     : q.options
             }));
         }
         
-        if (generatePDF) {
-            const { htmlBytes, pdfBytes } = await generatePDFFromHTML(
-                generateExamHTML(exam, processedQuestions, version, includeAnswers),
-                `Versao_${version}`
-            );
-            
-            // Priorizar PDF se disponível, senão HTML
-            const responseBytes = pdfBytes || htmlBytes;
-            const contentType = pdfBytes ? 'application/pdf' : 'text/html';
-            const fileExtension = pdfBytes ? 'pdf' : 'html';
-            
-            return new Response(responseBytes, {
-                headers: {
-                    ...corsHeaders,
-                    'Content-Type': contentType,
-                    'Content-Disposition': `attachment; filename="${exam.title}_v${version}.${fileExtension}"`
-                }
-            });
-        }
+        // Generate HTML content
+        const htmlContent = generateExamHTML(exam, orderedQuestions, version, includeAnswers);
         
-        html = generateExamHTML(exam, processedQuestions, version, includeAnswers);
-        examTitle = exam.title;
-
-    } else {
-        throw new Error("Parâmetros inválidos. Forneça 'studentExamId', 'examId' ou 'generateAll=true'.");
+        // Always return HTML content
+        const htmlBytes = new TextEncoder().encode(htmlContent);
+        
+        return new Response(htmlBytes, {
+            headers: {
+                ...corsHeaders,
+                'Content-Type': 'text/html',
+                'Content-Disposition': `attachment; filename="exam_version_${version}${includeAnswers ? '_gabarito' : ''}.html"`
+            }
+        });
     }
-
-
-    return new Response(JSON.stringify({ html, examTitle, version }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-
+    
+    // ROTA 2: Gerar prova já preparada usando studentExamId
+    if (studentExamId) {
+        console.log('Gerando prova preparada:', { studentExamId, includeAnswers });
+        
+        const { preparedExamData, questions } = await fetchPreparedExamData(supabase, studentExamId);
+        
+        // Generate HTML content
+        const htmlContent = generateExamHTML(
+            preparedExamData.exam, 
+            questions, 
+            1, 
+            includeAnswers, 
+            preparedExamData.student_info
+        );
+        
+        // Always return HTML content
+        const htmlBytes = new TextEncoder().encode(htmlContent);
+        
+        return new Response(htmlBytes, {
+            headers: {
+                ...corsHeaders,
+                'Content-Type': 'text/html',
+                'Content-Disposition': `attachment; filename="exam_${preparedExamData.student_info?.name || 'student'}${includeAnswers ? '_gabarito' : ''}.html"`
+            }
+        });
+    }
+    
+    return new Response(
+        JSON.stringify({ 
+            success: false, 
+            error: 'Parâmetros insuficientes. Forneça examId ou studentExamId.' 
+        }),
+        {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+    );
+    
   } catch (error) {
-    console.error('Erro detalhado ao gerar prova:', error);
-    return new Response(JSON.stringify({ error: `Erro interno no servidor: ${error.message}` }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error('❌ Erro na função generate-pdf:', error);
+    return new Response(
+        JSON.stringify({ 
+            success: false, 
+            error: error instanceof Error ? error.message : 'Erro interno do servidor',
+            details: 'Verifique os logs do servidor para mais informações'
+        }),
+        {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+    );
   }
 });

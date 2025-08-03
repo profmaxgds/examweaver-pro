@@ -77,7 +77,7 @@ export function PdfGenerationPanel() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Button onClick={generateAllPDFs} disabled={isLoading} className="w-full">
-            {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</> : 'Gerar e Baixar Todas as Provas (.zip)'}
+            {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</> : 'Gerar e Baixar Todos os HTMLs (.zip)'}
           </Button>
           
           <div className="grid gap-4 max-h-96 overflow-y-auto pr-2">
@@ -96,12 +96,12 @@ export function PdfGenerationPanel() {
                          <TooltipContent><p>Pré-visualizar</p></TooltipContent>
                        </Tooltip>
                        <Tooltip>
-                         <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(pExam.id, false)} disabled={isLoading}><Download className="w-4 h-4" /></Button></TooltipTrigger>
-                         <TooltipContent><p>Gerar Prova</p></TooltipContent>
+                         <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(pExam.id, false)} disabled={isLoading} title="Gerar HTML da Prova"><Download className="w-4 h-4" /></Button></TooltipTrigger>
+                         <TooltipContent><p>Gerar HTML da Prova</p></TooltipContent>
                        </Tooltip>
                       <Tooltip>
-                        <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(pExam.id, true)} disabled={isLoading}><FileText className="w-4 h-4" /></Button></TooltipTrigger>
-                        <TooltipContent><p>Gabarito</p></TooltipContent>
+                        <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(pExam.id, true)} disabled={isLoading} title="Gerar HTML do Gabarito"><FileText className="w-4 h-4" /></Button></TooltipTrigger>
+                        <TooltipContent><p>HTML do Gabarito</p></TooltipContent>
                       </Tooltip>
                     </div>
                   </div>
@@ -122,12 +122,12 @@ export function PdfGenerationPanel() {
                          <TooltipContent><p>Pré-visualizar</p></TooltipContent>
                        </Tooltip>
                        <Tooltip>
-                         <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(version, false)} disabled={isLoading}><Download className="w-4 h-4" /></Button></TooltipTrigger>
-                         <TooltipContent><p>Gerar Prova</p></TooltipContent>
+                         <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(version, false)} disabled={isLoading} title="Gerar HTML da Prova"><Download className="w-4 h-4" /></Button></TooltipTrigger>
+                         <TooltipContent><p>Gerar HTML da Prova</p></TooltipContent>
                        </Tooltip>
                       <Tooltip>
-                        <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(version, true)} disabled={isLoading}><FileText className="w-4 h-4" /></Button></TooltipTrigger>
-                        <TooltipContent><p>Gabarito</p></TooltipContent>
+                        <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(version, true)} disabled={isLoading} title="Gerar HTML do Gabarito"><FileText className="w-4 h-4" /></Button></TooltipTrigger>
+                        <TooltipContent><p>HTML do Gabarito</p></TooltipContent>
                       </Tooltip>
                     </div>
                   </div>
