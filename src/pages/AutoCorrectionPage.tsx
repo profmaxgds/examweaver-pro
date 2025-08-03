@@ -818,11 +818,13 @@ export default function AutoCorrectionPage() {
       console.log('Questões abertas:', openQuestions.length);
       console.log('EssayQuestions state:', essayQuestions);
 
-      // Chamar edge function para detectar marcações APENAS das questões fechadas
+      // Chamar edge function avançada para detectar marcações usando coordenadas precisas
+      console.log('🚀 Iniciando correção com pipeline avançado (autoGrader)...');
+      
       const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('ocr-correction', {
         body: {
           fileName: fileName,
-          mode: 'detect_marks', // Apenas detectar marcações
+          mode: 'advanced_detection', // Usar detecção avançada com coordenadas
           examInfo: {
             ...examInfo,
             // Filtrar answerKey para incluir apenas questões fechadas
@@ -830,7 +832,10 @@ export default function AutoCorrectionPage() {
               Object.entries(examInfo.answerKey).filter(([qId]) => 
                 closedQuestions.some(q => q.id === qId)
               )
-            )
+            ),
+            // Dados adicionais para melhor detecção
+            questionCount: closedQuestions.length,
+            questionTypes: closedQuestions.map(q => ({ id: q.id, type: q.type }))
           }
         }
       });
@@ -938,17 +943,41 @@ export default function AutoCorrectionPage() {
         setCurrentEssayIndex(0);
         setStep('essay-correction'); // Ir para correção das questões abertas
         
+        const method = ocrResult.method || 'unknown';
+        const confidence = ocrResult.confidence || 0;
+        
+        let methodDescription = '';
+        if (method === 'coordinate_based_autoGrader') {
+          methodDescription = `Coordenadas precisas (${Math.round(confidence * 100)}% confiança)`;
+        } else if (method === 'edge_function_analysis') {
+          methodDescription = `Análise de imagem (${Math.round(confidence * 100)}% confiança)`;
+        } else {
+          methodDescription = `Simulação (${Math.round(confidence * 100)}% confiança)`;
+        }
+        
         toast({
           title: "✅ Questões fechadas corrigidas!",
-          description: `${score}/${totalPoints} pontos. Agora corrija as ${openQuestions.length} questões abertas.`,
+          description: `${score}/${totalPoints} pontos - ${methodDescription}. Agora corrija as ${openQuestions.length} questões abertas.`,
         });
       } else {
         // Se não há questões abertas, finalizar processo
         setStep('corrected');
         
+        const method = ocrResult.method || 'unknown';
+        const confidence = ocrResult.confidence || 0;
+        
+        let methodDescription = '';
+        if (method === 'coordinate_based_autoGrader') {
+          methodDescription = ` - Coordenadas precisas (${Math.round(confidence * 100)}%)`;
+        } else if (method === 'edge_function_analysis') {
+          methodDescription = ` - Análise de imagem (${Math.round(confidence * 100)}%)`;
+        } else {
+          methodDescription = ` - Simulação (${Math.round(confidence * 100)}%)`;
+        }
+        
         toast({
           title: "✅ Correção concluída!",
-          description: `Nota: ${score}/${totalPoints} (${closedQuestionsResult.percentage}%)`,
+          description: `Nota: ${score}/${totalPoints} (${closedQuestionsResult.percentage}%)${methodDescription}`,
         });
       }
 
@@ -1400,7 +1429,12 @@ export default function AutoCorrectionPage() {
                   </>
                 )}
                 {step === 'scan-marks' && (
-                  <p>⚡ Processando marcações e comparando com gabarito...</p>
+                  <div className="space-y-2">
+                    <p>🚀 <strong>Pipeline Avançado Ativado:</strong></p>
+                    <p>📊 Buscando coordenadas precisas das bolhas...</p>
+                    <p>🎯 Analisando marcações usando método autoGrader...</p>
+                    <p>⚡ Comparando com gabarito...</p>
+                  </div>
                 )}
               </div>
 
