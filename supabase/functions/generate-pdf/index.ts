@@ -95,7 +95,7 @@ async function fetchBatchExamData(supabase: SupabaseClient, examId: string) {
                 .single();
             
             if (!headerError && headerData) {
-                exam.header = headerData;
+                exam.exam_headers = headerData; // Usar exam_headers como esperado no layout
                 console.log('Cabeçalho encontrado:', headerData.name);
             }
         }
@@ -161,83 +161,23 @@ function getBubbleCoordinatesFromDB(studentExamData: any) {
     return studentExamData.bubble_coordinates || {};
 }
 
-// Função para gerar PDF usando API confiável 
+// Função para gerar apenas HTML (sem APIs externas problemáticas)
 async function generatePDFFromHTML(htmlContent: string, studentName: string): Promise<{ htmlBytes: Uint8Array, pdfBytes?: Uint8Array }> {
-    console.log(`Processando arquivos para ${studentName}...`);
+    console.log(`Processando HTML para ${studentName}...`);
     
     try {
-        // SEMPRE salvar HTML (garantido que funciona)
+        // SEMPRE retornar HTML (garantido que funciona)
         const encoder = new TextEncoder();
         const htmlBytes = encoder.encode(htmlContent);
         
-        // TENTAR gerar PDF usando múltiplas APIs como fallback
-        let pdfBytes: Uint8Array | undefined;
+        console.log(`✓ HTML gerado com sucesso para ${studentName}`);
         
-        // Lista de APIs para tentar (em ordem de preferência)
-        const pdfApis = [
-            {
-                name: 'PDFShift',
-                url: 'https://api.pdfshift.io/v3/convert/pdf',
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Basic ' + btoa('api:demo') // Demo key
-                },
-                body: {
-                    source: htmlContent,
-                    format: 'A4',
-                    margin: '1cm',
-                    print_background: true
-                }
-            },
-            {
-                name: 'HTML/CSS to PDF',
-                url: 'https://htmlcsstoimage.com/demo_run',
-                method: 'POST', 
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: {
-                    html: htmlContent,
-                    css: '',
-                    device_scale: 1,
-                    format: 'pdf'
-                }
-            }
-        ];
+        // Por enquanto, não tentar gerar PDF com APIs externas
+        // pois estão causando problemas e retornando JSON em vez de PDF
         
-        for (const api of pdfApis) {
-            try {
-                console.log(`Tentando ${api.name} para ${studentName}...`);
-                
-                const response = await fetch(api.url, {
-                    method: api.method,
-                    headers: api.headers,
-                    body: JSON.stringify(api.body),
-                    timeout: 30000 // 30 segundos timeout
-                });
-                
-                if (response.ok) {
-                    const arrayBuffer = await response.arrayBuffer();
-                    pdfBytes = new Uint8Array(arrayBuffer);
-                    console.log(`✓ PDF gerado com ${api.name} para ${studentName}`);
-                    break; // Parar no primeiro sucesso
-                } else {
-                    console.warn(`${api.name} falhou para ${studentName}: ${response.status} ${response.statusText}`);
-                }
-            } catch (apiError) {
-                console.warn(`Erro em ${api.name} para ${studentName}:`, apiError);
-                continue; // Tentar próxima API
-            }
-        }
-        
-        if (!pdfBytes) {
-            console.warn(`Todas as APIs falharam para ${studentName}, mantendo apenas HTML`);
-        }
-        
-        return { htmlBytes, pdfBytes };
+        return { htmlBytes, pdfBytes: undefined };
     } catch (error) {
-        console.error(`Erro crítico ao processar arquivos para ${studentName}:`, error);
+        console.error(`Erro crítico ao processar HTML para ${studentName}:`, error);
         throw error;
     }
 }
