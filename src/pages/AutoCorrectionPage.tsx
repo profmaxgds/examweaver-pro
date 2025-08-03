@@ -624,45 +624,50 @@ export default function AutoCorrectionPage() {
 
       console.log('Dados extraídos do QR:', qrData);
 
-      // Buscar dados da prova com header
-      const { data: examData, error: examError } = await supabase
-        .from('exams')
-        .select(`
-          *,
-          exam_headers!left(*)
-        `)
-        .eq('id', qrData.examId)
-        .eq('author_id', user!.id)
-        .single();
-
-      if (examError || !examData) {
-        throw new Error('Prova não encontrada no sistema');
-      }
-
       let studentExam;
       let studentData;
+      let examData;
 
-      // Verificar se temos studentExamId no QR code (prova individual)
+      // Buscar dados da prova/student_exam diretamente via studentExamId do QR
       if (qrData.studentExamId) {
-        // Buscar direto pelo student_exam ID
-        const { data: examInstance, error: examInstanceError } = await supabase
+        // Buscar o student_exam específico com coordenadas e dados do estudante
+        const { data: studentExamData, error: studentExamError } = await supabase
           .from('student_exams')
           .select(`
             *,
-            students!inner(*)
+            students!inner(*),
+            exams!inner(*, exam_headers(*))
           `)
           .eq('id', qrData.studentExamId)
           .eq('author_id', user!.id)
           .single();
 
-        if (examInstanceError || !examInstance) {
-          throw new Error('Gabarito específico do aluno não encontrado');
+        if (studentExamError || !studentExamData) {
+          throw new Error('Prova específica não encontrada no sistema');
         }
 
-        studentExam = examInstance;
-        studentData = examInstance.students;
+        studentExam = studentExamData;
+        studentData = studentExamData.students;
+        examData = studentExamData.exams;
       } else {
-        // Para provas por versão, buscar gabarito da versão
+        // Fallback para compatibilidade com QRs antigos - buscar separadamente
+        const { data: examDataFallback, error: examError } = await supabase
+          .from('exams')
+          .select(`
+            *,
+            exam_headers!left(*)
+          `)
+          .eq('id', qrData.examId)
+          .eq('author_id', user!.id)
+          .single();
+
+        if (examError || !examDataFallback) {
+          throw new Error('Prova não encontrada no sistema');
+        }
+
+        examData = examDataFallback;
+        
+        // Buscar student_exam por versão
         const versionStudentId = typeof qrData.studentId === 'string' && qrData.studentId.startsWith('version-') 
           ? qrData.studentId 
           : `version-${qrData.version}`;
@@ -707,11 +712,11 @@ export default function AutoCorrectionPage() {
         answerKey: studentExam.answer_key as Record<string, string>,
         version: qrData.version || 1,
         bubbleCoordinates: studentExam.bubble_coordinates,
-        examHeader: examData.exam_headers || null,
+        examHeader: examData.exam_headers?.[0] || examData.exam_headers || null,
         examLayout: examData.layout || 'single_column',
         bubbleCoordinatesSearch: {
           examId: qrData.examId,
-          studentId: typeof studentExam.student_id === 'string' ? studentExam.student_id : studentExam.student_id
+          studentId: studentExam.student_id || qrData.studentId
         }
       };
 
