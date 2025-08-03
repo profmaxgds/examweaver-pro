@@ -565,31 +565,38 @@ export default function EditExamPage() {
           throw new Error(response.error.message);
         }
 
-        // Verificar se a resposta contém HTML para conversão
+        // Verificar se a resposta contém HTML
         if (response.data && typeof response.data === 'string') {
-          // Recebemos HTML, vamos converter para PDF usando o navegador
-          const printWindow = window.open('', '_blank');
-          if (printWindow) {
-            printWindow.document.write(response.data);
-            printWindow.document.close();
-            
-            // Aguardar um pouco para o conteúdo carregar e então abrir o diálogo de impressão
-            setTimeout(() => {
-              printWindow.print();
-            }, 1000);
-          }
+          // Criar e baixar arquivo HTML
+          const htmlBlob = new Blob([response.data], { type: 'text/html' });
+          const url = URL.createObjectURL(htmlBlob);
+          const link = document.createElement('a');
           
           const fileName = typeof id === 'string'
-            ? `${examData.title}_${id}_${includeAnswers ? 'gabarito' : 'prova'}`
-            : `${examData.title}_v${id}_${includeAnswers ? 'gabarito' : 'prova'}`;
+            ? `${examData.title}_${id}_${includeAnswers ? 'gabarito' : 'prova'}.html`
+            : `${examData.title}_v${id}_${includeAnswers ? 'gabarito' : 'prova'}.html`;
             
-          toast({ title: "Sucesso!", description: `Arquivo pronto para salvar como PDF: ${fileName}` });
+          link.href = url;
+          link.download = fileName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          
+          toast({ 
+            title: "Sucesso!", 
+            description: `${includeAnswers ? 'Gabarito' : 'Prova'} baixado como HTML: ${fileName}` 
+          });
         } else {
           throw new Error('Resposta inválida do servidor');
         }
     } catch (error: any) {
-        console.error('Erro ao gerar PDF:', error);
-        toast({ title: "Erro", description: `Não foi possível gerar o PDF: ${error.message}`, variant: "destructive" });
+        console.error('Erro ao gerar arquivo:', error);
+        toast({ 
+          title: "Erro", 
+          description: `Não foi possível gerar o arquivo: ${error.message}`, 
+          variant: "destructive" 
+        });
     } finally {
         setLoading(false);
     }
@@ -716,7 +723,7 @@ export default function EditExamPage() {
             
             toast({ 
                 title: "Sucesso!", 
-                description: `ZIP criado com ${filesInZip} PDFs. Download iniciado!` 
+                description: `ZIP criado com ${filesInZip} arquivos HTML. Download iniciado!` 
             });
             
             // Mostrar relatório de erros se houver
