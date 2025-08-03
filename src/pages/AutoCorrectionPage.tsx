@@ -7,7 +7,20 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { Camera, Upload, QrCode, Loader2, Target, Play, Pause, CheckCircle, Save, ArrowLeft, AlertTriangle, Info } from 'lucide-react';
+import { 
+  Camera, 
+  Upload, 
+  QrCode, 
+  Loader2, 
+  Target, 
+  Play, 
+  Pause, 
+  CheckCircle, 
+  Save, 
+  ArrowLeft, 
+  AlertTriangle, 
+  Info 
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import jsQR from 'jsqr';
 
