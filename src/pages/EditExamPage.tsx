@@ -122,13 +122,16 @@ function EditExamPageContent() {
                     <Eye className="w-4 h-4 mr-2" />
                     Visualizar Padrão
                   </Button>
-                  <Button onClick={handleSave} disabled={loading || isPreparing}>
-                    {loading ? 'Salvando...' : 'Salvar Alterações'}
-                  </Button>
-                  {/* NOVO BOTÃO DE PREPARAR PROVAS */}
+                  {/* BOTÃO DE PREPARAR PROVAS (integra automaticamente o salvar) */}
                   {examData?.generation_mode === 'class' && (
                     <Button onClick={handlePrepareExams} disabled={loading || isPreparing}>
                         {isPreparing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Preparando...</> : 'Preparar Provas para Turma'}
+                    </Button>
+                  )}
+                  {/* Botão salvar manual apenas para modo versões */}
+                  {examData?.generation_mode !== 'class' && (
+                    <Button onClick={handleSave} disabled={loading || isPreparing}>
+                      {loading ? 'Salvando...' : 'Salvar Alterações'}
                     </Button>
                   )}
                 </>
@@ -276,15 +279,57 @@ export default function EditExamPage() {
         toast({ title: "Atenção", description: "Selecione o modo 'Turma' e uma turma para preparar as provas.", variant: "destructive" });
         return;
     }
+    
     setIsPreparing(true);
     try {
-        const { data: students, error: studentsError } = await supabase.from('students').select('id').eq('class_id', examData.target_class_id);
+        // PASSO 1: SALVAR ALTERAÇÕES AUTOMATICAMENTE
+        toast({ title: "Salvando alterações...", description: "Atualizando configurações da prova" });
+        
+        const updateData = {
+            title: examData.title,
+            subject: examData.subject,
+            institutions: examData.institution,
+            exam_date: examData.examDate ? new Date(examData.examDate).toISOString() : null,
+            question_ids: examData.selectedQuestions.map(q => q.id),
+            total_points: examData.selectedQuestions.reduce((sum, q) => sum + q.points, 0),
+            layout: examData.layout,
+            shuffle_questions: examData.shuffleQuestions,
+            shuffle_options: examData.shuffleOptions,
+            versions: examData.versions,
+            header_id: examData.header_id,
+            qr_enabled: examData.qr_enabled,
+            time_limit: examData.time_limit || null,
+            generation_mode: examData.generation_mode,
+            target_class_id: examData.generation_mode === 'class' ? examData.target_class_id : null,
+            professor_name: examData.professor_name || null,
+        };
+
+        const { error: saveError } = await supabase
+            .from('exams')
+            .update(updateData)
+            .eq('id', examData.id);
+
+        if (saveError) {
+            throw new Error(`Erro ao salvar alterações: ${saveError.message}`);
+        }
+
+        // PASSO 2: BUSCAR ALUNOS DA TURMA
+        toast({ title: "Buscando alunos...", description: "Carregando lista da turma" });
+        
+        const { data: students, error: studentsError } = await supabase
+            .from('students')
+            .select('id')
+            .eq('class_id', examData.target_class_id);
+            
         if (studentsError) throw studentsError;
         if (!students || students.length === 0) {
             toast({ title: "Nenhum Aluno", description: "Não há alunos nesta turma para preparar provas.", variant: "destructive" });
             setIsPreparing(false);
             return;
         }
+
+        // PASSO 3: PREPARAR PROVAS INDIVIDUAIS
+        toast({ title: "Preparando provas...", description: `Processando ${students.length} alunos` });
 
         const instancesToUpsert = [];
         for (const student of students) {
@@ -317,9 +362,18 @@ export default function EditExamPage() {
         const { error } = await supabase.from('student_exams').upsert(instancesToUpsert, { onConflict: 'exam_id, student_id' });
         if (error) throw error;
 
-        toast({ title: "Sucesso!", description: `${students.length} provas foram preparadas ou atualizadas para a turma.` });
+        toast({ 
+            title: "Sucesso!", 
+            description: `Alterações salvas e ${students.length} provas preparadas para a turma!` 
+        });
+        
     } catch (error: any) {
-        toast({ title: "Erro ao Preparar", description: error.message, variant: "destructive" });
+        console.error('Erro ao preparar provas:', error);
+        toast({ 
+            title: "Erro ao Preparar", 
+            description: error.message, 
+            variant: "destructive" 
+        });
     } finally {
         setIsPreparing(false);
     }
