@@ -399,6 +399,7 @@ export default function EditExamPage() {
 
             // CALCULAR COORDENADAS DAS BOLHAS (PAPEL A4 PADRÃO)
             const bubbleCoordinates = calculateBubbleCoordinatesA4(shuffledQuestions);
+            console.log('🔧 Coordenadas calculadas:', Object.keys(bubbleCoordinates).length, 'questões');
 
             instancesToUpsert.push({
                 exam_id: examData.id,
