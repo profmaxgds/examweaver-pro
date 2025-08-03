@@ -2,6 +2,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts";
 
 // Módulos que você já usa (assumindo que estão na mesma pasta)
 import { fetchExamData as fetchVersionExamData } from './data-fetcher.ts';
@@ -150,7 +151,7 @@ function getBubbleCoordinatesFromDB(studentExamData: any) {
     return studentExamData.bubble_coordinates || {};
 }
 
-// Função para gerar PDF usando HTML simples (mais confiável) 
+// Função para gerar PDF usando API confiável 
 async function generatePDFFromHTML(htmlContent: string, studentName: string): Promise<{ htmlBytes: Uint8Array, pdfBytes?: Uint8Array }> {
     console.log(`Processando arquivos para ${studentName}...`);
     
@@ -159,17 +160,69 @@ async function generatePDFFromHTML(htmlContent: string, studentName: string): Pr
         const encoder = new TextEncoder();
         const htmlBytes = encoder.encode(htmlContent);
         
-        // TENTAR gerar PDF (pode falhar, mas não vai quebrar o processo)
+        // TENTAR gerar PDF usando múltiplas APIs como fallback
         let pdfBytes: Uint8Array | undefined;
-        try {
-            // Por enquanto, simular PDF (em produção usaria wkhtmltopdf)
-            console.log(`Tentando gerar PDF para ${studentName}...`);
-            // Para simular, vamos usar o mesmo HTML por enquanto
-            pdfBytes = htmlBytes; // Substituir por geração real de PDF quando implementada
-            console.log(`PDF simulado gerado para ${studentName}`);
-        } catch (pdfError) {
-            console.warn(`Falha ao gerar PDF para ${studentName}, mantendo apenas HTML:`, pdfError);
-            // Não falha o processo, apenas não teremos PDF
+        
+        // Lista de APIs para tentar (em ordem de preferência)
+        const pdfApis = [
+            {
+                name: 'PDFShift',
+                url: 'https://api.pdfshift.io/v3/convert/pdf',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Basic ' + btoa('api:demo') // Demo key
+                },
+                body: {
+                    source: htmlContent,
+                    format: 'A4',
+                    margin: '1cm',
+                    print_background: true
+                }
+            },
+            {
+                name: 'HTML/CSS to PDF',
+                url: 'https://htmlcsstoimage.com/demo_run',
+                method: 'POST', 
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: {
+                    html: htmlContent,
+                    css: '',
+                    device_scale: 1,
+                    format: 'pdf'
+                }
+            }
+        ];
+        
+        for (const api of pdfApis) {
+            try {
+                console.log(`Tentando ${api.name} para ${studentName}...`);
+                
+                const response = await fetch(api.url, {
+                    method: api.method,
+                    headers: api.headers,
+                    body: JSON.stringify(api.body),
+                    timeout: 30000 // 30 segundos timeout
+                });
+                
+                if (response.ok) {
+                    const arrayBuffer = await response.arrayBuffer();
+                    pdfBytes = new Uint8Array(arrayBuffer);
+                    console.log(`✓ PDF gerado com ${api.name} para ${studentName}`);
+                    break; // Parar no primeiro sucesso
+                } else {
+                    console.warn(`${api.name} falhou para ${studentName}: ${response.status} ${response.statusText}`);
+                }
+            } catch (apiError) {
+                console.warn(`Erro em ${api.name} para ${studentName}:`, apiError);
+                continue; // Tentar próxima API
+            }
+        }
+        
+        if (!pdfBytes) {
+            console.warn(`Todas as APIs falharam para ${studentName}, mantendo apenas HTML`);
         }
         
         return { htmlBytes, pdfBytes };
