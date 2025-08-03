@@ -820,13 +820,15 @@ export default function AutoCorrectionPage() {
       console.log('Questões abertas:', openQuestions.length);
       console.log('EssayQuestions state:', essayQuestions);
 
-      // Chamar edge function com método baseado em coordenadas (como autoGrader)
-      console.log('🎯 Iniciando correção por coordenadas (método autoGrader)...');
+      // Chamar edge function com método baseado em coordenadas (autoGrader integrado)
+      console.log('🎯 Iniciando correção automática por coordenadas após QR detection...');
+      console.log('📊 Gabarito disponível:', examInfo.answerKey);
+      console.log('📊 Questões fechadas detectadas:', closedQuestions.length);
       
       const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('ocr-correction', {
         body: {
           fileName: fileName,
-          mode: 'coordinate_based', // Modo baseado em coordenadas sem conflito de QR
+          mode: 'coordinate_based', // Modo baseado em coordenadas autoGrader
           examInfo: {
             examId: examInfo.examId,
             studentId: examInfo.studentId,
@@ -840,7 +842,12 @@ export default function AutoCorrectionPage() {
             ),
             version: examInfo.version || 1,
             questionCount: closedQuestions.length,
-            questionTypes: closedQuestions.map(q => q.type)
+            questionTypes: closedQuestions.map(q => q.type),
+            // Dados adicionais para busca de coordenadas
+            bubbleCoordinatesSearch: {
+              examId: examInfo.examId,
+              studentId: examInfo.studentId
+            }
           }
         }
       });

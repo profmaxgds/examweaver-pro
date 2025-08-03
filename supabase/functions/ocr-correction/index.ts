@@ -52,23 +52,25 @@ async function processCoordinateBasedCorrection(supabase: any, { fileName, mode,
     throw new Error(`Erro ao baixar arquivo: ${downloadError.message}`);
   }
 
-  console.log('📄 Arquivo carregado, buscando coordenadas do banco...');
+  console.log('📄 Arquivo carregado, buscando coordenadas das bolhas...');
   
-  // Buscar coordenadas das bolhas no banco (essencial para o método autoGrader)
+  // Buscar coordenadas das bolhas no banco (ESSENCIAL para método autoGrader)
   let bubbleCoordinates = null;
   if (examInfo.examId && examInfo.studentId) {
+    console.log(`🔍 Buscando coordenadas para exam: ${examInfo.examId}, student: ${examInfo.studentId}`);
+    
     const { data: studentExams } = await supabase
       .from('student_exams')
       .select('bubble_coordinates')
       .eq('exam_id', examInfo.examId)
       .eq('student_id', examInfo.studentId)
-      .single();
+      .maybeSingle();
     
-    if (studentExams?.bubble_coordinates) {
+    if (studentExams?.bubble_coordinates && Object.keys(studentExams.bubble_coordinates).length > 0) {
       bubbleCoordinates = studentExams.bubble_coordinates;
-      console.log('✅ Coordenadas das bolhas encontradas no banco');
+      console.log('✅ Coordenadas das bolhas encontradas no banco:', Object.keys(bubbleCoordinates).length, 'regiões');
     } else {
-      console.warn('⚠️ Coordenadas não encontradas no banco');
+      console.warn('⚠️ Coordenadas não encontradas no banco - usando simulação baseada no gabarito');
     }
   }
 
@@ -121,15 +123,16 @@ async function analyzeImageWithCoordinates(imageBytes: Uint8Array, examInfo: any
   
   const detectedAnswers: Record<string, string> = {};
   
-  if (!examInfo.answerKey) {
-    console.warn('⚠️ Sem gabarito disponível');
+  if (!examInfo.answerKey || Object.keys(examInfo.answerKey).length === 0) {
+    console.warn('⚠️ Nenhum gabarito disponível para correção');
     return detectedAnswers;
   }
 
   const questionCount = Object.keys(examInfo.answerKey).length;
   const options = ['A', 'B', 'C', 'D', 'E'];
   
-  console.log(`🔍 Analisando ${questionCount} questões com coordenadas precisas...`);
+  console.log(`🔍 Analisando ${questionCount} questões usando método autoGrader...`);
+  console.log(`📊 Gabarito disponível para correção:`, examInfo.answerKey);
   
   for (let questionNum = 1; questionNum <= questionCount; questionNum++) {
     // Simular análise de cada opção para esta questão
