@@ -327,8 +327,10 @@ export default function EditExamPage() {
     }
     
     setIsPreparing(true);
+    
     try {
         // PASSO 1: SALVAR ALTERAÇÕES AUTOMATICAMENTE
+        console.log('💾 Salvando alterações da prova...');
         toast({ title: "Salvando alterações...", description: "Atualizando configurações da prova" });
         
         const updateData = {
@@ -359,47 +361,39 @@ export default function EditExamPage() {
             throw new Error(`Erro ao salvar alterações: ${saveError.message}`);
         }
 
-        // PASSO 2: PROCESSAR CONFORME O MODO
+        // PASSO 2: LIMPAR REGISTROS EXISTENTES
+        console.log('🧹 Limpando registros existentes...');
+        const { error: deleteError } = await supabase
+            .from('student_exams')
+            .delete()
+            .eq('exam_id', examData.id);
+            
+        if (deleteError) {
+            console.warn('Aviso ao limpar registros existentes:', deleteError);
+        }
+
+        // PASSO 3: PROCESSAR CONFORME O MODO SELECIONADO
         console.log('🔍 Generation mode:', examData.generation_mode);
-        console.log('🔍 Target class ID:', examData.target_class_id);
-        console.log('🔍 Versions:', examData.versions);
         
         if (examData.generation_mode === 'class') {
-            // MODO TURMA - BUSCAR ALUNOS DA TURMA
+            // MODO TURMA - BUSCAR ALUNOS E PREPARAR PROVAS INDIVIDUAIS
             console.log('📚 Executando modo TURMA');
-            toast({ title: "Buscando alunos...", description: "Carregando lista da turma" });
-            
-            const { data: students, error: studentsError } = await supabase
-                .from('students')
-                .select('id')
-                .eq('class_id', examData.target_class_id);
-                
-            if (studentsError) throw studentsError;
-            if (!students || students.length === 0) {
-                toast({ title: "Nenhum Aluno", description: "Não há alunos nesta turma para preparar provas.", variant: "destructive" });
-                setIsPreparing(false);
-                return;
-            }
-
-            // PREPARAR PROVAS PARA ALUNOS
-            await prepareStudentExams(students);
-            
+            await prepareClassExams();
         } else {
             // MODO VERSÕES - PREPARAR GABARITOS DAS VERSÕES
             console.log('📄 Executando modo VERSÕES');
-            toast({ title: "Preparando versões...", description: `Processando ${examData.versions} versões` });
-            await prepareVersionExams();
+            await prepareVersionsOnly();
         }
 
         toast({ 
             title: "Sucesso!", 
             description: examData.generation_mode === 'class' 
-                ? "Alterações salvas e provas preparadas para a turma!" 
-                : `Alterações salvas e ${examData.versions} versões preparadas!`
+                ? "Provas preparadas para a turma!" 
+                : `${examData.versions} versões preparadas!`
         });
         
     } catch (error: any) {
-        console.error('Erro ao preparar provas:', error);
+        console.error('❌ Erro ao preparar provas:', error);
         toast({ 
             title: "Erro ao Preparar", 
             description: error.message, 
@@ -410,14 +404,25 @@ export default function EditExamPage() {
     }
   };
 
-  // Função para preparar provas dos alunos
-  const prepareStudentExams = async (students: any[]) => {
+  // Função para preparar provas para turma
+  const prepareClassExams = async () => {
     if (!examData || !user) return;
+    
+    toast({ title: "Buscando alunos...", description: "Carregando lista da turma" });
+    
+    const { data: students, error: studentsError } = await supabase
+        .from('students')
+        .select('id')
+        .eq('class_id', examData.target_class_id);
+        
+    if (studentsError) throw studentsError;
+    if (!students || students.length === 0) {
+        throw new Error("Não há alunos nesta turma para preparar provas.");
+    }
 
-    // PREPARAR PROVAS INDIVIDUAIS
     toast({ title: "Preparando provas...", description: `Processando ${students.length} alunos` });
 
-    const instancesToUpsert = [];
+    const instancesToInsert = [];
     for (const student of students) {
         const studentSeed = `${examData.id}-${student.id}`;
         const shuffledQuestions = examData.shuffleQuestions ? seededShuffle(examData.selectedQuestions, studentSeed) : examData.selectedQuestions;
@@ -427,10 +432,8 @@ export default function EditExamPage() {
         const answer_key: { [key: string]: any } = {};
 
         shuffledQuestions.forEach(q => {
-            // Adicionar TODAS as questões no answer_key (múltipla escolha, verdadeiro/falso, abertas)
             answer_key[q.id] = q.correct_answer;
             
-            // Apenas questões múltipla escolha precisam de embaralhamento de opções
             if (q.type === 'multiple_choice' && q.options) {
                 const questionSeed = `${studentSeed}-${q.id}`;
                 const shuffledOpts = examData.shuffleOptions ? seededShuffle(q.options, questionSeed) : q.options;
@@ -438,65 +441,38 @@ export default function EditExamPage() {
             }
         });
 
-        // CALCULAR COORDENADAS DAS BOLHAS (PAPEL A4 PADRÃO)
         const bubbleCoordinates = calculateBubbleCoordinatesA4(shuffledQuestions);
-        console.log('🔧 Coordenadas calculadas:', Object.keys(bubbleCoordinates).length, 'questões');
-        console.log('🔧 Exemplo de coordenadas:', bubbleCoordinates['1'] || 'Nenhuma coordenada para questão 1');
 
-        instancesToUpsert.push({
+        instancesToInsert.push({
             exam_id: examData.id,
             student_id: student.id,
+            version_id: null,
             author_id: user.id,
             shuffled_question_ids,
             shuffled_options_map,
             answer_key,
-            bubble_coordinates: bubbleCoordinates // SALVAR COORDENADAS
+            bubble_coordinates: bubbleCoordinates
         });
     }
 
-    // Primeiro, limpar registros existentes para evitar conflitos
-    const { error: deleteError } = await supabase
-        .from('student_exams')
-        .delete()
-        .eq('exam_id', examData.id);
-        
-    if (deleteError) {
-        console.warn('Aviso ao limpar registros existentes:', deleteError);
-    }
-
-    // Agora inserir os novos registros
-    console.log('📝 Inserindo', instancesToUpsert.length, 'registros no banco');
-    console.log('📝 Primeiro registro (exemplo):', JSON.stringify(instancesToUpsert[0], null, 2));
-    
     const { error: insertError } = await supabase
         .from('student_exams')
-        .insert(instancesToUpsert);
+        .insert(instancesToInsert);
         
     if (insertError) {
-        console.error('❌ Erro na inserção:', insertError);
+        console.error('❌ Erro na inserção das provas de alunos:', insertError);
         throw insertError;
     }
     
-    console.log('✅ Inserção concluída com sucesso!');
+    console.log(`✅ ${students.length} provas de alunos criadas com sucesso!`);
   };
 
-  // Função para preparar versões do exame
-  const prepareVersionExams = async () => {
+  // Função para preparar apenas versões  
+  const prepareVersionsOnly = async () => {
     if (!examData || !user) return;
     
-    // Primeiro, limpar registros de versões existentes
-    const { error: deleteError } = await supabase
-      .from('student_exams')
-      .delete()
-      .eq('exam_id', examData.id)
-      .is('student_id', null) // Versões têm student_id = null
-      .not('version_id', 'is', null); // E têm version_id preenchido
-      
-    if (deleteError) {
-      console.warn('Aviso ao limpar versões existentes:', deleteError);
-    }
-    
-    // Criar novos registros para cada versão
+    toast({ title: "Preparando versões...", description: `Processando ${examData.versions} versões` });
+
     const versionInstances = [];
     for (let version = 1; version <= examData.versions; version++) {
       const versionSeed = `${examData.id}-version-${version}`;
@@ -507,10 +483,8 @@ export default function EditExamPage() {
       const answer_key: { [key: string]: any } = {};
 
       shuffledQuestions.forEach(q => {
-        // Adicionar TODAS as questões no answer_key (múltipla escolha, verdadeiro/falso, abertas)
         answer_key[q.id] = q.correct_answer;
         
-        // Apenas questões múltipla escolha precisam de embaralhamento de opções
         if (q.type === 'multiple_choice' && q.options) {
           const questionSeed = `${versionSeed}-${q.id}`;
           const shuffledOpts = examData.shuffleOptions ? seededShuffle(q.options, questionSeed) : q.options;
@@ -520,8 +494,8 @@ export default function EditExamPage() {
 
       versionInstances.push({
         exam_id: examData.id,
-        student_id: null, // Versões não têm student_id específico
-        version_id: `version-${version}`, // Usar a coluna version_id para identificar versões
+        student_id: null,
+        version_id: `version-${version}`,
         author_id: user.id,
         shuffled_question_ids,
         shuffled_options_map,
@@ -529,7 +503,6 @@ export default function EditExamPage() {
       });
     }
     
-    // Inserir todas as versões de uma vez
     const { error: insertError } = await supabase
       .from('student_exams')
       .insert(versionInstances);
