@@ -29,6 +29,7 @@ interface ExamInfo {
   answerKey: Record<string, string>;
   version?: number;
   bubbleCoordinates?: any; // Coordenadas das bolhas para overlay visual
+  bubbleCoordinatesSearch?: { examId: string; studentId: string }; // Para buscar coordenadas no edge function
 }
 
 interface CorrectionResult {
@@ -58,7 +59,7 @@ export default function AutoCorrectionPage() {
   const { toast } = useToast();
   
   // Estados principais
-  const [step, setStep] = useState<'upload' | 'qr-scan' | 'photo-capture' | 'qr-detected' | 'scan-marks' | 'corrected' | 'need-answer-sheet' | 'essay-correction'>('upload');
+  const [step, setStep] = useState<'upload' | 'qr-scan' | 'photo-capture' | 'qr-detected' | 'scan-marks' | 'corrected' | 'need-answer-sheet' | 'essay-correction' | 'capture-answers'>('upload');
   const [processedImage, setProcessedImage] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -690,18 +691,53 @@ export default function AutoCorrectionPage() {
         examTitle: examData.title,
         studentName: studentData?.name || 'Aluno não identificado',
         answerKey: studentExam.answer_key as Record<string, string>,
-        version: qrData.version || 1
+        version: qrData.version || 1,
+        bubbleCoordinatesSearch: {
+          examId: qrData.examId,
+          studentId: typeof studentExam.student_id === 'string' ? studentExam.student_id : studentExam.student_id
+        }
       };
 
       setExamInfo(examInfo);
       setEssayQuestions(essayQuestionsFound);
-      setStep('need-answer-sheet'); // Sempre ir para captura do gabarito primeiro
-      stopCamera(); // Parar a câmera após detectar
       
-      // Automaticamente iniciar captura do gabarito após 1 segundo
-      setTimeout(() => {
-        startCamera('photo');
-      }, 1000);
+      // Verificar se temos coordenadas no banco e se o gabarito está completo
+      const hasCoordinates = studentExam.bubble_coordinates && 
+                           Object.keys(studentExam.bubble_coordinates).length > 0;
+      const hasAnswerKey = examInfo.answerKey && 
+                          Object.keys(examInfo.answerKey).length > 0;
+      
+      console.log('📊 Coordenadas disponíveis:', hasCoordinates);
+      console.log('📋 Gabarito disponível:', hasAnswerKey);
+      console.log('🎯 Bubble coordinates:', studentExam.bubble_coordinates);
+      
+      if (hasCoordinates && hasAnswerKey) {
+        setStep('capture-answers'); // Ir direto para captura de respostas
+        stopCamera();
+        
+        // Automaticamente iniciar captura com coordenadas após 1 segundo
+        setTimeout(() => {
+          startCamera('photo');
+        }, 1000);
+        
+        toast({
+          title: "🎯 Coordenadas Ativas",
+          description: "Posicione a folha de respostas alinhada para captura precisa",
+        });
+      } else {
+        // Sem coordenadas ou gabarito, ir para modo de análise básica
+        setStep('photo-capture');
+        stopCamera();
+        
+        setTimeout(() => {
+          startCamera('photo');
+        }, 1000);
+        
+        toast({
+          title: "⚠️ Modo Básico",
+          description: "Coordenadas não disponíveis - usando análise básica",
+        });
+      }
       
       // Alertar sobre questões abertas se houver
       if (essayQuestionsFound.length > 0) {

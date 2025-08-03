@@ -56,22 +56,29 @@ async function processCoordinateBasedCorrection(supabase: any, { fileName, mode,
   
   // Buscar coordenadas das bolhas no banco (ESSENCIAL para método autoGrader)
   let bubbleCoordinates = null;
-  if (examInfo.examId && examInfo.studentId) {
-    console.log(`🔍 Buscando coordenadas para exam: ${examInfo.examId}, student: ${examInfo.studentId}`);
-    
-    const { data: studentExams } = await supabase
-      .from('student_exams')
-      .select('bubble_coordinates')
-      .eq('exam_id', examInfo.examId)
-      .eq('student_id', examInfo.studentId)
-      .maybeSingle();
-    
-    if (studentExams?.bubble_coordinates && Object.keys(studentExams.bubble_coordinates).length > 0) {
-      bubbleCoordinates = studentExams.bubble_coordinates;
-      console.log('✅ Coordenadas das bolhas encontradas no banco:', Object.keys(bubbleCoordinates).length, 'regiões');
-    } else {
-      console.warn('⚠️ Coordenadas não encontradas no banco - usando simulação baseada no gabarito');
-    }
+  let searchExamId = examInfo.examId;
+  let searchStudentId = examInfo.studentId;
+  
+  // Se temos bubbleCoordinatesSearch, usar esses dados
+  if (examInfo.bubbleCoordinatesSearch) {
+    searchExamId = examInfo.bubbleCoordinatesSearch.examId;
+    searchStudentId = examInfo.bubbleCoordinatesSearch.studentId;
+  }
+  
+  console.log(`🔍 Buscando coordenadas para exam: ${searchExamId}, student: ${searchStudentId}`);
+  
+  const { data: studentExams } = await supabase
+    .from('student_exams')
+    .select('bubble_coordinates')
+    .eq('exam_id', searchExamId)
+    .eq('student_id', searchStudentId)
+    .maybeSingle();
+  
+  if (studentExams?.bubble_coordinates && Object.keys(studentExams.bubble_coordinates).length > 0) {
+    bubbleCoordinates = studentExams.bubble_coordinates;
+    console.log('✅ Coordenadas das bolhas encontradas no banco:', Object.keys(bubbleCoordinates).length, 'regiões');
+  } else {
+    console.warn('⚠️ Coordenadas não encontradas no banco - usando simulação baseada no gabarito');
   }
 
   // Converter blob para processamento de imagem
