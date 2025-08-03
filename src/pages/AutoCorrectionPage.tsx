@@ -800,6 +800,14 @@ export default function AutoCorrectionPage() {
       console.log('📊 Gabarito disponível:', examInfo.answerKey);
       console.log('📊 Questões fechadas detectadas:', closedQuestions.length);
       
+      // Verificar se temos coordenadas antes de enviar para edge function
+      const hasCoordinates = examInfo.bubbleCoordinates && 
+                           Object.keys(examInfo.bubbleCoordinates).length > 0;
+      
+      if (!hasCoordinates) {
+        console.warn('⚠️ Coordenadas não disponíveis - usando análise básica');
+      }
+      
       const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('ocr-correction', {
         body: {
           fileName: fileName,
@@ -818,6 +826,8 @@ export default function AutoCorrectionPage() {
             version: examInfo.version || 1,
             questionCount: closedQuestions.length,
             questionTypes: closedQuestions.map(q => q.type),
+            // Coordenadas das bolhas para correção precisa
+            bubbleCoordinates: examInfo.bubbleCoordinates,
             // Dados adicionais para busca de coordenadas
             bubbleCoordinatesSearch: {
               examId: examInfo.examId,
@@ -834,7 +844,16 @@ export default function AutoCorrectionPage() {
       setProcessedImage(imageUrl.publicUrl);
 
       if (ocrError) {
-        throw new Error(`Erro na detecção de marcações: ${ocrError.message}`);
+        console.error('🚨 Erro detalhado na edge function:', ocrError);
+        
+        // Tratar diferentes tipos de erro
+        if (ocrError.message?.includes('Coordenadas das bolhas não encontradas')) {
+          throw new Error('❌ Coordenadas de correção não encontradas. Esta prova precisa ser preparada novamente no sistema.');
+        } else if (ocrError.message?.includes('Edge Function returned a non-2xx status code')) {
+          throw new Error('❌ Erro no processamento da imagem. Tente novamente ou use uma imagem de melhor qualidade.');
+        } else {
+          throw new Error(`❌ Erro na detecção de marcações: ${ocrError.message || 'Erro desconhecido'}`);
+        }
       }
 
       // Processar respostas detectadas APENAS para questões fechadas
