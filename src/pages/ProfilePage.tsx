@@ -9,8 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, User, CreditCard, Lock, Eye, EyeOff, CheckCircle, Palette } from 'lucide-react';
+import { ArrowLeft, User, CreditCard, Lock, Eye, EyeOff, CheckCircle, Palette, Plus, Trash, Edit } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 interface Profile {
   id: string;
@@ -24,22 +25,38 @@ interface Profile {
   created_at: string;
   updated_at: string;
   theme_preference: string | null;
+  is_professor: boolean;
+}
+
+interface Dependent {
+  id: string;
+  user_id: string;
+  name: string;
+  email: string;
+  pai_id: string | null;
+  is_professor: boolean;
 }
 
 export default function ProfilePage() {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
   const { theme, setTheme, themes } = useTheme();
-  
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
-  
+  const [dependents, setDependents] = useState<Dependent[]>([]);
+  const [newDependent, setNewDependent] = useState({ name: '', email: '', password: '' });
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [editingDependent, setEditingDependent] = useState<Dependent | null>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [togglingProfessor, setTogglingProfessor] = useState(false);
+
   // Form states
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [subjects, setSubjects] = useState('');
-  
+
   // Password change states
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -47,26 +64,26 @@ export default function ProfilePage() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     if (user) {
       fetchProfile();
+      fetchDependents();
     }
   }, [user]);
 
   const fetchProfile = async () => {
     if (!user) return;
-    
+
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', user.id)
         .single();
-      
+
       if (error) throw error;
-      
+
       setProfile(data);
       setName(data.name || '');
       setSubjects(data.subjects?.join(', ') || '');
@@ -84,29 +101,48 @@ export default function ProfilePage() {
     }
   };
 
+  const fetchDependents = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('pai_id', user.id)
+        .neq('is_professor', true);
+
+      if (error) throw error;
+
+      setDependents(data || []);
+    } catch (error) {
+      console.error('Erro ao buscar dependentes:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os dependentes.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleUpdateProfile = async () => {
     if (!user || !profile) return;
-    
+
     setUpdating(true);
     try {
       const subjectsArray = subjects
         .split(',')
         .map(s => s.trim())
         .filter(s => s.length > 0);
-      
-      const profileUpdate: { name: string; subjects: string[] | null; email: string; theme_preference: string | null } = {
+
+      const profileUpdate = {
         name,
         subjects: subjectsArray.length > 0 ? subjectsArray : null,
         email: email,
         theme_preference: theme === 'system' ? null : theme,
       };
-      
-      // Atualizar o e-mail no Supabase Auth se ele mudou
+
       if (email !== user.email) {
-        const { error: emailError } = await supabase.auth.updateUser({
-          email: email,
-        });
-        
+        const { error: emailError } = await supabase.auth.updateUser({ email });
         if (emailError) throw emailError;
 
         toast({
@@ -114,20 +150,19 @@ export default function ProfilePage() {
           description: "Verifique seu novo email para confirmar a alteração.",
         });
       }
-      
-      // Atualizar perfil na tabela 'profiles'
+
       const { error: profileError } = await supabase
         .from('profiles')
         .update(profileUpdate)
         .eq('user_id', user.id);
-      
+
       if (profileError) throw profileError;
-      
+
       toast({
         title: "Sucesso!",
         description: "Perfil atualizado com sucesso.",
       });
-      
+
       await fetchProfile();
     } catch (error: any) {
       console.error('Erro ao atualizar perfil:', error);
@@ -141,9 +176,40 @@ export default function ProfilePage() {
     }
   };
 
+  const handleToggleProfessor = async () => {
+    if (!user || !profile) return;
+
+    setTogglingProfessor(true);
+    try {
+      const newProfessorStatus = !profile.is_professor;
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_professor: newProfessorStatus })
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Sucesso!",
+        description: `Status de professor ${newProfessorStatus ? 'ativado' : 'desativado'} com sucesso.`,
+      });
+
+      await fetchProfile();
+    } catch (error: any) {
+      console.error('Erro ao atualizar status de professor:', error);
+      toast({
+        title: "Erro",
+        description: `Não foi possível atualizar o status de professor: ${error.message}`,
+        variant: "destructive",
+      });
+    } finally {
+      setTogglingProfessor(false);
+    }
+  };
+
   const handleChangePassword = async () => {
     if (!user) return;
-    
+
     if (newPassword !== confirmPassword) {
       toast({
         title: "Erro",
@@ -152,7 +218,7 @@ export default function ProfilePage() {
       });
       return;
     }
-    
+
     if (newPassword.length < 6) {
       toast({
         title: "Erro",
@@ -161,20 +227,17 @@ export default function ProfilePage() {
       });
       return;
     }
-    
+
     setChangingPassword(true);
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-      
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
-      
+
       toast({
         title: "Sucesso!",
         description: "Senha alterada com sucesso.",
       });
-      
+
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -195,6 +258,166 @@ export default function ProfilePage() {
       await signOut();
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
+    }
+  };
+
+  const handleAddDependent = async () => {
+    if (!user || dependents.length >= 2) {
+      toast({
+        title: "Limite Atingido",
+        description: "Você só pode cadastrar até 2 dependentes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!newDependent.name || !newDependent.email || !newDependent.password) {
+      toast({
+        title: "Erro",
+        description: "Todos os campos são obrigatórios.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { data: existingProfessor } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('pai_id', user.id)
+        .eq('is_professor', true)
+        .single();
+
+      if (existingProfessor) {
+        toast({
+          title: "Erro",
+          description: "Já existe um professor cadastrado para este pai.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { data, error: authError } = await supabase.auth.signUp({
+        email: newDependent.email,
+        password: newDependent.password,
+        options: {
+          data: { name: newDependent.name, is_professor: false, pai_id: user.id },
+        },
+      });
+
+      if (authError) throw authError;
+
+      if (data.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: data.user.id,
+            name: newDependent.name,
+            email: newDependent.email,
+            pai_id: user.id,
+            is_professor: false,
+          });
+
+        if (profileError) throw profileError;
+
+        toast({
+          title: "Sucesso!",
+          description: "Dependente cadastrado com sucesso.",
+        });
+        setNewDependent({ name: '', email: '', password: '' });
+        setShowAddDialog(false);
+        fetchDependents();
+      }
+    } catch (error: any) {
+      console.error('Erro ao cadastrar dependente:', error);
+      toast({
+        title: "Erro",
+        description: `Não foi possível cadastrar o dependente: ${error.message}`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleEditDependent = async (dependent: Dependent) => {
+    setEditingDependent(dependent);
+    setNewDependent({ name: dependent.name, email: dependent.email, password: '' });
+    setShowAddDialog(true);
+  };
+
+  const handleUpdateDependent = async () => {
+    if (!editingDependent || !newDependent.name || !newDependent.email) {
+      toast({
+        title: "Erro",
+        description: "Nome e e-mail são obrigatórios.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          name: newDependent.name,
+          email: newDependent.email,
+        })
+        .eq('user_id', editingDependent.user_id);
+
+      if (profileError) throw profileError;
+
+      if (newDependent.password) {
+        const { error: authError } = await supabase.auth.updateUser({
+          password: newDependent.password,
+        });
+        if (authError) throw authError;
+      }
+
+      toast({
+        title: "Sucesso!",
+        description: "Dependente atualizado com sucesso.",
+      });
+      setNewDependent({ name: '', email: '', password: '' });
+      setShowAddDialog(false);
+      setEditingDependent(null);
+      fetchDependents();
+    } catch (error: any) {
+      console.error('Erro ao atualizar dependente:', error);
+      toast({
+        title: "Erro",
+        description: `Não foi possível atualizar o dependente: ${error.message}`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteDependent = async (dependentId: string) => {
+    if (!confirm('Tem certeza que deseja excluir este dependente?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', dependentId);
+
+      if (error) throw error;
+
+      const { error: authError } = await supabase.auth.admin.deleteUser(
+        dependents.find(d => d.id === dependentId)?.user_id || ''
+      );
+      if (authError) throw authError;
+
+      toast({
+        title: "Sucesso!",
+        description: "Dependente excluído com sucesso.",
+      });
+      fetchDependents();
+    } catch (error: any) {
+      console.error('Erro ao excluir dependente:', error);
+      toast({
+        title: "Erro",
+        description: `Não foi possível excluir o dependente: ${error.message}`,
+        variant: "destructive",
+      });
     }
   };
 
@@ -227,12 +450,16 @@ export default function ProfilePage() {
               Sair
             </Button>
           </div>
+          {profile?.is_professor && (
+            <div className="mt-2 text-sm text-muted-foreground">
+              Professor: {profile.name}
+            </div>
+          )}
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Card de Créditos */}
           <Card className="lg:col-span-1">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -270,15 +497,30 @@ export default function ProfilePage() {
                 Comprar Créditos
                 <span className="text-xs ml-2">(Em breve)</span>
               </Button>
+              
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-foreground">Professor</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={profile?.is_professor || false}
+                    onChange={handleToggleProfessor}
+                    disabled={togglingProfessor}
+                    className="sr-only"
+                  />
+                  <div className={`w-12 h-6 rounded-full bg-muted transition-colors duration-300 ease-in-out ${profile?.is_professor ? 'bg-primary' : ''} ${togglingProfessor ? 'opacity-50' : ''}`}>
+                    <div className={`w-5 h-5 bg-card rounded-full shadow-sm transform transition-transform duration-300 ease-in-out ${profile?.is_professor ? 'translate-x-6' : 'translate-x-1'} ${togglingProfessor ? 'opacity-50' : ''}`}></div>
+                  </div>
+                </label>
+              </div>
             </CardContent>
           </Card>
 
-          {/* Formulário de Dados */}
           <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <User className="w-5 h-5" />
-                Dados do Professor
+                Dados do Perfil
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -342,6 +584,14 @@ export default function ProfilePage() {
                         Salvar Alterações
                       </>
                     )}
+                  </Button>
+                  
+                  <Button 
+                    onClick={() => setShowAddDialog(true)} 
+                    disabled={dependents.length >= 2}
+                    className="mt-4 w-full"
+                  >
+                    <Plus className="w-4 h-4 mr-2" /> Gerenciar Dependentes
                   </Button>
                 </TabsContent>
                 
@@ -414,11 +664,7 @@ export default function ProfilePage() {
                           className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                           onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                         >
-                          {showCurrentPassword ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
+                          {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </Button>
                       </div>
                     </div>
@@ -440,11 +686,7 @@ export default function ProfilePage() {
                           className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                           onClick={() => setShowNewPassword(!showNewPassword)}
                         >
-                          {showNewPassword ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
+                          {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </Button>
                       </div>
                     </div>
@@ -466,11 +708,7 @@ export default function ProfilePage() {
                           className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                           onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                         >
-                          {showConfirmPassword ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
+                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </Button>
                       </div>
                     </div>
@@ -498,6 +736,51 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
         </div>
+
+        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editingDependent ? 'Editar Dependente' : 'Adicionar Dependente'}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="dependentName">Nome Completo *</Label>
+                <Input
+                  id="dependentName"
+                  value={newDependent.name}
+                  onChange={(e) => setNewDependent({ ...newDependent, name: e.target.value })}
+                  placeholder="Nome do dependente"
+                />
+              </div>
+              <div>
+                <Label htmlFor="dependentEmail">Email *</Label>
+                <Input
+                  id="dependentEmail"
+                  type="email"
+                  value={newDependent.email}
+                  onChange={(e) => setNewDependent({ ...newDependent, email: e.target.value })}
+                  placeholder="email@exemplo.com"
+                />
+              </div>
+              <div>
+                <Label htmlFor="dependentPassword">Senha *</Label>
+                <Input
+                  id="dependentPassword"
+                  type="password"
+                  value={newDependent.password}
+                  onChange={(e) => setNewDependent({ ...newDependent, password: e.target.value })}
+                  placeholder="Crie uma senha"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowAddDialog(false)}>Cancelar</Button>
+              <Button onClick={editingDependent ? handleUpdateDependent : handleAddDependent}>
+                {editingDependent ? 'Salvar Alterações' : 'Adicionar'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );
