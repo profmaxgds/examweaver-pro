@@ -514,13 +514,10 @@ export default function AutoCorrectionPage() {
 
       console.log('Dados extraídos do QR:', qrData);
 
-      // Buscar dados da prova com header
+      // Buscar dados da prova
       const { data: examData, error: examError } = await supabase
         .from('exams')
-        .select(`
-          *,
-          exam_headers!left(*)
-        `)
+        .select('*')
         .eq('id', qrData.examId)
         .eq('author_id', user!.id)
         .single();
@@ -597,7 +594,7 @@ export default function AutoCorrectionPage() {
         answerKey: studentExam.answer_key as Record<string, string>,
         version: qrData.version || 1,
         bubbleCoordinates: studentExam.bubble_coordinates,
-        examHeader: examData.exam_headers || null,
+        examHeader: null, // Removido já que não temos relação com exam_headers
         examLayout: examData.layout || 'single_column',
         bubbleCoordinatesSearch: {
           examId: qrData.examId,
