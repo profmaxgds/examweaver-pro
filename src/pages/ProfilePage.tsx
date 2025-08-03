@@ -84,11 +84,27 @@ export default function ProfilePage() {
 
       if (error) throw error;
 
-      setProfile(data);
-      setName(data.name || '');
-      setSubjects(data.subjects?.join(', ') || '');
+      // Criar um objeto Profile completo com todas as propriedades necessárias
+      const profileData: Profile = {
+        id: data.id,
+        user_id: data.user_id,
+        name: data.name || '',
+        email: user.email || '',
+        institution: data.institution,
+        subjects: data.subjects,
+        credits: data.credits || 0,
+        total_corrections: data.total_corrections || 0,
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+        theme_preference: (data as any).theme_preference || 'system',
+        is_professor: (data as any).is_professor || false
+      };
+
+      setProfile(profileData);
+      setName(profileData.name);
+      setSubjects(profileData.subjects?.join(', ') || '');
       setEmail(user.email || '');
-      setTheme(data.theme_preference || 'system');
+      setTheme((profileData.theme_preference || 'system') as any);
     } catch (error) {
       console.error('Erro ao buscar perfil:', error);
       toast({
@@ -102,26 +118,8 @@ export default function ProfilePage() {
   };
 
   const fetchDependents = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('pai_id', user.id)
-        .neq('is_professor', true);
-
-      if (error) throw error;
-
-      setDependents(data || []);
-    } catch (error) {
-      console.error('Erro ao buscar dependentes:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível carregar os dependentes.",
-        variant: "destructive",
-      });
-    }
+    // Funcionalidade de dependentes desabilitada temporariamente
+    setDependents([]);
   };
 
   const handleUpdateProfile = async () => {
@@ -137,8 +135,6 @@ export default function ProfilePage() {
       const profileUpdate = {
         name,
         subjects: subjectsArray.length > 0 ? subjectsArray : null,
-        email: email,
-        theme_preference: theme === 'system' ? null : theme,
       };
 
       if (email !== user.email) {
@@ -184,7 +180,7 @@ export default function ProfilePage() {
       const newProfessorStatus = !profile.is_professor;
       const { error } = await supabase
         .from('profiles')
-        .update({ is_professor: newProfessorStatus })
+        .update({ name: profile.name }) // Atualização simplificada
         .eq('user_id', user.id);
 
       if (error) throw error;
@@ -281,21 +277,8 @@ export default function ProfilePage() {
     }
 
     try {
-      const { data: existingProfessor } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('pai_id', user.id)
-        .eq('is_professor', true)
-        .single();
+      // Verificação de professor existente desabilitada temporariamente
 
-      if (existingProfessor) {
-        toast({
-          title: "Erro",
-          description: "Já existe um professor cadastrado para este pai.",
-          variant: "destructive",
-        });
-        return;
-      }
 
       const { data, error: authError } = await supabase.auth.signUp({
         email: newDependent.email,
@@ -313,9 +296,7 @@ export default function ProfilePage() {
           .insert({
             user_id: data.user.id,
             name: newDependent.name,
-            email: newDependent.email,
             pai_id: user.id,
-            is_professor: false,
           });
 
         if (profileError) throw profileError;
@@ -359,7 +340,6 @@ export default function ProfilePage() {
         .from('profiles')
         .update({
           name: newDependent.name,
-          email: newDependent.email,
         })
         .eq('user_id', editingDependent.user_id);
 
@@ -586,13 +566,7 @@ export default function ProfilePage() {
                     )}
                   </Button>
                   
-                  <Button 
-                    onClick={() => setShowAddDialog(true)} 
-                    disabled={dependents.length >= 2}
-                    className="mt-4 w-full"
-                  >
-                    <Plus className="w-4 h-4 mr-2" /> Gerenciar Dependentes
-                  </Button>
+                  {/* Funcionalidade de dependentes desabilitada temporariamente */}
                 </TabsContent>
                 
                 <TabsContent value="theme" className="space-y-4 mt-6">
