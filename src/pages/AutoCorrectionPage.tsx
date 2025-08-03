@@ -235,10 +235,15 @@ export default function AutoCorrectionPage() {
             )
           `)
           .eq('id', qrData.studentExamId)
-          .single();
+          .maybeSingle();
 
         if (studentExamError) {
-          throw new Error(`Prova não encontrada: ${studentExamError.message}`);
+          console.error('Erro na consulta student_exams:', studentExamError);
+          throw new Error(`Erro ao buscar prova: ${studentExamError.message}`);
+        }
+
+        if (!studentExam) {
+          throw new Error('Prova não encontrada. Verifique se o QR code é válido.');
         }
 
         console.log('✅ Dados da prova encontrados:', studentExam);
@@ -290,10 +295,15 @@ export default function AutoCorrectionPage() {
           .eq('exam_id', qrData.examId)
           .eq('version_id', `version-${qrData.version}`)
           .is('student_id', null)
-          .single();
+          .maybeSingle();
 
         if (versionError) {
-          throw new Error(`Versão da prova não encontrada: ${versionError.message}`);
+          console.error('Erro na consulta version exam:', versionError);
+          throw new Error(`Erro ao buscar versão da prova: ${versionError.message}`);
+        }
+
+        if (!versionExam) {
+          throw new Error(`Versão ${qrData.version} da prova não encontrada. Verifique se o QR code é válido.`);
         }
 
         // Buscar questões
@@ -393,12 +403,29 @@ export default function AutoCorrectionPage() {
           // Processar dados do QR code
           const qrData = extractQRCodeData(code.data);
           if (qrData) {
+            console.log('✅ QR code extraído com sucesso:', qrData);
             fetchExamDataFromQR(qrData).then(success => {
               if (success) {
                 setStep('real-time-correction');
                 startRealTimeCorrection();
+              } else {
+                console.error('❌ Falha ao buscar dados da prova');
+                setIsScanning(true); // Reiniciar escaneamento em caso de erro
+                scanIntervalRef.current = setInterval(scanVideoForQR, 50);
               }
+            }).catch(error => {
+              console.error('❌ Erro na promessa fetchExamDataFromQR:', error);
+              setIsScanning(true); // Reiniciar escaneamento em caso de erro
+              scanIntervalRef.current = setInterval(scanVideoForQR, 50);
             });
+          } else {
+            console.error('❌ QR code inválido:', code.data);
+            toast({
+              title: "QR Code Inválido",
+              description: "Este QR code não é de uma prova válida.",
+              variant: "destructive",
+            });
+            // Continuar escaneando sem parar
           }
           return; // Sair da função após detecção
         }
