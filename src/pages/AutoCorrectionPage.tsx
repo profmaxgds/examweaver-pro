@@ -820,24 +820,27 @@ export default function AutoCorrectionPage() {
       console.log('Questões abertas:', openQuestions.length);
       console.log('EssayQuestions state:', essayQuestions);
 
-      // Chamar edge function avançada para detectar marcações usando coordenadas precisas
-      console.log('🚀 Iniciando correção com pipeline avançado (autoGrader)...');
+      // Chamar edge function com método baseado em coordenadas (como autoGrader)
+      console.log('🎯 Iniciando correção por coordenadas (método autoGrader)...');
       
       const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('ocr-correction', {
         body: {
           fileName: fileName,
-          mode: 'advanced_detection', // Usar detecção avançada com coordenadas
+          mode: 'coordinate_based', // Modo baseado em coordenadas sem conflito de QR
           examInfo: {
-            ...examInfo,
+            examId: examInfo.examId,
+            studentId: examInfo.studentId,
+            examTitle: examInfo.examTitle,
+            studentName: examInfo.studentName,
             // Filtrar answerKey para incluir apenas questões fechadas
             answerKey: Object.fromEntries(
               Object.entries(examInfo.answerKey).filter(([qId]) => 
                 closedQuestions.some(q => q.id === qId)
               )
             ),
-            // Dados adicionais para melhor detecção
+            version: examInfo.version || 1,
             questionCount: closedQuestions.length,
-            questionTypes: closedQuestions.map(q => ({ id: q.id, type: q.type }))
+            questionTypes: closedQuestions.map(q => q.type)
           }
         }
       });
@@ -949,16 +952,16 @@ export default function AutoCorrectionPage() {
         const confidence = ocrResult.confidence || 0;
         
         let methodDescription = '';
-        if (method === 'coordinate_based_autoGrader') {
-          methodDescription = `Coordenadas precisas (${Math.round(confidence * 100)}% confiança)`;
-        } else if (method === 'edge_function_analysis') {
-          methodDescription = `Análise de imagem (${Math.round(confidence * 100)}% confiança)`;
+        if (method === 'coordinate_based') {
+          methodDescription = `✅ Análise por coordenadas autoGrader (${Math.round(confidence * 100)}% confiança)`;
+        } else if (method === 'simulation_fallback') {
+          methodDescription = `⚠️ Simulação - sem coordenadas (${Math.round(confidence * 100)}% confiança)`;
         } else {
-          methodDescription = `Simulação (${Math.round(confidence * 100)}% confiança)`;
+          methodDescription = `🔍 Método: ${method} (${Math.round(confidence * 100)}% confiança)`;
         }
         
         toast({
-          title: "✅ Questões fechadas corrigidas!",
+          title: "🎯 Questões fechadas corrigidas por coordenadas!",
           description: `${score}/${totalPoints} pontos - ${methodDescription}. Agora corrija as ${openQuestions.length} questões abertas.`,
         });
       } else {
