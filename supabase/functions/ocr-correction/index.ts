@@ -67,11 +67,25 @@ async function processCoordinateBasedCorrection(supabase: any, { fileName, mode,
   
   console.log(`🔍 Buscando coordenadas para exam: ${searchExamId}, student: ${searchStudentId}`);
   
+  // Primeiro buscar o UUID do estudante pelo student_id externo
+  const { data: student } = await supabase
+    .from('students')
+    .select('id')
+    .eq('student_id', searchStudentId)
+    .maybeSingle();
+  
+  if (!student) {
+    console.warn(`⚠️ Estudante não encontrado: ${searchStudentId}`);
+  }
+  
+  const studentUuid = student?.id;
+  console.log(`📝 UUID do estudante: ${studentUuid}`);
+  
   const { data: studentExams } = await supabase
     .from('student_exams')
     .select('bubble_coordinates')
     .eq('exam_id', searchExamId)
-    .eq('student_id', searchStudentId)
+    .eq('student_id', studentUuid)
     .maybeSingle();
   
   if (studentExams?.bubble_coordinates && Object.keys(studentExams.bubble_coordinates).length > 0) {
