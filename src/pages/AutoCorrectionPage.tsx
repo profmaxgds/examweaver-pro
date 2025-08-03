@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Camera, Upload, QrCode, Loader2, FileImage, ScanLine, CheckCircle, Save, ArrowLeft, AlertTriangle, PenTool } from 'lucide-react';
+import { Camera, Upload, QrCode, Loader2, FileImage, ScanLine, CheckCircle, Save, ArrowLeft, AlertTriangle, PenTool, Info } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Link } from 'react-router-dom';
@@ -990,47 +990,49 @@ export default function AutoCorrectionPage() {
 
       setCorrectionResult(closedQuestionsResult);
       
-      // Se há questões abertas, ir para correção manual após questões fechadas
+      // Sempre mostrar resultado das questões fechadas primeiro
+      setStep('corrected');
+      
+      // Se há questões abertas, avisar mas deixar opcional
       if (openQuestions.length > 0) {
+        // Toast informativo sobre questões abertas
+        toast({
+          title: "📝 Questões Abertas Detectadas",
+          description: `Correção das múltipla escolha concluída! Há ${openQuestions.length} questão(ões) aberta(s) que podem ser corrigidas manualmente.`,
+          duration: 6000,
+        });
+        
         setEssayQuestions(openQuestions);
         setCurrentEssayIndex(0);
-        setStep('essay-correction'); // Ir para correção das questões abertas
+        // NÃO mudar automaticamente para essay-correction, deixar o usuário escolher
+      }
+      
+      const method = ocrResult.method || 'unknown';
+      const confidence = ocrResult.confidence || 0;
         
-        const method = ocrResult.method || 'unknown';
-        const confidence = ocrResult.confidence || 0;
-        
-        let methodDescription = '';
-        if (method === 'coordinate_based') {
-          methodDescription = `✅ Análise por coordenadas autoGrader (${Math.round(confidence * 100)}% confiança)`;
-        } else if (method === 'simulation_fallback') {
-          methodDescription = `⚠️ Simulação - sem coordenadas (${Math.round(confidence * 100)}% confiança)`;
-        } else {
-          methodDescription = `🔍 Método: ${method} (${Math.round(confidence * 100)}% confiança)`;
-        }
-        
+      let methodDescription = '';
+      if (method === 'coordinate_based_autoGrader') {
+        methodDescription = `✅ Coordenadas precisas (${Math.round(confidence * 100)}%)`;
+      } else if (method === 'edge_function_analysis') {
+        methodDescription = `🔍 Análise de imagem (${Math.round(confidence * 100)}%)`;
+      } else if (method === 'simulation_fallback') {
+        methodDescription = `⚠️ Simulação - sem coordenadas (${Math.round(confidence * 100)}%)`;
+      } else {
+        methodDescription = `🔍 Método: ${method} (${Math.round(confidence * 100)}%)`;
+      }
+      
+      // Toast específico baseado no que foi processado
+      if (openQuestions.length > 0) {
         toast({
-          title: "🎯 Questões fechadas corrigidas por coordenadas!",
-          description: `${score}/${totalPoints} pontos - ${methodDescription}. Agora corrija as ${openQuestions.length} questões abertas.`,
+          title: "✅ Múltipla Escolha Corrigida!",
+          description: `Nota parcial: ${score}/${totalPoints} (${closedQuestionsResult.percentage}%) - ${methodDescription}. ${openQuestions.length} questão(ões) aberta(s) podem ser corrigidas.`,
+          duration: 8000,
         });
       } else {
-        // Se não há questões abertas, finalizar processo
-        setStep('corrected');
-        
-        const method = ocrResult.method || 'unknown';
-        const confidence = ocrResult.confidence || 0;
-        
-        let methodDescription = '';
-        if (method === 'coordinate_based_autoGrader') {
-          methodDescription = ` - Coordenadas precisas (${Math.round(confidence * 100)}%)`;
-        } else if (method === 'edge_function_analysis') {
-          methodDescription = ` - Análise de imagem (${Math.round(confidence * 100)}%)`;
-        } else {
-          methodDescription = ` - Simulação (${Math.round(confidence * 100)}%)`;
-        }
-        
         toast({
-          title: "✅ Correção concluída!",
-          description: `Nota: ${score}/${totalPoints} (${closedQuestionsResult.percentage}%)${methodDescription}`,
+          title: "✅ Correção Concluída!",
+          description: `Nota final: ${score}/${totalPoints} (${closedQuestionsResult.percentage}%) - ${methodDescription}`,
+          duration: 6000,
         });
       }
 
@@ -1902,18 +1904,28 @@ export default function AutoCorrectionPage() {
                 {/* Questões abertas pendentes */}
                 {correctionResult.hasOpenQuestions && correctionResult.openQuestions && correctionResult.openQuestions.length > 0 && (
                   <div className="border-t pt-6">
-                    <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-lg border border-orange-200 dark:border-orange-800">
-                      <div className="flex items-center gap-2 mb-3">
-                        <PenTool className="h-5 w-5 text-orange-600" />
-                        <h4 className="font-semibold text-orange-800 dark:text-orange-200">Questões Abertas Pendentes</h4>
-                        <Badge variant="outline" className="ml-auto">
+                    <div className="p-6 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950 dark:to-amber-950 rounded-lg border border-orange-200 dark:border-orange-800">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 bg-orange-100 dark:bg-orange-800 rounded-full flex items-center justify-center">
+                          <PenTool className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-bold text-lg text-orange-800 dark:text-orange-200">Questões Abertas Pendentes</h4>
+                          <p className="text-sm text-orange-600 dark:text-orange-400">Correção opcional - pode ser feita agora ou depois</p>
+                        </div>
+                        <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-300">
                           {correctionResult.openQuestions.length} questões
                         </Badge>
                       </div>
-                      <p className="text-sm text-orange-700 dark:text-orange-300 mb-4">
-                        Esta prova contém questões abertas que requerem correção manual. 
-                        Capture imagens das respostas manuscritas para análise.
-                      </p>
+                      <div className="bg-white/50 dark:bg-gray-900/50 p-4 rounded-md mb-4">
+                        <p className="text-sm text-orange-700 dark:text-orange-300 flex items-center gap-2">
+                          <Info className="w-4 h-4" />
+                          <span>
+                            <strong>Resultado atual:</strong> Baseado apenas nas questões múltipla escolha. 
+                            Para nota final completa, corrija também as questões abertas abaixo.
+                          </span>
+                        </p>
+                      </div>
                       
                       <div className="space-y-3">
                         {correctionResult.openQuestions.map((question: any, index: number) => (
