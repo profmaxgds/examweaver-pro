@@ -400,10 +400,10 @@ export default function AutoCorrectionPage() {
     if (cameraStarted) {
       setIsScanning(true);
       
-      // Aguardar um pouco para o vídeo carregar
+      // Aguardar um pouco para o vídeo carregar e reduzir intervalo para leitura mais rápida
       setTimeout(() => {
-        scanIntervalRef.current = setInterval(scanForQRCode, 100);
-      }, 500);
+        scanIntervalRef.current = setInterval(scanForQRCode, 50); // 20 FPS para leitura mais rápida
+      }, 300);
 
       toast({
         title: "📱 Escaneando QR Code",
@@ -770,7 +770,7 @@ export default function AutoCorrectionPage() {
                 </div>
 
                 <div className="mt-4 flex justify-center">
-                  <Button variant="outline" onClick={stopCamera}>
+                  <Button variant="outline" onClick={resetToStart}>
                     Cancelar
                   </Button>
                 </div>
@@ -862,7 +862,7 @@ export default function AutoCorrectionPage() {
                   </div>
 
                   <div className="flex gap-2">
-                    <Button variant="outline" onClick={stopCamera}>
+                    <Button variant="outline" onClick={resetToStart}>
                       Cancelar
                     </Button>
                     <Button 
