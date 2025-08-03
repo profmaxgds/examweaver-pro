@@ -34,6 +34,54 @@ interface ExamData {
   professor_name?: string;
 }
 
+// Função para calcular coordenadas das bolhas em papel A4
+function calculateBubbleCoordinatesA4(questions: any[]) {
+  console.log('Calculando coordenadas para papel A4...');
+  
+  const coordinates: { [key: string]: { [key: string]: { x: number; y: number } } } = {};
+  
+  // Constantes para papel A4 (595x842 pontos)
+  const PAGE_MARGIN = 42.5; // 1.5cm em pontos
+  const ANSWER_GRID_TOP = 180; // Posição Y onde começa o grid
+  const BUBBLE_SIZE = 11;
+  const BUBBLE_SPACING = 25;
+  const ROW_HEIGHT = 15;
+  const QUESTIONS_PER_COLUMN = 25;
+  const COLUMN_WIDTH = 150;
+  
+  questions.forEach((question, index) => {
+    if (question.type === 'multiple_choice' && question.options) {
+      const questionNumber = index + 1;
+      
+      // Determinar coluna e linha
+      const columnIndex = Math.floor(index / QUESTIONS_PER_COLUMN);
+      const rowInColumn = index % QUESTIONS_PER_COLUMN;
+      
+      // Calcular posição Y
+      const questionY = ANSWER_GRID_TOP + (rowInColumn * ROW_HEIGHT);
+      
+      // Calcular posição X base da coluna
+      const columnStartX = PAGE_MARGIN + (columnIndex * COLUMN_WIDTH);
+      const bubblesStartX = columnStartX + 50; // 50 pontos para número da questão
+      
+      coordinates[questionNumber.toString()] = {};
+      
+      question.options.forEach((option: any, optIndex: number) => {
+        const letter = String.fromCharCode(65 + optIndex); // A, B, C, D, E
+        const bubbleX = bubblesStartX + (optIndex * BUBBLE_SPACING);
+        
+        coordinates[questionNumber.toString()][letter] = {
+          x: Math.round(bubbleX),
+          y: Math.round(questionY)
+        };
+      });
+    }
+  });
+  
+  console.log(`Coordenadas calculadas para ${Object.keys(coordinates).length} questões`);
+  return coordinates;
+}
+
 // Função de embaralhamento determinístico para garantir consistência
 const seededShuffle = <T,>(array: T[], seed: string): T[] => {
     let currentIndex = array.length, randomIndex;
@@ -349,13 +397,17 @@ export default function EditExamPage() {
                 }
             });
 
+            // CALCULAR COORDENADAS DAS BOLHAS (PAPEL A4 PADRÃO)
+            const bubbleCoordinates = calculateBubbleCoordinatesA4(shuffledQuestions);
+
             instancesToUpsert.push({
                 exam_id: examData.id,
                 student_id: student.id,
                 author_id: user!.id,
                 shuffled_question_ids,
                 shuffled_options_map,
-                answer_key
+                answer_key,
+                bubble_coordinates: bubbleCoordinates // SALVAR COORDENADAS
             });
         }
 
