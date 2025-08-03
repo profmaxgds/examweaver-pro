@@ -120,7 +120,7 @@ function EditExamPageContent() {
                 <>
                   <Button variant="outline" onClick={handlePreviewClick} disabled={loading || isPreparing}>
                     <Eye className="w-4 h-4 mr-2" />
-                    Visualizar Padrão
+                    Pré-visualizar
                   </Button>
                   {/* BOTÃO DE PREPARAR PROVAS (integra automaticamente o salvar) */}
                   {examData?.generation_mode === 'class' && (
@@ -359,8 +359,22 @@ export default function EditExamPage() {
             });
         }
 
-        const { error } = await supabase.from('student_exams').upsert(instancesToUpsert, { onConflict: 'exam_id, student_id' });
-        if (error) throw error;
+        // Primeiro, limpar registros existentes para evitar conflitos
+        const { error: deleteError } = await supabase
+            .from('student_exams')
+            .delete()
+            .eq('exam_id', examData.id);
+            
+        if (deleteError) {
+            console.warn('Aviso ao limpar registros existentes:', deleteError);
+        }
+
+        // Agora inserir os novos registros
+        const { error: insertError } = await supabase
+            .from('student_exams')
+            .insert(instancesToUpsert);
+            
+        if (insertError) throw insertError;
 
         toast({ 
             title: "Sucesso!", 

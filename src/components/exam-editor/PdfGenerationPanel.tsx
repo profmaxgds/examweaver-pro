@@ -91,14 +91,14 @@ export function PdfGenerationPanel() {
                         <p className="text-xs text-muted-foreground pl-6">Matrícula: {pExam.student.student_id || 'N/A'}</p>
                     </div>
                     <div className="flex space-x-2">
-                      <Tooltip>
-                        <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => previewExam(pExam.id)} disabled={isLoading}><Eye className="w-4 h-4" /></Button></TooltipTrigger>
-                        <TooltipContent><p>Visualizar</p></TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(pExam.id, false)} disabled={isLoading}><Download className="w-4 h-4" /></Button></TooltipTrigger>
-                        <TooltipContent><p>Prova</p></TooltipContent>
-                      </Tooltip>
+                       <Tooltip>
+                         <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => previewExam(pExam.id)} disabled={isLoading}><Eye className="w-4 h-4" /></Button></TooltipTrigger>
+                         <TooltipContent><p>Pré-visualizar</p></TooltipContent>
+                       </Tooltip>
+                       <Tooltip>
+                         <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(pExam.id, false)} disabled={isLoading}><Download className="w-4 h-4" /></Button></TooltipTrigger>
+                         <TooltipContent><p>Gerar Prova</p></TooltipContent>
+                       </Tooltip>
                       <Tooltip>
                         <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(pExam.id, true)} disabled={isLoading}><FileText className="w-4 h-4" /></Button></TooltipTrigger>
                         <TooltipContent><p>Gabarito</p></TooltipContent>
@@ -117,14 +117,14 @@ export function PdfGenerationPanel() {
                       </p>
                     </div>
                     <div className="flex space-x-2">
-                      <Tooltip>
-                        <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => previewExam(version)} disabled={isLoading}><Eye className="w-4 h-4" /></Button></TooltipTrigger>
-                        <TooltipContent><p>Visualizar</p></TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(version, false)} disabled={isLoading}><Download className="w-4 h-4" /></Button></TooltipTrigger>
-                        <TooltipContent><p>Prova</p></TooltipContent>
-                      </Tooltip>
+                       <Tooltip>
+                         <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => previewExam(version)} disabled={isLoading}><Eye className="w-4 h-4" /></Button></TooltipTrigger>
+                         <TooltipContent><p>Pré-visualizar</p></TooltipContent>
+                       </Tooltip>
+                       <Tooltip>
+                         <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(version, false)} disabled={isLoading}><Download className="w-4 h-4" /></Button></TooltipTrigger>
+                         <TooltipContent><p>Gerar Prova</p></TooltipContent>
+                       </Tooltip>
                       <Tooltip>
                         <TooltipTrigger asChild><Button variant="outline" size="icon" onClick={() => generatePDF(version, true)} disabled={isLoading}><FileText className="w-4 h-4" /></Button></TooltipTrigger>
                         <TooltipContent><p>Gabarito</p></TooltipContent>
