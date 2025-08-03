@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, Eye, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
-import { CorrectionScanner } from '@/components/CorrectionScanner';
+
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { QuestionEditor } from '@/components/QuestionEditor';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -137,7 +137,6 @@ function EditExamPageContent() {
           
           <div className="flex space-x-4 mt-4">
             <Button variant={activeTab === 'edit' ? 'default' : 'outline'} onClick={() => setActiveTab('edit')}>Editar Prova</Button>
-            <Button variant={activeTab === 'corrections' ? 'default' : 'outline'} onClick={() => setActiveTab('corrections')}>Correção Automática</Button>
             <Button variant={activeTab === 'pdf' ? 'default' : 'outline'} onClick={() => setActiveTab('pdf')}>Gerar PDF</Button>
           </div>
         </div>
@@ -145,13 +144,6 @@ function EditExamPageContent() {
 
       <main className="container mx-auto px-4 py-8">
         {activeTab === 'edit' && <EditExamPanel />}
-        {activeTab === 'corrections' && examData && (
-          <div className="max-w-2xl mx-auto">
-            <CorrectionScanner examId={examData.id} onCorrectionComplete={(result) => {
-              toast({ title: "Correção processada!", description: `Pontuação: ${result.correction.score} pontos` });
-            }}/>
-          </div>
-        )}
         {activeTab === 'pdf' && <PdfGenerationPanel />}
       </main>
     </div>
