@@ -630,6 +630,9 @@ export default function AutoCorrectionPage() {
 
       // Buscar dados da prova/student_exam diretamente via studentExamId do QR
       if (qrData.studentExamId) {
+        console.log('🔍 Buscando student_exam pelo ID:', qrData.studentExamId);
+        console.log('👤 Para autor:', user!.id);
+        
         // Buscar o student_exam específico com coordenadas e dados do estudante
         const { data: studentExamData, error: studentExamError } = await supabase
           .from('student_exams')
@@ -642,13 +645,45 @@ export default function AutoCorrectionPage() {
           .eq('author_id', user!.id)
           .single();
 
-        if (studentExamError || !studentExamData) {
-          throw new Error('Prova específica não encontrada no sistema');
-        }
+        console.log('📊 Resultado da busca:', { 
+          data: studentExamData, 
+          error: studentExamError,
+          hasData: !!studentExamData,
+          errorMessage: studentExamError?.message 
+        });
 
-        studentExam = studentExamData;
-        studentData = studentExamData.students;
-        examData = studentExamData.exams;
+        if (studentExamError || !studentExamData) {
+          console.error('❌ Erro na busca do student_exam:', studentExamError);
+          
+          // Fallback: buscar por examId e studentId
+          console.log('🔄 Tentando fallback - buscando por examId/studentId...');
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('student_exams')
+            .select(`
+              *,
+              students!inner(*),
+              exams!inner(*, exam_headers(*))
+            `)
+            .eq('exam_id', qrData.examId)
+            .eq('author_id', user!.id);
+
+          console.log('📊 Resultados fallback:', fallbackData?.length || 0, 'registros encontrados');
+          
+          if (fallbackData && fallbackData.length > 0) {
+            // Usar o primeiro registro encontrado
+            studentExam = fallbackData[0];
+            studentData = fallbackData[0].students;
+            examData = fallbackData[0].exams;
+            console.log('✅ Usando fallback - student_exam encontrado');
+          } else {
+            throw new Error(`Student exam não encontrado. ID: ${qrData.studentExamId}, ExamId: ${qrData.examId}`);
+          }
+        } else {
+          studentExam = studentExamData;
+          studentData = studentExamData.students;
+          examData = studentExamData.exams;
+          console.log('✅ Student exam encontrado pelo ID direto');
+        }
       } else {
         // Fallback para compatibilidade com QRs antigos - buscar separadamente
         const { data: examDataFallback, error: examError } = await supabase
