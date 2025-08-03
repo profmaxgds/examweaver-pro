@@ -1246,9 +1246,9 @@ export default function AutoCorrectionPage() {
                           <Camera className="w-8 h-8 text-green-600" />
                         </div>
                         <div>
-                          <h3 className="font-semibold text-lg text-green-900">Capturar Gabarito</h3>
-                          <p className="text-sm text-green-600">Tirar foto da prova respondida</p>
-                          <p className="text-xs text-gray-500 mt-1">🎯 Detecção automática avançada</p>
+                          <h3 className="font-semibold text-lg text-green-900">Capturar Resposta</h3>
+                          <p className="text-sm text-green-600">Tirar foto da folha de resposta</p>
+                          <p className="text-xs text-gray-500 mt-1">🎯 Alinhamento com coordenadas precisas</p>
                         </div>
                       </div>
                     </Card>
@@ -1321,82 +1321,144 @@ export default function AutoCorrectionPage() {
                             </div>
                           </div>
                         </div>
-                       ) : (
-                        // Guia para Gabarito com overlay inteligente
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <div className="relative">
-                            {showAlignmentOverlay && examInfo?.bubbleCoordinates ? (
-                              // Overlay de alinhamento preciso com coordenadas reais das bolhas
-                              <div className="relative w-80 h-60 border-4 border-green-400 rounded-lg bg-green-400/10">
-                                {/* Cantos de referência para alinhamento */}
-                                <div className="absolute -top-1 -left-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
-                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
-                                <div className="absolute -bottom-1 -left-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
-                                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
-                                
-                                {/* Renderizar bolhas nas posições reais */}
-                                {Object.entries(examInfo.bubbleCoordinates).map(([questionNum, options]: [string, any]) => 
-                                  Object.entries(options).map(([letter, coords]: [string, any]) => (
-                                    <div 
-                                      key={`${questionNum}-${letter}`}
-                                      className="absolute w-2 h-2 bg-green-300 rounded-full opacity-80 animate-pulse"
-                                      style={{
-                                        left: `${(coords.x / 595) * 100}%`,  // Converter coordenadas de PDF para percentual
-                                        top: `${(coords.y / 842) * 100}%`,
-                                        transform: 'translate(-50%, -50%)'
-                                      }}
-                                      title={`Q${questionNum}-${letter}`}
-                                    >
-                                      <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 text-xs text-green-300 font-bold">
-                                        {letter}
-                                      </div>
-                                    </div>
-                                  ))
-                                )}
-                                
-                                {/* Indicador de coordenadas ativas */}
-                                <div className="absolute top-1 left-1/2 transform -translate-x-1/2">
-                                  <div className="bg-green-500 text-white text-xs px-3 py-1 rounded-full font-bold">
-                                    🎯 COORDENADAS PRECISAS ATIVAS
-                                  </div>
-                                </div>
-                                
-                                {/* Indicador de número de questões */}
-                                <div className="absolute bottom-1 right-2">
-                                  <div className="bg-green-600 text-white text-xs px-2 py-1 rounded font-bold">
-                                    {Object.keys(examInfo.bubbleCoordinates).length} questões
-                                  </div>
-                                </div>
-                              </div>
-                            ) : (
-                              // Overlay padrão quando não há coordenadas
-                              <div className="w-64 h-48 border-4 border-green-500 rounded-lg bg-green-500/10 animate-pulse">
-                                <div className="absolute -top-2 -left-2 w-6 h-6 border-t-4 border-l-4 border-green-400"></div>
-                                <div className="absolute -top-2 -right-2 w-6 h-6 border-t-4 border-r-4 border-green-400"></div>
-                                <div className="absolute -bottom-2 -left-2 w-6 h-6 border-b-4 border-l-4 border-green-400"></div>
-                                <div className="absolute -bottom-2 -right-2 w-6 h-6 border-b-4 border-r-4 border-green-400"></div>
-                                
-                                {/* Linhas de referência para o gabarito */}
-                                <div className="absolute top-4 left-4 right-4 border-t-2 border-green-400/50"></div>
-                                <div className="absolute top-8 left-4 right-4 border-t border-green-400/30"></div>
-                                <div className="absolute top-12 left-4 right-4 border-t border-green-400/30"></div>
-                                
-                                {/* Indicador de QR code no canto */}
-                                <div className="absolute top-2 right-2 w-8 h-8 border-2 border-green-400/60 rounded text-xs flex items-center justify-center text-green-300">
-                                  QR
-                                </div>
-                              </div>
-                            )}
-                            
-                            <div className="absolute -bottom-12 left-1/2 transform -translate-x-1/2 text-xs text-green-300 font-bold bg-black/80 px-3 py-2 rounded text-center max-w-xs">
-                              {showAlignmentOverlay && examInfo?.bubbleCoordinates ? 
-                                '🎯 Alinhe a prova com os pontos verdes das bolhas. Quando estiver bem posicionado, clique em "Capturar"' : 
-                                'Posicione a prova com QR no canto e gabarito visível, depois clique em "Capturar"'
-                              }
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                        ) : (
+                         // Máscara da folha de resposta baseada na imagem de referência
+                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                           <div className="relative">
+                             {showAlignmentOverlay && examInfo?.bubbleCoordinates ? (
+                               // Máscara precisa com coordenadas da folha de resposta
+                               <div className="relative w-80 h-60 border-4 border-green-400 rounded-lg bg-green-400/10">
+                                 {/* QR Code no canto superior esquerdo */}
+                                 <div className="absolute top-2 left-2 w-12 h-12 border-2 border-green-400 rounded bg-green-400/20">
+                                   <div className="absolute top-1 left-1 right-1 bottom-1 border border-green-300 rounded">
+                                     <div className="w-full h-full bg-green-300/30 rounded text-xs flex items-center justify-center text-green-600 font-bold">
+                                       QR
+                                     </div>
+                                   </div>
+                                 </div>
+
+                                 {/* Área das questões - lado esquerdo */}
+                                 <div className="absolute top-16 left-4 space-y-2">
+                                   {Object.entries(examInfo.bubbleCoordinates).slice(0, 4).map(([questionNum, options]: [string, any], index) => (
+                                     <div key={questionNum} className="flex items-center gap-2">
+                                       {/* Número da questão */}
+                                       <div className="w-4 h-4 bg-green-600 text-white text-xs flex items-center justify-center rounded-sm font-bold">
+                                         {String(index + 1).padStart(2, '0')}
+                                       </div>
+                                       {/* Bolhas das opções */}
+                                       <div className="flex gap-1">
+                                         {Object.entries(options).map(([letter, coords]: [string, any]) => (
+                                           <div 
+                                             key={`${questionNum}-${letter}`}
+                                             className="w-3 h-3 border border-green-400 rounded-sm bg-green-300/20 flex items-center justify-center"
+                                           >
+                                             <div className="w-1.5 h-1.5 bg-green-400 rounded-full opacity-60"></div>
+                                           </div>
+                                         ))}
+                                       </div>
+                                     </div>
+                                   ))}
+                                 </div>
+
+                                 {/* Área das questões - lado direito (se houver mais questões) */}
+                                 {Object.keys(examInfo.bubbleCoordinates).length > 4 && (
+                                   <div className="absolute top-16 right-4 space-y-2">
+                                     {Object.entries(examInfo.bubbleCoordinates).slice(4).map(([questionNum, options]: [string, any], index) => (
+                                       <div key={questionNum} className="flex items-center gap-2">
+                                         {/* Número da questão */}
+                                         <div className="w-4 h-4 bg-green-600 text-white text-xs flex items-center justify-center rounded-sm font-bold">
+                                           {String(index + 5).padStart(2, '0')}
+                                         </div>
+                                         {/* Bolhas das opções */}
+                                         <div className="flex gap-1">
+                                           {Object.entries(options).map(([letter, coords]: [string, any]) => (
+                                             <div 
+                                               key={`${questionNum}-${letter}`}
+                                               className="w-3 h-3 border border-green-400 rounded-sm bg-green-300/20 flex items-center justify-center"
+                                             >
+                                               <div className="w-1.5 h-1.5 bg-green-400 rounded-full opacity-60"></div>
+                                             </div>
+                                           ))}
+                                         </div>
+                                       </div>
+                                     ))}
+                                   </div>
+                                 )}
+
+                                 {/* Área de informações do aluno (parte inferior) */}
+                                 <div className="absolute bottom-2 left-2 right-2 border border-green-400/50 rounded bg-green-400/10 p-1">
+                                   <div className="grid grid-cols-3 gap-1 text-xs text-green-300">
+                                     <div className="border border-green-400/30 rounded px-1 text-center">Aluno</div>
+                                     <div className="border border-green-400/30 rounded px-1 text-center">Matrícula</div>
+                                     <div className="border border-green-400/30 rounded px-1 text-center">Nota</div>
+                                   </div>
+                                 </div>
+                                 
+                                 {/* Indicador de coordenadas precisas */}
+                                 <div className="absolute top-1 right-1">
+                                   <div className="bg-green-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+                                     🎯 {Object.keys(examInfo.bubbleCoordinates).length}Q
+                                   </div>
+                                 </div>
+
+                                 {/* Cantos de alinhamento */}
+                                 <div className="absolute -top-1 -left-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
+                                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
+                                 <div className="absolute -bottom-1 -left-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
+                                 <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full animate-ping"></div>
+                               </div>
+                             ) : (
+                               // Máscara genérica da folha de resposta
+                               <div className="w-72 h-52 border-4 border-orange-500 rounded-lg bg-orange-500/10 animate-pulse">
+                                 {/* QR Code indicativo */}
+                                 <div className="absolute top-2 left-2 w-10 h-10 border-2 border-orange-400 rounded bg-orange-400/20">
+                                   <div className="w-full h-full text-xs flex items-center justify-center text-orange-600 font-bold">QR</div>
+                                 </div>
+                                 
+                                 {/* Linhas simulando questões */}
+                                 <div className="absolute top-14 left-4 space-y-2">
+                                   {[1, 2, 3, 4].map(num => (
+                                     <div key={num} className="flex items-center gap-2">
+                                       <div className="w-4 h-4 bg-orange-500 text-white text-xs flex items-center justify-center rounded font-bold">
+                                         {String(num).padStart(2, '0')}
+                                       </div>
+                                       <div className="flex gap-1">
+                                         {['A', 'B', 'C', 'D', 'E'].map(letter => (
+                                           <div key={letter} className="w-3 h-3 border border-orange-400 rounded bg-orange-300/30"></div>
+                                         ))}
+                                       </div>
+                                     </div>
+                                   ))}
+                                 </div>
+
+                                 {/* Área de informações */}
+                                 <div className="absolute bottom-2 left-2 right-2 border border-orange-400/50 rounded bg-orange-400/10 p-1">
+                                   <div className="text-xs text-orange-300 text-center">Dados do Aluno</div>
+                                 </div>
+                                 
+                                 {/* Cantos de referência */}
+                                 <div className="absolute -top-2 -left-2 w-6 h-6 border-t-4 border-l-4 border-orange-400"></div>
+                                 <div className="absolute -top-2 -right-2 w-6 h-6 border-t-4 border-r-4 border-orange-400"></div>
+                                 <div className="absolute -bottom-2 -left-2 w-6 h-6 border-b-4 border-l-4 border-orange-400"></div>
+                                 <div className="absolute -bottom-2 -right-2 w-6 h-6 border-b-4 border-r-4 border-orange-400"></div>
+                               </div>
+                             )}
+                             
+                             <div className="absolute -bottom-12 left-1/2 transform -translate-x-1/2 text-xs text-center max-w-xs">
+                               <div className={`font-bold px-3 py-2 rounded ${
+                                 showAlignmentOverlay && examInfo?.bubbleCoordinates 
+                                   ? 'text-green-300 bg-green-900/80' 
+                                   : 'text-orange-300 bg-orange-900/80'
+                               }`}>
+                                 {showAlignmentOverlay && examInfo?.bubbleCoordinates ? 
+                                   '🎯 Alinhe a folha de resposta com a máscara. QR no canto esquerdo, questões visíveis.' : 
+                                   '📋 Posicione a folha de resposta com QR visível no canto superior esquerdo'
+                                 }
+                               </div>
+                             </div>
+                           </div>
+                         </div>
+                       )}
                     </div>
                     
                     {/* Canvas invisível para processamento */}
