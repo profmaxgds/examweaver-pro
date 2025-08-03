@@ -2,6 +2,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { jsPDF } from "https://esm.sh/jspdf@2.5.1";
 
 // Módulos que você já usa (assumindo que estão na mesma pasta)
 import { fetchExamData as fetchVersionExamData } from './data-fetcher.ts';
@@ -144,124 +145,266 @@ async function fetchBatchExamData(supabase: SupabaseClient, examId: string) {
     }
 }
 
-// FUNÇÃO para medir coordenadas das bolhas usando Puppeteer
-async function measureBubbleCoordinates(html: string) {
-    console.log('Iniciando medição de coordenadas das bolhas...');
+// FUNÇÃO para calcular coordenadas das bolhas matematicamente (baseado no layout CSS)
+function calculateBubbleCoordinates(studentQuestions: any[], exam: any) {
+    console.log('Calculando coordenadas das bolhas matematicamente...');
     
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    const bubbleCoordinates: any = {};
+    
+    // Constantes baseadas no CSS do layout
+    const PAGE_MARGIN = 42.5; // 1.5cm em pontos (1cm = 28.35 pontos)
+    const ANSWER_GRID_TOP = 150; // Posição aproximada do grid
+    const BUBBLE_SIZE = 11;
+    const BUBBLE_MARGIN = 2.5;
+    const Q_NUMBER_WIDTH = 30;
+    const Q_NUMBER_MARGIN = 6;
+    const ANCHOR_WIDTH = 11;
+    const ANCHOR_MARGIN = 7;
+    const ROW_HEIGHT = 15;
+    const COLUMN_GAP = 30;
+    
+    // Calcular número de colunas baseado no total de questões
+    const totalQuestions = studentQuestions.length;
+    const numCols = totalQuestions <= 6 ? 1 : totalQuestions <= 12 ? 2 : 3;
+    const questionsPerColumn = Math.ceil(totalQuestions / numCols);
+    
+    studentQuestions.forEach((q, globalIndex) => {
+        if (q.type === 'multiple_choice' && q.options) {
+            const questionNumber = globalIndex + 1;
+            
+            // Determinar em qual coluna está a questão
+            const columnIndex = Math.floor(globalIndex / questionsPerColumn);
+            const rowInColumn = globalIndex % questionsPerColumn;
+            
+            // Calcular posição X da coluna
+            const columnStartX = PAGE_MARGIN + (columnIndex * (200 + COLUMN_GAP)); // 200px largura aproximada por coluna
+            
+            // Calcular posição Y da linha
+            const rowY = ANSWER_GRID_TOP + (rowInColumn * ROW_HEIGHT) + 25; // +25 para o header das opções
+            
+            // Posição X base das bolhas (após âncora e número da questão)
+            const bubblesStartX = columnStartX + ANCHOR_WIDTH + ANCHOR_MARGIN + Q_NUMBER_WIDTH + Q_NUMBER_MARGIN;
+            
+            bubbleCoordinates[questionNumber] = {};
+            
+            q.options.forEach((opt: any, optIndex: number) => {
+                const letter = String.fromCharCode(65 + optIndex); // A, B, C, D
+                
+                const bubbleX = bubblesStartX + (optIndex * (BUBBLE_SIZE + (BUBBLE_MARGIN * 2)));
+                
+                bubbleCoordinates[questionNumber][letter] = {
+                    x: Math.round(bubbleX),
+                    y: Math.round(rowY),
+                    width: BUBBLE_SIZE,
+                    height: BUBBLE_SIZE,
+                    centerX: Math.round(bubbleX + (BUBBLE_SIZE / 2)),
+                    centerY: Math.round(rowY + (BUBBLE_SIZE / 2))
+                };
+            });
+        }
     });
     
-    try {
-        const page = await browser.newPage();
-        
-        // Configurar a página para A4
-        await page.setViewport({ width: 794, height: 1123 }); // A4 em pixels (72 DPI)
-        
-        // Carregar o HTML
-        await page.setContent(html, { waitUntil: 'networkidle0' });
-        
-        // Script para medir as coordenadas das bolhas
-        const coordinates = await page.evaluate(() => {
-            const bubbles = document.querySelectorAll('.bubble');
-            const coords: any = {};
-            
-            bubbles.forEach((bubble, index) => {
-                const rect = bubble.getBoundingClientRect();
-                const questionNum = bubble.getAttribute('data-question') || 
-                                  bubble.closest('[data-question]')?.getAttribute('data-question');
-                const optionLetter = bubble.getAttribute('data-option') || 
-                                   bubble.textContent?.trim();
-                
-                if (questionNum && optionLetter) {
-                    if (!coords[questionNum]) {
-                        coords[questionNum] = {};
-                    }
-                    
-                    coords[questionNum][optionLetter] = {
-                        x: Math.round(rect.left),
-                        y: Math.round(rect.top),
-                        width: Math.round(rect.width),
-                        height: Math.round(rect.height),
-                        centerX: Math.round(rect.left + rect.width / 2),
-                        centerY: Math.round(rect.top + rect.height / 2)
-                    };
-                }
-            });
-            
-            return coords;
-        });
-        
-        console.log(`Medidas obtidas para ${Object.keys(coordinates).length} questões`);
-        return coordinates;
-        
-    } finally {
-        await browser.close();
-    }
+    console.log(`Coordenadas calculadas para ${Object.keys(bubbleCoordinates).length} questões`);
+    return bubbleCoordinates;
 }
 
-// FUNÇÃO para gerar PDF usando Puppeteer
-async function generatePDFWithPuppeteer(html: string, examTitle: string, studentName: string) {
-    console.log(`Gerando PDF para ${studentName}...`);
-    
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+// FUNÇÃO para gerar PDF usando jsPDF
+async function generatePDFWithJsPDF(exam: any, studentQuestions: any[], studentInfo: any, includeAnswers: boolean = false) {
+    console.log(`Gerando PDF com jsPDF para ${studentInfo.name}...`);
     
     try {
-        const page = await browser.newPage();
+        const doc = new jsPDF({
+            orientation: 'portrait',
+            unit: 'pt',
+            format: 'a4'
+        });
         
-        // Carregar o HTML
-        await page.setContent(html, { waitUntil: 'networkidle0' });
+        // Configurações da página A4 em pontos
+        const pageWidth = 595;
+        const pageHeight = 842;
+        const margin = 42.5; // 1.5cm
         
-        // Gerar PDF
-        const pdfBuffer = await page.pdf({
-            format: 'A4',
-            printBackground: true,
-            margin: {
-                top: '1cm',
-                right: '1cm',
-                bottom: '1cm',
-                left: '1cm'
+        let currentY = margin;
+        
+        // CABEÇALHO
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text(exam.title, margin, currentY);
+        currentY += 25;
+        
+        if (exam.professor_name) {
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Professor: ${exam.professor_name}`, margin, currentY);
+            currentY += 20;
+        }
+        
+        // INFORMAÇÕES DO ALUNO
+        doc.setFontSize(10);
+        doc.text(`Aluno: ${studentInfo.name}`, margin, currentY);
+        doc.text(`Matrícula: ${studentInfo.id}`, pageWidth - 200, currentY);
+        currentY += 15;
+        doc.text(`Turma: ${studentInfo.class}`, margin, currentY);
+        doc.text(`Curso: ${studentInfo.course}`, pageWidth - 200, currentY);
+        currentY += 25;
+        
+        // QR CODE (simulado como texto por enquanto)
+        doc.setFontSize(8);
+        doc.text(`QR: ${studentInfo.qrId}`, margin, currentY);
+        currentY += 20;
+        
+        // GRID DE RESPOSTAS
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('GABARITO - Marque completamente as alternativas:', margin, currentY);
+        currentY += 20;
+        
+        // Desenhar grid de respostas
+        const gridStartY = currentY;
+        const bubbleSize = 11;
+        const bubbleSpacing = 25;
+        const rowHeight = 15;
+        
+        // Cabeçalho das opções (A, B, C, D)
+        doc.setFontSize(9);
+        ['A', 'B', 'C', 'D'].forEach((letter, index) => {
+            doc.text(letter, margin + 50 + (index * bubbleSpacing), currentY);
+        });
+        currentY += 15;
+        
+        // Desenhar bolhas para cada questão
+        studentQuestions.forEach((q, index) => {
+            const questionNum = index + 1;
+            
+            if (q.type === 'multiple_choice' && q.options) {
+                // Número da questão
+                doc.setFont('helvetica', 'bold');
+                doc.text(`${questionNum}.`, margin, currentY + 8);
+                
+                // Desenhar bolhas
+                q.options.forEach((opt: any, optIndex: number) => {
+                    const bubbleX = margin + 50 + (optIndex * bubbleSpacing);
+                    const bubbleY = currentY;
+                    
+                    doc.circle(bubbleX + (bubbleSize/2), bubbleY + (bubbleSize/2), bubbleSize/2, 'S');
+                    
+                    // Marcar resposta correta se incluir respostas
+                    if (includeAnswers) {
+                        const isCorrect = Array.isArray(q.correct_answer) ? 
+                            q.correct_answer.includes(opt.id) : 
+                            opt.id === q.correct_answer;
+                        
+                        if (isCorrect) {
+                            doc.circle(bubbleX + (bubbleSize/2), bubbleY + (bubbleSize/2), bubbleSize/3, 'F');
+                        }
+                    }
+                });
+                
+                currentY += rowHeight;
+            } else if (q.type === 'true_false') {
+                // Número da questão
+                doc.setFont('helvetica', 'bold');
+                doc.text(`${questionNum}.`, margin, currentY + 8);
+                
+                // Bolhas V/F
+                ['V', 'F'].forEach((letter, index) => {
+                    const bubbleX = margin + 50 + (index * bubbleSpacing);
+                    const bubbleY = currentY;
+                    
+                    doc.circle(bubbleX + (bubbleSize/2), bubbleY + (bubbleSize/2), bubbleSize/2, 'S');
+                    doc.text(letter, bubbleX + (bubbleSize/2) - 3, bubbleY + (bubbleSize/2) + 3);
+                    
+                    // Marcar resposta correta se incluir respostas
+                    if (includeAnswers) {
+                        const isCorrect = (letter === 'V' && q.correct_answer) || (letter === 'F' && !q.correct_answer);
+                        if (isCorrect) {
+                            doc.circle(bubbleX + (bubbleSize/2), bubbleY + (bubbleSize/2), bubbleSize/3, 'F');
+                        }
+                    }
+                });
+                
+                currentY += rowHeight;
+            } else {
+                // Questão dissertativa
+                doc.setFont('helvetica', 'normal');
+                doc.text(`${questionNum}. Dissertativa`, margin, currentY + 8);
+                currentY += rowHeight;
             }
         });
         
-        console.log(`PDF gerado com sucesso para ${studentName}`);
-        return pdfBuffer;
+        currentY += 30;
         
-    } finally {
-        await browser.close();
-    }
-}
-
-// FUNÇÃO para salvar PDF no Storage
-async function savePDFToStorage(supabase: SupabaseClient, pdfBuffer: Uint8Array, examId: string, studentId: string, studentName: string) {
-    const fileName = `${studentName.replace(/[^a-zA-Z0-9]/g, '_')}_${studentId}.pdf`;
-    const filePath = `${examId}/${fileName}`;
-    
-    console.log(`Salvando PDF no storage: ${filePath}`);
-    
-    const { data, error } = await supabase.storage
-        .from('generated-exams')
-        .upload(filePath, pdfBuffer, {
-            contentType: 'application/pdf',
-            upsert: true
+        // QUESTÕES
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('QUESTÕES:', margin, currentY);
+        currentY += 25;
+        
+        studentQuestions.forEach((q, index) => {
+            const questionNum = index + 1;
+            
+            // Verificar se precisa de nova página
+            if (currentY > pageHeight - 100) {
+                doc.addPage();
+                currentY = margin;
+            }
+            
+            // Título da questão
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`${questionNum}. ${q.title}`, margin, currentY);
+            currentY += 20;
+            
+            // Conteúdo da questão (texto simples por enquanto)
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            const content = q.content.replace(/<[^>]*>/g, ''); // Remove HTML tags
+            const lines = doc.splitTextToSize(content, pageWidth - (margin * 2));
+            doc.text(lines, margin, currentY);
+            currentY += lines.length * 12;
+            
+            // Opções (se multiple choice)
+            if (q.type === 'multiple_choice' && q.options) {
+                currentY += 10;
+                q.options.forEach((opt: any, optIndex: number) => {
+                    const letter = String.fromCharCode(65 + optIndex);
+                    const optionText = `${letter}) ${opt.text}`;
+                    
+                    if (includeAnswers && (Array.isArray(q.correct_answer) ? q.correct_answer.includes(opt.id) : opt.id === q.correct_answer)) {
+                        doc.setFont('helvetica', 'bold');
+                    } else {
+                        doc.setFont('helvetica', 'normal');
+                    }
+                    
+                    const optionLines = doc.splitTextToSize(optionText, pageWidth - (margin * 2));
+                    doc.text(optionLines, margin + 15, currentY);
+                    currentY += optionLines.length * 12;
+                });
+            }
+            
+            // Espaço para resposta dissertativa
+            if (q.type === 'essay') {
+                currentY += 10;
+                const textLines = q.text_lines || 5;
+                for (let i = 0; i < textLines; i++) {
+                    doc.line(margin, currentY, pageWidth - margin, currentY);
+                    currentY += 20;
+                }
+            }
+            
+            currentY += 15; // Espaço entre questões
         });
-    
-    if (error) {
-        console.error('Erro ao fazer upload do PDF:', error);
-        throw new Error(`Erro ao salvar PDF: ${error.message}`);
+        
+        // Gerar PDF como array buffer
+        const pdfBuffer = doc.output('arraybuffer');
+        console.log(`PDF gerado com sucesso para ${studentInfo.name}`);
+        
+        return new Uint8Array(pdfBuffer);
+        
+    } catch (error) {
+        console.error('Erro ao gerar PDF com jsPDF:', error);
+        throw error;
     }
-    
-    // Obter URL pública
-    const { data: urlData } = supabase.storage
-        .from('generated-exams')
-        .getPublicUrl(filePath);
-    
-    console.log(`PDF salvo com sucesso: ${urlData.publicUrl}`);
-    return urlData.publicUrl;
 }
 
 
@@ -333,43 +476,25 @@ serve(async (req) => {
                         qrId: `${exam.id}-${student.id}`
                     };
                     
-                    // Gerar HTML
-                    const html = generateExamHTML(exam, studentQuestions, 1, includeAnswers, studentInfo);
+                    // GERAR PDF COM JSPDF
+                    const pdfBuffer = await generatePDFWithJsPDF(exam, studentQuestions, studentInfo, includeAnswers);
                     
-                    // COORDENADAS SIMULADAS (sem Puppeteer por enquanto)
-                    const bubbleCoordinates: any = {};
-                    studentQuestions.forEach((q, index) => {
-                        if (q.type === 'multiple_choice' && q.options) {
-                            bubbleCoordinates[`${index + 1}`] = {};
-                            q.options.forEach((opt: any, optIndex: number) => {
-                                const letter = String.fromCharCode(65 + optIndex); // A, B, C, D
-                                bubbleCoordinates[`${index + 1}`][letter] = {
-                                    x: 50 + (optIndex * 25),
-                                    y: 100 + (index * 20),
-                                    width: 11,
-                                    height: 11,
-                                    centerX: 55 + (optIndex * 25),
-                                    centerY: 105 + (index * 20)
-                                };
-                            });
-                        }
-                    });
+                    // CALCULAR COORDENADAS DAS BOLHAS
+                    const bubbleCoordinates = calculateBubbleCoordinates(studentQuestions, exam);
                     
-                    // SALVAR HTML NO STORAGE (ao invés de PDF)
-                    const fileName = `${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.html`;
+                    // SALVAR PDF NO STORAGE
+                    const fileName = `${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.pdf`;
                     const filePath = `${examId}/${fileName}`;
-                    
-                    const htmlBlob = new TextEncoder().encode(html);
                     
                     const { error: uploadError } = await supabase.storage
                         .from('generated-exams')
-                        .upload(filePath, htmlBlob, {
-                            contentType: 'text/html',
+                        .upload(filePath, pdfBuffer, {
+                            contentType: 'application/pdf',
                             upsert: true
                         });
                     
                     if (uploadError) {
-                        throw new Error(`Erro ao salvar HTML: ${uploadError.message}`);
+                        throw new Error(`Erro ao salvar PDF: ${uploadError.message}`);
                     }
                     
                     // Obter URL pública
