@@ -698,10 +698,19 @@ export default function EditExamPage() {
                             
                             // Salvar HTML do gabarito no banco de dados
                             const htmlContent = await answerKeyBlob.text();
-                            await supabase
+                            console.log(`Tentando salvar HTML para studentExamId: ${result.studentExamId}`);
+                            
+                            const { data: updateData, error: updateError } = await supabase
                                 .from('student_exams')
                                 .update({ html_content: htmlContent } as any)
-                                .eq('id', result.studentExamId);
+                                .eq('id', result.studentExamId)
+                                .select();
+                                
+                            if (updateError) {
+                                console.error(`Erro ao salvar HTML para ${result.studentName}:`, updateError);
+                            } else {
+                                console.log(`✅ HTML salvo com sucesso para ${result.studentName}:`, updateData);
+                            }
                         } else {
                             console.error(`Erro ao baixar gabarito para ${result.studentName}:`, answerKeyResponse.status);
                         }
@@ -770,10 +779,19 @@ export default function EditExamPage() {
                 if (versionExams) {
                     const versionExam = versionExams.find(ve => ve.version_id === `version-${version}`);
                     if (versionExam) {
-                        await supabase
+                        console.log(`Tentando salvar HTML para versão ${version}, studentExamId: ${versionExam.id}`);
+                        
+                        const { data: updateData, error: updateError } = await supabase
                             .from('student_exams')
                             .update({ html_content: htmlGabarito } as any)
-                            .eq('id', versionExam.id);
+                            .eq('id', versionExam.id)
+                            .select();
+                            
+                        if (updateError) {
+                            console.error(`Erro ao salvar HTML para versão ${version}:`, updateError);
+                        } else {
+                            console.log(`✅ HTML salvo com sucesso para versão ${version}:`, updateData);
+                        }
                     }
                 }
             }
