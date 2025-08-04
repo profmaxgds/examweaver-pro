@@ -122,59 +122,7 @@ export default function Home() {
                 <CardContent><div className="text-2xl font-bold">{loading ? <Skeleton className="h-8 w-12" /> : stats.corrections}</div><div className="text-xs text-muted-foreground">Total de provas corrigidas</div></CardContent>
               </Card>
             </Link>
-          </div>
-
-          {/* Seção de Destaque - Corretor Inteligente */}
-          <Card className="border-green-200/50 bg-gradient-to-r from-green-50 to-blue-50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <Smartphone className="w-6 h-6 text-green-600" />
-                Corretor Inteligente - Novidade!
-              </CardTitle>
-              <CardDescription className="text-base">
-                Revolucione a correção de provas com tecnologia de câmera e QR Code
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
-                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                    <QrCode className="w-5 h-5 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">Leitura de QR Code</p>
-                    <p className="text-xs text-muted-foreground">Identificação automática da prova</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    <ScanLine className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">Visão Computacional</p>
-                    <p className="text-xs text-muted-foreground">Detecção inteligente de marcações</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
-                  <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                    <Zap className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">Tempo Real</p>
-                    <p className="text-xs text-muted-foreground">Correção instantânea com feedback</p>
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <Link to="/corretor-inteligente" className="no-underline flex-1">
-                  <Button className="gap-2 w-full bg-green-600 hover:bg-green-700">
-                    <Camera className="w-4 h-4" />
-                    Experimente o Corretor Inteligente
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
+           </div>
 
           {/* Seção de Destaque - Gestão de Gabaritos */}
           <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-secondary/5">
@@ -222,25 +170,8 @@ export default function Home() {
                     </div>
                   </div>
                 </Link>
-                <Link to="/corretor-inteligente" className="no-underline">
-                  <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-                    <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
-                      <Camera className="w-5 h-5 text-orange-600" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-sm">Corretor Inteligente</p>
-                      <p className="text-xs text-muted-foreground">Leitura de QR e correção em tempo real</p>
-                    </div>
-                  </div>
-                </Link>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Link to="/corretor-inteligente" className="no-underline">
-                  <Button className="gap-2 w-full bg-green-600 hover:bg-green-700">
-                    <Smartphone className="w-4 h-4" />
-                    Novo: Corretor Inteligente
-                  </Button>
-                </Link>
                 <Link to="/auto-correction" className="no-underline">
                   <Button variant="outline" className="gap-2 w-full">
                     <Camera className="w-4 h-4" />
