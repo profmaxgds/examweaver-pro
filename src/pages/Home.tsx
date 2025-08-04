@@ -170,14 +170,14 @@ export default function Home() {
                     </div>
                   </div>
                 </Link>
-                <Link to="/corrections-management" className="no-underline">
+                <Link to="/corretor-inteligente" className="no-underline">
                   <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
                     <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
-                      <Send className="w-5 h-5 text-orange-600" />
+                      <Camera className="w-5 h-5 text-orange-600" />
                     </div>
                     <div>
-                      <p className="font-semibold text-sm">Publicação</p>
-                      <p className="text-xs text-muted-foreground">Envio individual ou em massa</p>
+                      <p className="font-semibold text-sm">Corretor Inteligente</p>
+                      <p className="text-xs text-muted-foreground">Leitura de QR e correção em tempo real</p>
                     </div>
                   </div>
                 </Link>
