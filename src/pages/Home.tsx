@@ -8,7 +8,7 @@ import { useUserRoles } from '@/hooks/useUserRoles';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, BookCopy, Users, User, CheckCircle, Target, Send, Camera, Shield } from 'lucide-react';
+import { BookOpen, FileText, PlusCircle, BarChart3, Upload, LogOut, ClipboardList, BookCopy, Users, User, CheckCircle, Target, Send, Camera, Shield, Smartphone, Zap, QrCode, ScanLine } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface HomeStats {
@@ -124,15 +124,67 @@ export default function Home() {
             </Link>
           </div>
 
+          {/* Seção de Destaque - Corretor Inteligente */}
+          <Card className="border-green-200/50 bg-gradient-to-r from-green-50 to-blue-50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Smartphone className="w-6 h-6 text-green-600" />
+                Corretor Inteligente - Novidade!
+              </CardTitle>
+              <CardDescription className="text-base">
+                Revolucione a correção de provas com tecnologia de câmera e QR Code
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
+                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                    <QrCode className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">Leitura de QR Code</p>
+                    <p className="text-xs text-muted-foreground">Identificação automática da prova</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
+                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                    <ScanLine className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">Visão Computacional</p>
+                    <p className="text-xs text-muted-foreground">Detecção inteligente de marcações</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm">
+                  <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                    <Zap className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">Tempo Real</p>
+                    <p className="text-xs text-muted-foreground">Correção instantânea com feedback</p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Link to="/corretor-inteligente" className="no-underline flex-1">
+                  <Button className="gap-2 w-full bg-green-600 hover:bg-green-700">
+                    <Camera className="w-4 h-4" />
+                    Experimente o Corretor Inteligente
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Seção de Destaque - Gestão de Gabaritos */}
           <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-secondary/5">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">
                 <ClipboardList className="w-6 h-6 text-primary" />
-                Sistema Avançado de Gestão de Gabaritos
+                Sistema Tradicional de Correção
               </CardTitle>
               <CardDescription className="text-base">
-                Plataforma completa para correção automática e manual de provas com tecnologia OCR
+                Métodos clássicos de correção com tecnologia OCR avançada
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -183,16 +235,22 @@ export default function Home() {
                 </Link>
               </div>
               <div className="flex flex-wrap gap-3">
+                <Link to="/corretor-inteligente" className="no-underline">
+                  <Button className="gap-2 w-full bg-green-600 hover:bg-green-700">
+                    <Smartphone className="w-4 h-4" />
+                    Novo: Corretor Inteligente
+                  </Button>
+                </Link>
                 <Link to="/auto-correction" className="no-underline">
-                  <Button className="gap-2 w-full">
+                  <Button variant="outline" className="gap-2 w-full">
                     <Camera className="w-4 h-4" />
-                    Iniciar Correção
+                    Correção por Upload
                   </Button>
                 </Link>
                 <Link to="/corrections-management" className="no-underline">
                   <Button variant="outline" className="gap-2 w-full">
                     <ClipboardList className="w-4 h-4" />
-                    Gestão de Gabaritos
+                    Gestão Manual
                   </Button>
                 </Link>
                 <Link to="/reports" className="no-underline">
