@@ -178,29 +178,49 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
     const rowHeight = 15; // height: 15px por linha
     const rowMarginBottom = 4; // margin-bottom: 4px
     
-    // === CÁLCULO DOS OFFSETS VERTICAIS (ordem de aparição no HTML) ===
-    let yOffset = bodyPaddingPt; // Margem superior do body
+    // === CÁLCULO EXATO DOS OFFSETS VERTICAIS (baseado no CSS real) ===
+    let yOffset = bodyPaddingPt; // body { padding: 1.5cm; }
     
-    // 1. CUSTOM HEADER
-    const headerHeight = 105; // ~80px + padding-bottom 10px + margin-bottom 25px
-    yOffset += headerHeight;
+    // 1. CUSTOM HEADER (CSS exato)
+    const customHeaderFontSize = 11; // font-size: 11pt
+    const customHeaderLineHeight = 1.5; // line-height: 1.5
+    const customHeaderPaddingBottom = 10; // padding-bottom: 10px
+    const customHeaderMarginBottom = 25; // margin-bottom: 25px
+    const customHeaderBorderBottom = 2; // border-bottom: 2px solid #000
     
-    // 2. INSTRUCTIONS (se existir)
+    // Altura real do custom-header baseada no conteúdo
+    // 5 linhas de texto (instituição, professor, disciplina, curso, aluno) + 1 linha de detalhes
+    const headerTextLines = 6;
+    const headerTextHeight = headerTextLines * (customHeaderFontSize * customHeaderLineHeight);
+    const headerTotalHeight = Math.max(80, headerTextHeight) + customHeaderPaddingBottom + customHeaderMarginBottom + customHeaderBorderBottom;
+    yOffset += headerTotalHeight;
+    
+    // 2. INSTRUCTIONS (se existir - CSS exato)
     if (exam?.instructions) {
-        const instructionsHeight = 50; // estimativa para instruções
-        yOffset += instructionsHeight;
+        const instructionsFontSize = 10; // font-size: 10pt
+        const instructionsPadding = 20; // padding: 10px (top+bottom)
+        const instructionsMarginBottom = 25; // margin-bottom: 25px
+        const instructionsBorder = 2; // border: 1px solid (top+bottom)
+        
+        // Estimar altura baseada no comprimento do texto
+        const estimatedLines = Math.ceil(exam.instructions.length / 80); // ~80 chars por linha
+        const instructionsTextHeight = estimatedLines * (instructionsFontSize * 1.4); // line-height default
+        const instructionsTotalHeight = instructionsTextHeight + instructionsPadding + instructionsMarginBottom + instructionsBorder;
+        yOffset += instructionsTotalHeight;
     }
     
-    // 3. ANSWER-SHEET-CONTAINER até o início da grade
-    const qrCodeSectionWidth = 140; // flex: 0 0 140px (LARGURA, não altura)
-    const gapBetweenQrAndGrid = 8.5; // gap: 0.3cm
-    const answerGridPaddingTop = 10; // padding: 10px 5px
-    const answerGridHeaderHeight = 20; // altura do texto "Marque o gabarito..."
+    // 3. ANSWER-SHEET-CONTAINER componentes (CSS exato)
+    const answerSheetMarginBottom = 25; // margin-bottom: 25px
+    const answerGridPaddingTop = 10; // padding: 10px 5px (top)
+    const answerGridHeaderFontSize = 9; // font-size: 9pt
     const answerGridHeaderMarginBottom = 8; // margin-bottom: 8px
-    const answerOptionsHeaderHeight = 15; // height: 15px do cabeçalho A B C D
+    const answerOptionsHeaderHeight = 15; // height: 15px
     const answerOptionsHeaderMarginBottom = 4; // margin-bottom: 4px
     
-    // Somando tudo até o início das linhas de questões
+    // Altura do cabeçalho da grade (uma linha de texto)
+    const answerGridHeaderHeight = answerGridHeaderFontSize * 1.4; // line-height estimado
+    
+    // Somar tudo até o início das linhas de questões
     yOffset += answerGridPaddingTop + answerGridHeaderHeight + answerGridHeaderMarginBottom + 
               answerOptionsHeaderHeight + answerOptionsHeaderMarginBottom;
     
@@ -209,20 +229,34 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
     const numCols = totalQuestions <= 6 ? 1 : totalQuestions <= 12 ? 2 : 3;
     const questionsPerColumn = Math.ceil(totalQuestions / numCols);
     
-    // === CÁLCULO DOS OFFSETS HORIZONTAIS ===
-    let xOffset = bodyPaddingPt; // Margem esquerda do body
-    xOffset += qrCodeSectionWidth; // Largura da seção QR
-    xOffset += gapBetweenQrAndGrid; // Gap entre QR e grid
-    xOffset += 5; // padding-left da answer-grid-section
+    // === CÁLCULO DOS OFFSETS HORIZONTAIS (CSS exato) ===
+    let xOffset = bodyPaddingPt; // body { padding: 1.5cm; } - margem esquerda
+    
+    // Largura da seção QR Code
+    const qrCodeSectionWidth = 140; // flex: 0 0 140px
+    xOffset += qrCodeSectionWidth;
+    
+    // Gap entre QR e grid
+    const gapBetweenQrAndGrid = 8.5; // gap: 0.3cm convertido para pontos
+    xOffset += gapBetweenQrAndGrid;
+    
+    // Padding da answer-grid-section
+    const answerGridPaddingLeft = 5; // padding: 10px 5px (left)
+    xOffset += answerGridPaddingLeft;
     
     // Largura disponível para as colunas
-    const remainingWidth = pageWidthPt - xOffset - bodyPaddingPt - 5; // 5px padding-right
-    const columnDividerWidth = 1.5;
-    const columnDividerMargin = 20; // margin: 0 10px = 20px total
-    const totalDividerWidth = (numCols - 1) * (columnDividerWidth + columnDividerMargin);
+    const answerGridPaddingRight = 5; // padding: 10px 5px (right)
+    const remainingWidth = pageWidthPt - xOffset - bodyPaddingPt - answerGridPaddingRight;
+    
+    // Configuração dos divisores de coluna
+    const columnDividerWidth = 1.5; // width: 1.5px
+    const columnDividerMarginLeft = 10; // margin: 0 10px
+    const columnDividerMarginRight = 10; // margin: 0 10px
+    const columnDividerTotalWidth = columnDividerWidth + columnDividerMarginLeft + columnDividerMarginRight;
+    const totalDividerWidth = (numCols - 1) * columnDividerTotalWidth;
     const columnWidth = (remainingWidth - totalDividerWidth) / numCols;
     
-    // Espaçamento à esquerda dentro de cada coluna
+    // Espaçamento à esquerda dentro de cada coluna (antes dos bubbles)
     const totalLeftSpacing = anchorWidth + anchorMarginRight + qNumberWidth + qNumberMarginRight;
     
     let currentColumn = 0;
@@ -241,7 +275,7 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
         const questionY = yOffset + (questionInColumn * (rowHeight + rowMarginBottom));
         
         // === CÁLCULO DA POSIÇÃO X ===
-        const columnStartX = xOffset + (currentColumn * (columnWidth + columnDividerWidth + columnDividerMargin));
+        const columnStartX = xOffset + (currentColumn * (columnWidth + columnDividerTotalWidth));
         const questionBaseX = columnStartX + totalLeftSpacing;
         
         // Calcular coordenadas dos bubbles para esta questão
