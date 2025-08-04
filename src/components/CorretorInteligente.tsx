@@ -43,33 +43,118 @@ export function CorretorInteligente() {
   const [correcaoResults, setCorrecaoResults] = useState<CorrecaoResult[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [score, setScore] = useState<{ correct: number; total: number; percentage: number } | null>(null);
+  const [scanningStatus, setScanningStatus] = useState<string>('');
+  const [frameCount, setFrameCount] = useState(0);
 
-  // Iniciar câmera
+  // Iniciar câmera com fallback robusto
   const startCamera = useCallback(async () => {
     try {
-      const constraints = {
-        video: { 
-          facingMode: 'environment', // Câmera traseira
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      };
+      console.log('🎥 === INICIANDO CAPTURA DE CÂMERA ===');
+      console.log('🌐 User Agent:', navigator.userAgent);
+      console.log('🔒 Protocolo:', window.location.protocol);
       
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
+      // Verificar suporte básico
+      if (!navigator.mediaDevices) {
+        console.error('❌ navigator.mediaDevices não disponível');
+        toast.error('Câmera não suportada - tente acessar via HTTPS');
+        return;
       }
+
+      if (!navigator.mediaDevices.getUserMedia) {
+        console.error('❌ getUserMedia não disponível');
+        toast.error('Câmera não suportada neste browser');
+        return;
+      }
+
+      console.log('✅ APIs de mídia disponíveis');
+
+      // Tentar configurações de câmera com fallback robusto
+      let stream: MediaStream | null = null;
       
-      setIsScanning(true);
-      
-      // Iniciar detecção de QR code
-      startQRDetection();
+      try {
+        // Tentativa 1: Câmera traseira com alta resolução
+        console.log('🔄 Tentativa 1: Câmera traseira com alta resolução');
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
+        });
+        console.log('✅ Stream obtido com câmera traseira!');
+      } catch (firstError) {
+        console.warn('⚠️ Primeira tentativa falhou:', firstError);
+        
+        try {
+          // Tentativa 2: Câmera traseira com resolução menor
+          console.log('🔄 Tentativa 2: Câmera traseira com resolução menor');
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: 'environment',
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            }
+          });
+          console.log('✅ Stream obtido com câmera traseira (resolução menor)!');
+        } catch (secondError) {
+          console.warn('⚠️ Segunda tentativa falhou:', secondError);
+          
+          try {
+            // Tentativa 3: Câmera frontal
+            console.log('🔄 Tentativa 3: Câmera frontal');
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                facingMode: 'user',
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+              }
+            });
+            console.log('✅ Stream obtido com câmera frontal!');
+          } catch (thirdError) {
+            console.warn('⚠️ Terceira tentativa falhou:', thirdError);
+            
+            try {
+              // Tentativa 4: Qualquer câmera disponível
+              console.log('🔄 Tentativa 4: Qualquer câmera');
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: true
+              });
+              console.log('✅ Stream obtido com qualquer câmera!');
+            } catch (fourthError) {
+              console.error('❌ Todas as tentativas falharam:', fourthError);
+              
+              if (fourthError.name === 'NotAllowedError') {
+                toast.error('Permissão negada! Permita o acesso à câmera e tente novamente.');
+              } else if (fourthError.name === 'NotFoundError') {
+                toast.error('Nenhuma câmera encontrada no dispositivo.');
+              } else if (fourthError.name === 'NotSupportedError') {
+                toast.error('Câmera não suportada. Tente acessar via HTTPS.');
+              } else {
+                toast.error(`Erro: ${fourthError.message}`);
+              }
+              return;
+            }
+          }
+        }
+      }
+
+      if (stream) {
+        console.log('📊 Configurações do stream:', stream.getVideoTracks()[0]?.getSettings());
+        streamRef.current = stream;
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+        
+        setIsScanning(true);
+        
+        // Iniciar detecção de QR code
+        startQRDetection();
+      }
     } catch (error) {
-      console.error('Erro ao acessar câmera:', error);
-      toast.error('Erro ao acessar a câmera. Verifique as permissões.');
+      console.error('💥 Erro geral:', error);
+      toast.error('Erro inesperado ao acessar câmera');
     }
   }, []);
 
@@ -82,36 +167,127 @@ export function CorretorInteligente() {
     setIsScanning(false);
   }, []);
 
-  // Detecção de QR code
+  // Detecção de QR code otimizada
   const startQRDetection = useCallback(() => {
-    const detectQR = () => {
-      if (!videoRef.current || !canvasRef.current || !isScanning) return;
+    let frameCount = 0;
+    let lastDetectionTime = 0;
+    const detectionInterval = 100; // Detectar a cada 100ms para melhor performance
+    
+    const detectQR = (timestamp: number) => {
+      if (!videoRef.current || !canvasRef.current || !isScanning || gabaritoData) return;
+      
+      // Throttle da detecção para evitar sobrecarga
+      if (timestamp - lastDetectionTime < detectionInterval) {
+        if (isScanning) {
+          requestAnimationFrame(detectQR);
+        }
+        return;
+      }
+      
+      lastDetectionTime = timestamp;
+      frameCount++;
+      setFrameCount(frameCount);
+      
+      // Atualizar status de scanning
+      if (frameCount % 30 === 0) { // A cada 30 frames (aprox. 3 segundos)
+        setScanningStatus(`Procurando QR code... (Frame ${frameCount})`);
+      }
       
       const canvas = canvasRef.current;
       const video = videoRef.current;
       const context = canvas.getContext('2d');
       
-      if (!context) return;
-      
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
-      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-      const qrCode = jsQR(imageData.data, imageData.width, imageData.height);
-      
-      if (qrCode && !gabaritoData) {
-        console.log('QR Code detectado:', qrCode.data);
-        handleQRDetected(qrCode.data);
+      if (!context || video.readyState < 2) {
+        if (isScanning) {
+          requestAnimationFrame(detectQR);
+        }
+        return;
       }
       
-      if (isScanning) {
+      // Usar resolução otimizada para detecção (menor para performance)
+      const detectionWidth = Math.min(video.videoWidth, 800);
+      const detectionHeight = Math.min(video.videoHeight, 600);
+      
+      canvas.width = detectionWidth;
+      canvas.height = detectionHeight;
+      context.drawImage(video, 0, 0, detectionWidth, detectionHeight);
+      
+      try {
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        
+        // Configurações otimizadas do jsQR para melhor detecção
+        const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'dontInvert', // Não tentar inversão para performance
+        });
+        
+        if (qrCode && qrCode.data && qrCode.data.trim().length > 0) {
+          console.log('🎯 QR Code detectado:', qrCode.data);
+          console.log('📍 Posição:', qrCode.location);
+          console.log('📊 Frame #:', frameCount);
+          
+          // Validar se o QR code parece válido (contém informações estruturadas)
+          try {
+            // Tentar detectar se é um QR code de prova válido
+            if (qrCode.data.includes('exam') || qrCode.data.includes('student') || qrCode.data.length > 10) {
+              handleQRDetected(qrCode.data);
+              return; // Parar detecção após encontrar QR válido
+            }
+          } catch (validationError) {
+            console.log('⚠️ QR Code inválido ignorado:', qrCode.data);
+          }
+        }
+        
+        // Aplicar filtros de melhoria de imagem a cada 10 frames para tentar melhorar detecção
+        if (frameCount % 10 === 0) {
+          try {
+            // Aumentar contraste para melhorar detecção
+            const enhancedImageData = enhanceImageForQR(imageData);
+            const enhancedQrCode = jsQR(enhancedImageData.data, enhancedImageData.width, enhancedImageData.height);
+            
+            if (enhancedQrCode && enhancedQrCode.data && enhancedQrCode.data.trim().length > 0) {
+              console.log('🎯 QR Code detectado (melhorado):', enhancedQrCode.data);
+              if (enhancedQrCode.data.includes('exam') || enhancedQrCode.data.includes('student') || enhancedQrCode.data.length > 10) {
+                handleQRDetected(enhancedQrCode.data);
+                return;
+              }
+            }
+          } catch (enhanceError) {
+            console.log('⚠️ Erro no melhoramento de imagem:', enhanceError);
+          }
+        }
+        
+      } catch (detectionError) {
+        console.log('⚠️ Erro na detecção QR:', detectionError);
+      }
+      
+      if (isScanning && !gabaritoData) {
         requestAnimationFrame(detectQR);
       }
     };
     
-    detectQR();
+    // Iniciar detecção
+    requestAnimationFrame(detectQR);
   }, [isScanning, gabaritoData]);
+
+  // Função para melhorar qualidade da imagem para detecção de QR
+  const enhanceImageForQR = useCallback((imageData: ImageData): ImageData => {
+    const data = new Uint8ClampedArray(imageData.data);
+    
+    for (let i = 0; i < data.length; i += 4) {
+      // Converter para escala de cinza e aumentar contraste
+      const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      
+      // Aplicar threshold para binarizar a imagem
+      const enhanced = gray > 128 ? 255 : 0;
+      
+      data[i] = enhanced;     // R
+      data[i + 1] = enhanced; // G
+      data[i + 2] = enhanced; // B
+      // data[i + 3] mantém o alpha
+    }
+    
+    return new ImageData(data, imageData.width, imageData.height);
+  }, []);
 
   // Processar QR code detectado
   const handleQRDetected = async (qrData: string) => {
@@ -380,15 +556,39 @@ export function CorretorInteligente() {
           {/* Status */}
           <div className="text-center space-y-2">
             {!gabaritoData && isScanning && (
-              <p className="text-muted-foreground">
-                Aponte a câmera para o QR code da prova
-              </p>
+              <div className="space-y-1">
+                <p className="text-muted-foreground">
+                  📱 Aponte a câmera para o QR code da prova
+                </p>
+                {scanningStatus && (
+                  <p className="text-xs text-blue-600">
+                    {scanningStatus}
+                  </p>
+                )}
+                {frameCount > 0 && (
+                  <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span>Escaneando (Frame: {frameCount})</span>
+                  </div>
+                )}
+              </div>
             )}
             
             {isProcessing && (
-              <p className="text-blue-600">
-                Processando...
-              </p>
+              <div className="flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-blue-600">
+                  Processando...
+                </p>
+              </div>
+            )}
+
+            {gabaritoData && !isProcessing && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <p className="text-green-800 text-sm font-medium">
+                  ✅ QR Code detectado! Posicione o gabarito na área verde e clique em "Corrigir Prova"
+                </p>
+              </div>
             )}
           </div>
         </CardContent>
