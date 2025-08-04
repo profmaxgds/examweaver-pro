@@ -559,29 +559,22 @@ serve(async (req) => {
                     console.log(`Tentando salvar HTML para studentExamId: ${realStudentExamId}`);
                     console.log(`Tamanho do HTML: ${answerKeyHtmlContent.length} caracteres`);
                     
-                    const { data: updateData, error: updateHtmlError } = await supabase
-                        .rpc('update_html_content', {
-                            student_exam_id: realStudentExamId,
-                            html_data: answerKeyHtmlContent
-                        });
-                    
-                    if (updateHtmlError) {
-                        console.error(`Erro ao salvar HTML do gabarito para ${student.name}:`, updateHtmlError);
-                        
-                        // Fallback: tentar update direto
-                        console.log('Tentando fallback com update direto...');
-                        const { error: fallbackError } = await supabase
+                    try {
+                        const { data: updateData, error: updateHtmlError } = await supabase
                             .from('student_exams')
-                            .update({ html_content: answerKeyHtmlContent } as any)
-                            .eq('id', realStudentExamId);
-                            
-                        if (fallbackError) {
-                            console.error(`Fallback também falhou:`, fallbackError);
+                            .update({ 
+                                html_content: answerKeyHtmlContent 
+                            })
+                            .eq('id', realStudentExamId)
+                            .select('id, html_content');
+                        
+                        if (updateHtmlError) {
+                            console.error(`Erro ao salvar HTML do gabarito para ${student.name}:`, updateHtmlError);
                         } else {
-                            console.log(`✓ Fallback: HTML salvo com sucesso para ${student.name}`);
+                            console.log(`✓ HTML do gabarito salvo no banco para ${student.name}:`, updateData?.length > 0 ? 'Sucesso' : 'Nenhuma linha atualizada');
                         }
-                    } else {
-                        console.log(`✓ HTML do gabarito salvo no banco para ${student.name}:`, updateData);
+                    } catch (updateError) {
+                        console.error(`Erro na tentativa de update:`, updateError);
                     }
                     
                     // OBTER URLs dos arquivos
