@@ -445,7 +445,8 @@ serve(async (req) => {
                     // Criar info do aluno para o HTML
                     const studentInfo = {
                         name: student.name,
-                        id: student.student_id || 'N/A',
+                        id: student.student_id || 'N/A', // Matrícula para exibição
+                        studentUUID: student.id, // UUID real para QR code
                         course: student.course || 'N/A',
                         class: student.class?.name || 'N/A',
                         qrId: null // Será preenchido após inserção no banco
@@ -669,7 +670,8 @@ serve(async (req) => {
         
         const studentInfo = {
             name: preparedExamData.student?.name || 'N/A',
-            id: preparedExamData.student?.student_id || 'N/A',
+            id: preparedExamData.student?.student_id || 'N/A', // Matrícula para exibição
+            studentUUID: preparedExamData.student?.id, // UUID real para QR code
             course: preparedExamData.student?.course || 'N/A',
             class: preparedExamData.student?.class?.name || 'N/A',
             qrId: studentExamId // Usar o studentExamId real que foi passado como parâmetro

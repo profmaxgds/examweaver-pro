@@ -305,7 +305,7 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
                 <div class="qr-code-section">
                     <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(JSON.stringify({
                         examId: exam.id,
-                        studentId: studentInfo?.id || 'version-' + version,
+                        studentId: studentInfo?.studentUUID || 'version-' + version,
                         version: version,
                         studentExamId: studentInfo?.qrId || null
                     }))}" alt="QR Code" />
