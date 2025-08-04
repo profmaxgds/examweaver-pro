@@ -555,26 +555,46 @@ serve(async (req) => {
                         throw new Error(`Erro ao salvar gabarito: ${answerKeyUploadError.message}`);
                     }
                     
-                    // SALVAR HTML DO GABARITO DIRETAMENTE NO BANCO
-                    console.log(`Tentando salvar HTML para studentExamId: ${realStudentExamId}`);
-                    console.log(`Tamanho do HTML: ${answerKeyHtmlContent.length} caracteres`);
+                    // SALVAR HTML DA PROVA NA NOVA TABELA exam_generated_files
+                    const { error: saveExamError } = await supabase
+                        .from('exam_generated_files')
+                        .upsert({
+                            student_exam_id: realStudentExamId,
+                            exam_id: exam.id,
+                            file_type: 'exam_html',
+                            content: examHtmlContent,
+                            student_name: student.name,
+                            student_id: student.student_id,
+                            version_number: 1
+                        }, {
+                            onConflict: 'student_exam_id,file_type'
+                        });
                     
-                    try {
-                        const { data: updateData, error: updateHtmlError } = await supabase
-                            .from('student_exams')
-                            .update({ 
-                                html_content: answerKeyHtmlContent 
-                            })
-                            .eq('id', realStudentExamId)
-                            .select('id, html_content');
-                        
-                        if (updateHtmlError) {
-                            console.error(`Erro ao salvar HTML do gabarito para ${student.name}:`, updateHtmlError);
-                        } else {
-                            console.log(`✓ HTML do gabarito salvo no banco para ${student.name}:`, updateData?.length > 0 ? 'Sucesso' : 'Nenhuma linha atualizada');
-                        }
-                    } catch (updateError) {
-                        console.error(`Erro na tentativa de update:`, updateError);
+                    if (saveExamError) {
+                        console.error(`Erro ao salvar HTML da prova para ${student.name}:`, saveExamError);
+                    } else {
+                        console.log(`✓ HTML da prova salvo para ${student.name}`);
+                    }
+
+                    // SALVAR HTML DO GABARITO NA NOVA TABELA exam_generated_files
+                    const { error: saveAnswerKeyError } = await supabase
+                        .from('exam_generated_files')
+                        .upsert({
+                            student_exam_id: realStudentExamId,
+                            exam_id: exam.id,
+                            file_type: 'answer_key_html',
+                            content: answerKeyHtmlContent,
+                            student_name: student.name,
+                            student_id: student.student_id,
+                            version_number: 1
+                        }, {
+                            onConflict: 'student_exam_id,file_type'
+                        });
+                    
+                    if (saveAnswerKeyError) {
+                        console.error(`Erro ao salvar HTML do gabarito para ${student.name}:`, saveAnswerKeyError);
+                    } else {
+                        console.log(`✓ HTML do gabarito salvo para ${student.name}`);
                     }
                     
                     // OBTER URLs dos arquivos
