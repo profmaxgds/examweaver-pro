@@ -304,9 +304,10 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
             <div class="answer-sheet-container">
                 <div class="qr-code-section">
                     <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(JSON.stringify({
-                        student_exams_id: studentInfo?.qrId,
-                        exam_id: exam.id,
-                        student_id: studentInfo?.studentUUID || null
+                        examId: exam.id,
+                        studentId: studentInfo?.studentUUID || 'version-' + version,
+                        version: version,
+                        studentExamId: studentInfo?.qrId || null
                     }))}" alt="QR Code" />
                     <p>Prova: ${exam.id.split('-')[0]}.${studentInfo?.id || version}</p>
                 </div>

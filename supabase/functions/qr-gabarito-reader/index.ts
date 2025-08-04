@@ -119,15 +119,11 @@ serve(async (req) => {
       );
     }
 
-    // Extrair informações do QR code - atualizado para novos nomes
-    const { student_exams_id, exam_id, student_id } = qrInfo;
+    const { examId, studentExamId, studentId } = qrInfo;
     
-    if (!exam_id || !student_exams_id) {
+    if (!examId || !studentExamId) {
       return new Response(
-        JSON.stringify({ 
-          error: 'Missing required QR code information', 
-          details: 'exam_id and student_exams_id are required' 
-        }),
+        JSON.stringify({ error: 'Missing required QR code information' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -140,11 +136,11 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Buscar o gabarito HTML da nova tabela (usando a nova variável)
+    // Buscar o gabarito HTML da nova tabela
     const { data: gabaritoFile, error: gabaritoError } = await supabase
       .from('exam_generated_files')
       .select('*')
-      .eq('student_exam_id', student_exams_id)
+      .eq('student_exam_id', studentExamId)
       .eq('file_type', 'answer_key_html')
       .single();
 
@@ -159,11 +155,11 @@ serve(async (req) => {
       );
     }
 
-    // Buscar informações do exame (usando a nova variável)
+    // Buscar informações do exame
     const { data: exam, error: examError } = await supabase
       .from('exams')
       .select('title, subject, total_points')
-      .eq('id', exam_id)
+      .eq('id', examId)
       .single();
 
     if (examError) {
@@ -179,7 +175,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         exam: {
-          id: exam_id,
+          id: examId,
           title: exam?.title || 'Prova',
           subject: exam?.subject || 'Disciplina',
           total_points: exam?.total_points || 100
@@ -187,7 +183,7 @@ serve(async (req) => {
         student: {
           name: gabaritoFile.student_name,
           student_id: gabaritoFile.student_id,
-          student_exam_id: student_exams_id
+          student_exam_id: studentExamId
         },
         gabarito: gabaritoData.answers,
         coordinates: gabaritoData.coordinates,
