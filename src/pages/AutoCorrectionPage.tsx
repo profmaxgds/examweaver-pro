@@ -751,13 +751,45 @@ export default function AutoCorrectionPage() {
 
   // Etapa 2: Processar marcações e fazer correção (APENAS questões fechadas)
   const processCorrection = async () => {
-    if (!selectedFile || !examInfo || !user) {
+    if (!selectedFile || !user) {
       toast({
         title: "Erro",
-        description: "Informações da prova não encontradas.",
+        description: "Arquivo não encontrado.",
         variant: "destructive",
       });
       return;
+    }
+
+    // Se não temos examInfo, tentar detectar QR code primeiro
+    if (!examInfo) {
+      try {
+        toast({
+          title: "Detectando QR code...",
+          description: "Buscando informações da prova na imagem",
+        });
+
+        const qrCodeText = await readQRCodeFromFile(selectedFile);
+        if (qrCodeText) {
+          console.log('✅ QR code detectado durante processamento!');
+          await processQRCodeData(qrCodeText);
+          // Depois que o QR foi processado, continuar com a correção
+        } else {
+          toast({
+            title: "QR Code não encontrado",
+            description: "Não foi possível detectar o QR code da prova na imagem.",
+            variant: "destructive",
+          });
+          return;
+        }
+      } catch (error) {
+        console.error('Erro ao detectar QR code:', error);
+        toast({
+          title: "Erro na detecção",
+          description: "Não foi possível detectar o QR code da prova.",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     setIsProcessing(true);
@@ -1128,30 +1160,17 @@ export default function AutoCorrectionPage() {
       const convertedFile = await convertHeicToJpeg(file);
       setSelectedFile(convertedFile);
       
-      // Tentar detectar QR code automaticamente no arquivo
-      try {
-        const qrCodeText = await readQRCodeFromFile(convertedFile);
-        if (qrCodeText) {
-          console.log('✅ QR code detectado no arquivo!');
-          await processQRCodeData(qrCodeText);
-          
-          // Criar preview da imagem
-          const previewUrl = URL.createObjectURL(convertedFile);
-          setPreviewImage(previewUrl);
-          return;
-        }
-      } catch (error) {
-        console.log('ℹ️ QR code não encontrado no arquivo, mas isso é ok');
-      }
-      
-      // Se não detectou QR code, mostrar preview normal
+      // Criar preview da imagem
       const previewUrl = URL.createObjectURL(convertedFile);
       setPreviewImage(previewUrl);
       
       toast({
         title: "Arquivo carregado!",
-        description: "Use 'Processar Correção' para detectar QR code e corrigir.",
+        description: "Processando automaticamente...",
       });
+      
+      // Processar correção diretamente
+      await processCorrection();
       
     } catch (error) {
       console.error('Erro ao processar arquivo:', error);
