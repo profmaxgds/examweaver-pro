@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Play, Square, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
+import { Camera, Play, Square, CheckCircle, XCircle, RotateCcw, ArrowLeft, QrCode } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import jsQR from 'jsqr';
+import { Link } from 'react-router-dom';
 
 interface GabaritoData {
   exam: {
@@ -45,6 +46,7 @@ export function CorretorInteligente() {
   const [score, setScore] = useState<{ correct: number; total: number; percentage: number } | null>(null);
   const [scanningStatus, setScanningStatus] = useState<string>('');
   const [frameCount, setFrameCount] = useState(0);
+  const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Iniciar câmera com fallback robusto
   const startCamera = useCallback(async () => {
@@ -160,114 +162,119 @@ export function CorretorInteligente() {
 
   // Parar câmera
   const stopCamera = useCallback(() => {
+    setIsScanning(false);
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
-    setIsScanning(false);
   }, []);
 
-  // Detecção de QR code otimizada
-  const startQRDetection = useCallback(() => {
-    let frameCount = 0;
-    let lastDetectionTime = 0;
-    const detectionInterval = 100; // Detectar a cada 100ms para melhor performance
+  // Função para escaneamento automático contínuo ultra-rápido
+  const startAutoScan = useCallback(() => {
+    if (scanIntervalRef.current) return;
     
-    const detectQR = (timestamp: number) => {
-      if (!videoRef.current || !canvasRef.current || !isScanning || gabaritoData) return;
-      
-      // Throttle da detecção para evitar sobrecarga
-      if (timestamp - lastDetectionTime < detectionInterval) {
-        if (isScanning) {
-          requestAnimationFrame(detectQR);
-        }
-        return;
+    console.log('🚀 Iniciando escaneamento ultra-rápido...');
+    setScanningStatus('Iniciando escaneamento ultra-rápido...');
+    
+    scanIntervalRef.current = setInterval(() => {
+      if (videoRef.current && videoRef.current.readyState >= 2) {
+        scanVideoForQR();
       }
-      
-      lastDetectionTime = timestamp;
-      frameCount++;
-      setFrameCount(frameCount);
-      
-      // Atualizar status de scanning
-      if (frameCount % 30 === 0) { // A cada 30 frames (aprox. 3 segundos)
-        setScanningStatus(`Procurando QR code... (Frame ${frameCount})`);
-      }
-      
-      const canvas = canvasRef.current;
-      const video = videoRef.current;
-      const context = canvas.getContext('2d');
-      
-      if (!context || video.readyState < 2) {
-        if (isScanning) {
-          requestAnimationFrame(detectQR);
-        }
-        return;
-      }
-      
-      // Usar resolução otimizada para detecção (menor para performance)
-      const detectionWidth = Math.min(video.videoWidth, 800);
-      const detectionHeight = Math.min(video.videoHeight, 600);
-      
-      canvas.width = detectionWidth;
-      canvas.height = detectionHeight;
-      context.drawImage(video, 0, 0, detectionWidth, detectionHeight);
-      
+    }, 50); // 20x por segundo para detecção instantânea
+  }, []);
+
+  // Função otimizada para escanear vídeo em busca de QR code
+  const scanVideoForQR = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current || !isScanning || !streamRef.current || gabaritoData) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+
+    if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
+
+    // Usar resolução muito pequena para máxima velocidade
+    const scanWidth = 320;
+    const scanHeight = 240;
+    
+    canvas.width = scanWidth;
+    canvas.height = scanHeight;
+    
+    // Desenhar com suavização desabilitada para velocidade
+    context.imageSmoothingEnabled = false;
+    context.drawImage(video, 0, 0, scanWidth, scanHeight);
+
+    const imageData = context.getImageData(0, 0, scanWidth, scanHeight);
+    
+    // Tentar múltiplas configurações para máxima compatibilidade
+    const configurations = [
+      { inversionAttempts: "dontInvert" as const },
+      { inversionAttempts: "onlyInvert" as const },
+      { inversionAttempts: "attemptBoth" as const },
+      { inversionAttempts: "invertFirst" as const }
+    ];
+
+    for (const config of configurations) {
       try {
-        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, config);
         
-        // Configurações otimizadas do jsQR para melhor detecção
-        const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: 'dontInvert', // Não tentar inversão para performance
-        });
-        
-        if (qrCode && qrCode.data && qrCode.data.trim().length > 0) {
-          console.log('🎯 QR Code detectado:', qrCode.data);
-          console.log('📍 Posição:', qrCode.location);
-          console.log('📊 Frame #:', frameCount);
+        if (code && code.data && code.data.trim()) {
+          console.log('✅ QR code detectado instantaneamente:', code.data);
           
-          // Validar se o QR code parece válido (contém informações estruturadas)
+          // Som de beep
           try {
-            // Tentar detectar se é um QR code de prova válido
-            if (qrCode.data.includes('exam') || qrCode.data.includes('student') || qrCode.data.length > 10) {
-              handleQRDetected(qrCode.data);
-              return; // Parar detecção após encontrar QR válido
-            }
-          } catch (validationError) {
-            console.log('⚠️ QR Code inválido ignorado:', qrCode.data);
-          }
-        }
-        
-        // Aplicar filtros de melhoria de imagem a cada 10 frames para tentar melhorar detecção
-        if (frameCount % 10 === 0) {
-          try {
-            // Aumentar contraste para melhorar detecção
-            const enhancedImageData = enhanceImageForQR(imageData);
-            const enhancedQrCode = jsQR(enhancedImageData.data, enhancedImageData.width, enhancedImageData.height);
+            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
             
-            if (enhancedQrCode && enhancedQrCode.data && enhancedQrCode.data.trim().length > 0) {
-              console.log('🎯 QR Code detectado (melhorado):', enhancedQrCode.data);
-              if (enhancedQrCode.data.includes('exam') || enhancedQrCode.data.includes('student') || enhancedQrCode.data.length > 10) {
-                handleQRDetected(enhancedQrCode.data);
-                return;
-              }
-            }
-          } catch (enhanceError) {
-            console.log('⚠️ Erro no melhoramento de imagem:', enhanceError);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = 1200;
+            oscillator.type = 'square';
+            
+            gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.2);
+          } catch (error) {
+            console.log('Erro ao reproduzir som:', error);
           }
+          
+          setIsScanning(false);
+          if (scanIntervalRef.current) {
+            clearInterval(scanIntervalRef.current);
+            scanIntervalRef.current = null;
+          }
+          handleQRDetected(code.data);
+          return; // Sair da função após detecção
         }
-        
-      } catch (detectionError) {
-        console.log('⚠️ Erro na detecção QR:', detectionError);
+      } catch (error) {
+        // Continuar para próxima configuração
+        continue;
       }
-      
-      if (isScanning && !gabaritoData) {
-        requestAnimationFrame(detectQR);
-      }
-    };
+    }
     
-    // Iniciar detecção
-    requestAnimationFrame(detectQR);
+    // Atualizar contador de frames
+    setFrameCount(prev => {
+      const newCount = prev + 1;
+      if (newCount % 100 === 0) {
+        setScanningStatus(`Escaneando... ${newCount} frames processados`);
+      }
+      return newCount;
+    });
   }, [isScanning, gabaritoData]);
+
+  // Detecção de QR code - agora só chama startAutoScan
+  const startQRDetection = useCallback(() => {
+    console.log('🎯 Iniciando detecção de QR code...');
+    startAutoScan();
+  }, [startAutoScan]);
 
   // Função para melhorar qualidade da imagem para detecção de QR
   const enhanceImageForQR = useCallback((imageData: ImageData): ImageData => {
@@ -493,11 +500,34 @@ export function CorretorInteligente() {
   useEffect(() => {
     return () => {
       stopCamera();
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
     };
   }, [stopCamera]);
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-background">
+      {/* Header com botão voltar */}
+      <header className="border-b bg-card">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <Link to="/">
+                <Button variant="ghost" size="sm">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Home
+                </Button>
+              </Link>
+              <h1 className="text-2xl font-bold">Corretor Inteligente</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -515,6 +545,27 @@ export function CorretorInteligente() {
               muted
               playsInline
             />
+            
+            {/* Overlay de guia para QR code quando escaneando */}
+            {isScanning && !gabaritoData && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="relative">
+                  <div className="w-48 h-48 border-4 border-blue-500 rounded-lg bg-blue-500/10 animate-pulse">
+                    <div className="absolute -top-2 -left-2 w-6 h-6 border-t-4 border-l-4 border-blue-400"></div>
+                    <div className="absolute -top-2 -right-2 w-6 h-6 border-t-4 border-r-4 border-blue-400"></div>
+                    <div className="absolute -bottom-2 -left-2 w-6 h-6 border-b-4 border-l-4 border-blue-400"></div>
+                    <div className="absolute -bottom-2 -right-2 w-6 h-6 border-b-4 border-r-4 border-blue-400"></div>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <QrCode className="w-16 h-16 text-blue-400 animate-pulse" />
+                    </div>
+                  </div>
+                  <p className="text-sm text-blue-600 mt-2 text-center font-medium">
+                    Posicione o QR code da prova aqui
+                  </p>
+                </div>
+              </div>
+            )}
+            
             <canvas
               ref={overlayCanvasRef}
               className="absolute top-0 left-0 w-full h-full pointer-events-none"
@@ -666,6 +717,8 @@ export function CorretorInteligente() {
           </CardContent>
         </Card>
       )}
+        </div>
+      </main>
     </div>
   );
 }
