@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Play, Square, CheckCircle, XCircle, RotateCcw, ArrowLeft, QrCode, Loader2 } from 'lucide-react';
+import { Camera, Play, Square, CheckCircle, XCircle, RotateCcw, ArrowLeft, QrCode, Loader2, Scan } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +7,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import jsQR from 'jsqr';
 import { Link } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
+import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 
 interface GabaritoData {
   exam: {
@@ -46,11 +48,23 @@ export function CorretorInteligente() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [score, setScore] = useState<{ correct: number; total: number; percentage: number } | null>(null);
   const [cameraStarted, setCameraStarted] = useState(false);
+  const [isNative, setIsNative] = useState(false);
+  const [scanMethod, setScanMethod] = useState<'web' | 'native'>('web');
 
-  // Auto-iniciar câmera quando componente carregar
+  // Detectar se é ambiente nativo e auto-iniciar
   useEffect(() => {
-    console.log('🚀 Auto-iniciando câmera...');
-    startCamera();
+    const native = Capacitor.isNativePlatform();
+    setIsNative(native);
+    
+    // Em dispositivos móveis nativos, usar método nativo primeiro
+    if (native) {
+      setScanMethod('native');
+      console.log('📱 Dispositivo nativo detectado, usando Capacitor Camera');
+    } else {
+      setScanMethod('web');
+      console.log('🌐 Navegador web detectado, usando WebRTC');
+      startCamera();
+    }
     
     return () => {
       cleanup();
@@ -103,13 +117,13 @@ export function CorretorInteligente() {
 
       console.log('📱 Iniciando câmera...');
 
-      // Configurações otimizadas para QR code scanning
+      // Configurações otimizadas para QR code scanning com câmera traseira
       const constraints = {
         video: {
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          frameRate: { ideal: 30 },
-          facingMode: { ideal: 'environment' } // Câmera traseira preferível
+          width: { ideal: 1920, min: 640 },
+          height: { ideal: 1080, min: 480 },
+          frameRate: { ideal: 30, min: 15 },
+          facingMode: 'environment' // Força câmera traseira
         },
         audio: false
       };
@@ -367,13 +381,106 @@ export function CorretorInteligente() {
     });
   };
 
+  // Usar Capacitor Camera para dispositivos nativos
+  const scanWithNativeCamera = async () => {
+    try {
+      setIsScanning(true);
+      console.log('📱 Iniciando scanner nativo...');
+      
+      const image = await CapacitorCamera.getPhoto({
+        quality: 90,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Camera,
+        saveToGallery: false,
+        promptLabelHeader: 'Scanner QR Code',
+        promptLabelPhoto: 'Tirar Foto',
+        promptLabelPicture: 'Escolher da Galeria'
+      });
+
+      if (image.dataUrl) {
+        await processImageForQR(image.dataUrl);
+      }
+    } catch (error) {
+      console.error('❌ Erro no scanner nativo:', error);
+      toast({
+        title: "❌ Erro na Câmera",
+        description: "Não foi possível acessar a câmera nativa",
+        variant: "destructive"
+      });
+      setIsScanning(false);
+    }
+  };
+
+  // Processar imagem capturada em busca de QR code
+  const processImageForQR = async (dataUrl: string) => {
+    try {
+      console.log('🔍 Processando imagem para QR code...');
+      
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        
+        if (!context) return;
+        
+        canvas.width = img.width;
+        canvas.height = img.height;
+        context.drawImage(img, 0, 0);
+        
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        
+        // Tentar múltiplas configurações
+        const configurations = [
+          { inversionAttempts: "dontInvert" as const },
+          { inversionAttempts: "onlyInvert" as const },
+          { inversionAttempts: "attemptBoth" as const }
+        ];
+
+        for (const config of configurations) {
+          try {
+            const code = jsQR(imageData.data, imageData.width, imageData.height, config);
+            
+            if (code && code.data && code.data.trim()) {
+              console.log('✅ QR code encontrado na imagem:', code.data);
+              playBeep();
+              setIsScanning(false);
+              handleQRDetected(code.data);
+              return;
+            }
+          } catch (error) {
+            continue;
+          }
+        }
+        
+        // Se não encontrou QR code
+        console.log('❌ Nenhum QR code encontrado na imagem');
+        toast({
+          title: "❌ QR Code não encontrado",
+          description: "Tente novamente posicionando melhor o QR code",
+          variant: "destructive"
+        });
+        setIsScanning(false);
+      };
+      
+      img.src = dataUrl;
+    } catch (error) {
+      console.error('❌ Erro ao processar imagem:', error);
+      setIsScanning(false);
+    }
+  };
+
   const reset = () => {
     setGabaritoData(null);
     setCorrecaoResults([]);
     setScore(null);
     setIsProcessing(false);
-    setIsScanning(true);
-    startAutoScan();
+    if (scanMethod === 'web') {
+      setIsScanning(true);
+      startAutoScan();
+    } else {
+      setIsScanning(false);
+    }
   };
 
   const drawGuideMask = () => {
@@ -483,32 +590,100 @@ export function CorretorInteligente() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
-            <canvas
-              ref={overlayCanvasRef}
-              className="absolute inset-0 w-full h-full pointer-events-none"
-            />
-            <canvas
-              ref={canvasRef}
-              className="hidden"
-            />
-            
-            {!cameraStarted && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                <div className="text-center text-white">
-                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-                  <p>Iniciando câmera...</p>
+          {scanMethod === 'native' ? (
+            // Interface para scanner nativo
+            <div className="space-y-4">
+              <div className="relative aspect-video bg-gradient-to-br from-primary/20 to-secondary/20 rounded-lg overflow-hidden flex items-center justify-center">
+                <div className="text-center space-y-4">
+                  <div className="w-24 h-24 mx-auto rounded-full bg-primary/20 flex items-center justify-center">
+                    <Scan className="w-12 h-12 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Scanner Inteligente</h3>
+                    <p className="text-muted-foreground text-sm">
+                      Toque no botão abaixo para abrir a câmera traseira e escanear o QR code da prova
+                    </p>
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
+              
+              <div className="flex justify-center">
+                <Button
+                  onClick={scanWithNativeCamera}
+                  disabled={isScanning}
+                  size="lg"
+                  className="flex items-center gap-2"
+                >
+                  {isScanning ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="w-5 h-5" />
+                      Escanear QR Code
+                    </>
+                  )}
+                </Button>
+              </div>
+              
+              <div className="text-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setScanMethod('web');
+                    startCamera();
+                  }}
+                >
+                  Usar câmera web instead
+                </Button>
+              </div>
+            </div>
+          ) : (
+            // Interface para câmera web
+            <div className="space-y-4">
+              <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+                <canvas
+                  ref={overlayCanvasRef}
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                />
+                <canvas
+                  ref={canvasRef}
+                  className="hidden"
+                />
+                
+                {!cameraStarted && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                    <div className="text-center text-white">
+                      <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
+                      <p>Iniciando câmera...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="text-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setScanMethod('native');
+                  }}
+                >
+                  Usar scanner nativo instead
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
