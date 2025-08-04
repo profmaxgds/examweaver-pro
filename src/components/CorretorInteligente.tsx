@@ -288,7 +288,7 @@ export function CorretorInteligente() {
     }, 50); // 20x por segundo para detecção instantânea
   };
 
-  // Função otimizada para escanear vídeo em busca de QR code (copiado da AutoCorrectionPage)
+  // Função otimizada para escanear vídeo em busca de QR code (ultra-robusta)
   const scanVideoForQR = () => {
     if (!videoRef.current || !canvasRef.current || !isScanning || !streamRef.current) return;
 
@@ -298,45 +298,59 @@ export function CorretorInteligente() {
 
     if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
 
-    // Usar resolução muito pequena para máxima velocidade
-    const scanWidth = 320;
-    const scanHeight = 240;
-    
-    canvas.width = scanWidth;
-    canvas.height = scanHeight;
-    
-    // Desenhar com suavização desabilitada para velocidade
-    context.imageSmoothingEnabled = false;
-    context.drawImage(video, 0, 0, scanWidth, scanHeight);
+    try {
+      // Usar múltiplas resoluções para máxima detecção
+      const resolutions = [
+        { width: 640, height: 480 },
+        { width: 800, height: 600 },
+        { width: 480, height: 320 },
+        { width: 1024, height: 768 }
+      ];
 
-    const imageData = context.getImageData(0, 0, scanWidth, scanHeight);
-    
-    // Tentar múltiplas configurações para máxima compatibilidade (copiado da AutoCorrectionPage)
-    const configurations = [
-      { inversionAttempts: "dontInvert" as const },
-      { inversionAttempts: "onlyInvert" as const },
-      { inversionAttempts: "attemptBoth" as const }
-    ];
-
-    for (const config of configurations) {
-      try {
-        const code = jsQR(imageData.data, imageData.width, imageData.height, config);
+      for (const resolution of resolutions) {
+        canvas.width = resolution.width;
+        canvas.height = resolution.height;
         
-        if (code && code.data && code.data.trim()) {
-          console.log('✅ QR code detectado instantaneamente:', code.data);
-          playBeep(); // Som de confirmação
-          setIsScanning(false);
-          if (scanIntervalRef.current) {
-            clearInterval(scanIntervalRef.current);
-            scanIntervalRef.current = null;
+        // Configurações de renderização para melhor qualidade
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(video, 0, 0, resolution.width, resolution.height);
+
+        const imageData = context.getImageData(0, 0, resolution.width, resolution.height);
+        
+        // Configurações ultra-agressivas para detecção
+        const configurations = [
+          { inversionAttempts: "dontInvert" as const },
+          { inversionAttempts: "onlyInvert" as const },
+          { inversionAttempts: "attemptBoth" as const },
+          { inversionAttempts: "invertFirst" as const }
+        ];
+
+        for (const config of configurations) {
+          try {
+            const code = jsQR(imageData.data, imageData.width, imageData.height, config);
+            
+            if (code && code.data && code.data.trim().length > 10) {
+              console.log('✅ QR code detectado instantaneamente:', code.data);
+              console.log('📐 Resolução usada:', resolution.width, 'x', resolution.height);
+              
+              playBeep(); // Som de confirmação
+              setIsScanning(false);
+              if (scanIntervalRef.current) {
+                clearInterval(scanIntervalRef.current);
+                scanIntervalRef.current = null;
+              }
+              handleQRDetected(code.data);
+              return; // Sair da função após detecção
+            }
+          } catch (error) {
+            // Continuar para próxima configuração
+            continue;
           }
-          handleQRDetected(code.data);
-          return; // Sair da função após detecção
         }
-      } catch (error) {
-        // Continuar para próxima configuração
-        continue;
       }
+    } catch (error) {
+      console.error('Erro durante escaneamento:', error);
     }
   };
 
