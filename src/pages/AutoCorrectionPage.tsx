@@ -17,6 +17,7 @@ import { preprocessImage } from '@/utils/imagePreprocessing';
 interface QRCodeData {
   examId: string;
   studentId: string;
+  studentName?: string;
   version?: number;
   studentExamId?: string;
 }
@@ -760,43 +761,40 @@ export default function AutoCorrectionPage() {
       return;
     }
 
-    // Se não temos examInfo, tentar detectar QR code primeiro
-    if (!examInfo) {
-      try {
-        toast({
-          title: "Detectando QR code...",
-          description: "Buscando informações da prova na imagem",
-        });
-
-        const qrCodeText = await readQRCodeFromFile(selectedFile);
-        if (qrCodeText) {
-          console.log('✅ QR code detectado durante processamento!');
-          await processQRCodeData(qrCodeText);
-          // Depois que o QR foi processado, continuar com a correção
-        } else {
-          toast({
-            title: "QR Code não encontrado",
-            description: "Não foi possível detectar o QR code da prova na imagem.",
-            variant: "destructive",
-          });
-          return;
-        }
-      } catch (error) {
-        console.error('Erro ao detectar QR code:', error);
-        toast({
-          title: "Erro na detecção",
-          description: "Não foi possível detectar o QR code da prova.",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
     setIsProcessing(true);
     setStep('scan-marks');
 
     try {
-      // Upload da imagem com user ID no caminho para seguir políticas RLS
+      // 1. Detectar QR code para obter informações da prova
+      toast({
+        title: "🔍 Processando...",
+        description: "Detectando QR code e iniciando correção instantânea",
+      });
+
+      const qrCodeText = await readQRCodeFromFile(selectedFile);
+      if (!qrCodeText) {
+        throw new Error('QR Code não encontrado na imagem. Certifique-se de que a imagem contém o QR code da prova.');
+      }
+
+      // 2. Processar dados do QR code
+      const qrData: QRCodeData = JSON.parse(qrCodeText);
+      console.log('📋 Dados do QR extraídos:', qrData);
+
+      // 3. Buscar student_exam com dados completos
+      const { data: studentExam, error: studentExamError } = await supabase
+        .from('student_exams')
+        .select('*, exams!inner(title, subject, institutions)')
+        .eq('exam_id', qrData.examId)
+        .eq('student_id', qrData.studentId)
+        .single();
+
+      if (studentExamError || !studentExam) {
+        throw new Error('Dados da prova não encontrados. Verifique se a prova foi preparada corretamente.');
+      }
+
+      console.log('✅ Student exam encontrado:', studentExam.id);
+
+      // 4. Upload da imagem
       const fileName = `${user.id}/correction_${Date.now()}_${selectedFile.name}`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('correction-scans')
@@ -806,220 +804,62 @@ export default function AutoCorrectionPage() {
         throw new Error(`Erro no upload: ${uploadError.message}`);
       }
 
-      // Primeiro, buscar informações detalhadas da prova para separar questões
-      const { data: examQuestions, error: questionsError } = await supabase
-        .from('questions')
-        .select('*')
-        .in('id', examInfo.answerKey ? Object.keys(examInfo.answerKey) : []);
+      // 5. Chamar edge function com student_exam_id para correção instantânea
+      toast({
+        title: "🎯 Corrigindo...",
+        description: "Analisando respostas com coordenadas HTML precisas",
+      });
 
-      if (questionsError) {
-        console.error('Erro ao buscar questões:', questionsError);
-      }
-
-      // Separar questões fechadas das abertas
-      const closedQuestions = examQuestions?.filter(q => 
-        q.type === 'multiple_choice' || q.type === 'true_false'
-      ) || [];
-      
-      const openQuestions = essayQuestions || []; // Usar o state essayQuestions já setado no QR
-      
-      console.log('Questões fechadas:', closedQuestions.length);
-      console.log('Questões abertas:', openQuestions.length);
-      console.log('EssayQuestions state:', essayQuestions);
-
-      // Chamar edge function com método baseado em coordenadas (autoGrader integrado)
-      console.log('🎯 Iniciando correção automática por coordenadas após QR detection...');
-      console.log('📊 Gabarito disponível:', examInfo.answerKey);
-      console.log('📊 Questões fechadas detectadas:', closedQuestions.length);
-      
-      // Verificar se temos coordenadas antes de enviar para edge function
-      const hasCoordinates = examInfo.bubbleCoordinates && 
-                           Object.keys(examInfo.bubbleCoordinates).length > 0;
-      
-      if (!hasCoordinates) {
-        console.warn('⚠️ Coordenadas não disponíveis - usando análise básica');
-      }
-      
       const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('ocr-correction', {
         body: {
           fileName: fileName,
-          mode: 'coordinate_based', // Modo baseado em coordenadas autoGrader
+          mode: 'coordinate_based',
+          student_exam_id: studentExam.id, // Passar student_exam_id diretamente
           examInfo: {
-            examId: examInfo.examId,
-            studentId: examInfo.studentId,
-            examTitle: examInfo.examTitle,
-            studentName: examInfo.studentName,
-            // Filtrar answerKey para incluir apenas questões fechadas
-            answerKey: Object.fromEntries(
-              Object.entries(examInfo.answerKey).filter(([qId]) => 
-                closedQuestions.some(q => q.id === qId)
-              )
-            ),
-            version: examInfo.version || 1,
-            questionCount: closedQuestions.length,
-            questionTypes: closedQuestions.map(q => q.type),
-            // Coordenadas das bolhas para correção precisa
-            bubbleCoordinates: examInfo.bubbleCoordinates,
-            // Dados adicionais para busca de coordenadas
-            bubbleCoordinatesSearch: {
-              examId: examInfo.examId,
-              studentId: examInfo.studentId
-            }
+            examId: qrData.examId,
+            studentId: qrData.studentId,
+            examTitle: studentExam.exams?.title || 'Prova',
+            studentName: qrData.studentName || 'Aluno',
+            answerKey: studentExam.answer_key,
+            bubbleCoordinates: studentExam.bubble_coordinates,
+            htmlContent: studentExam.html_content
           }
         }
       });
 
-      // Obter URL da imagem processada
-      const { data: imageUrl } = supabase.storage
-        .from('correction-scans')
-        .getPublicUrl(fileName);
-      setProcessedImage(imageUrl.publicUrl);
-
       if (ocrError) {
-        console.error('🚨 Erro detalhado na edge function:', ocrError);
-        
-        // Tratar diferentes tipos de erro
-        if (ocrError.message?.includes('Coordenadas das bolhas não encontradas')) {
-          throw new Error('❌ Coordenadas de correção não encontradas. Esta prova precisa ser preparada novamente no sistema.');
-        } else if (ocrError.message?.includes('Edge Function returned a non-2xx status code')) {
-          throw new Error('❌ Erro no processamento da imagem. Tente novamente ou use uma imagem de melhor qualidade.');
-        } else {
-          throw new Error(`❌ Erro na detecção de marcações: ${ocrError.message || 'Erro desconhecido'}`);
-        }
+        console.error('❌ Erro na edge function:', ocrError);
+        throw new Error(`Erro na correção: ${ocrError.message}`);
       }
 
-      // Processar respostas detectadas APENAS para questões fechadas
-      const detectedAnswers = ocrResult.detectedAnswers || {};
-      
-      // Comparar com gabarito apenas das questões fechadas
-      const correctAnswers = Object.fromEntries(
-        Object.entries(examInfo.answerKey).filter(([qId]) => 
-          closedQuestions.some(q => q.id === qId)
-        )
-      );
-      
-      console.log('Gabarito questões fechadas:', correctAnswers);
-      console.log('Respostas detectadas:', detectedAnswers);
-      
-      let score = 0;
-      const feedback = [];
-      let totalPoints = 0;
+      console.log('✅ Resultado da correção instantânea:', ocrResult);
 
-      // Processar cada questão fechada do gabarito
-      for (const [questionId, correctAnswerArray] of Object.entries(correctAnswers)) {
-        const question = closedQuestions.find(q => q.id === questionId);
-        const questionPoints = question?.points || 1;
-        totalPoints += questionPoints;
-        
-        // O gabarito pode estar como array, pegar o primeiro elemento
-        const correctAnswer = Array.isArray(correctAnswerArray) ? correctAnswerArray[0] : correctAnswerArray;
-        
-        // Encontrar resposta do aluno para esta questão (buscar por índice ou ID)
-        let studentAnswer = null;
-        const questionIndex = Object.keys(correctAnswers).indexOf(questionId) + 1;
-        studentAnswer = detectedAnswers[questionIndex.toString()] || 
-                       detectedAnswers[questionId] || 
-                       detectedAnswers[`q${questionIndex}`];
-        
-        console.log(`Questão ${questionIndex} (ID: ${questionId}):`);
-        console.log(`  Gabarito: ${correctAnswer}`);
-        console.log(`  Detectado: ${studentAnswer || 'Não detectada'}`);
-        console.log(`  Correto: ${studentAnswer === correctAnswer}`);
-        
-        const isCorrect = studentAnswer && studentAnswer === correctAnswer;
-        
-        if (isCorrect) {
-          score += questionPoints;
-        }
-
-        feedback.push({
-          questionNumber: questionIndex.toString(),
-          questionId: questionId,
-          studentAnswer: studentAnswer || 'Não detectada',
-          correctAnswer: correctAnswer,
-          isCorrect: isCorrect,
-          points: questionPoints,
-          earnedPoints: isCorrect ? questionPoints : 0
-        });
-      }
-
-      // Buscar dados completos da prova do banco
-      const { data: examDetails } = await supabase
-        .from('exams')
-        .select('*')
-        .eq('id', examInfo.examId)
-        .single();
-
-      // Criar resultado das questões fechadas com dados completos da prova
-      const closedQuestionsResult = {
-        examId: examInfo.examId,
-        studentId: examInfo.studentId,
-        studentName: examInfo.studentName,
-        answers: detectedAnswers,
-        score: score,
-        maxScore: totalPoints,
-        percentage: totalPoints > 0 ? Math.round((score / totalPoints) * 100) : 0,
-        correctAnswers: correctAnswers,
-        feedback: feedback,
-        hasOpenQuestions: openQuestions.length > 0,
-        openQuestions: openQuestions,
-        examInfo: {
-          title: examDetails?.title || examInfo.examTitle || 'Prova',
-          subject: examDetails?.subject || 'Disciplina',
-          date: examDetails?.exam_date ? new Date(examDetails.exam_date).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR'),
-          institution: examDetails?.institutions || 'Instituição',
-          totalPoints: examDetails?.total_points || totalPoints,
-          instructions: examDetails?.instructions
-        }
+      // 6. Processar resultado e exibir
+      const correctionData: CorrectionResult = {
+        examId: qrData.examId,
+        studentId: qrData.studentId,
+        studentName: qrData.studentName || 'Aluno',
+        answers: ocrResult.detectedAnswers || {},
+        score: ocrResult.score || 0,
+        maxScore: ocrResult.maxScore || 0,
+        percentage: Math.round(((ocrResult.score || 0) / (ocrResult.maxScore || 1)) * 100),
+        correctAnswers: Object.fromEntries(
+          Object.entries(studentExam.answer_key || {}).map(([k, v]) => [k, String(v)])
+        ),
+        feedback: ocrResult.feedback || []
       };
 
-      setCorrectionResult(closedQuestionsResult);
-      
-      // Sempre mostrar resultado das questões fechadas primeiro
+      setCorrectionResult(correctionData);
       setStep('corrected');
+
+      // 7. Toast de sucesso
+      const confidence = ocrResult.confidence || 100;
       
-      // Se há questões abertas, avisar mas deixar opcional
-      if (openQuestions.length > 0) {
-        // Toast informativo sobre questões abertas
-        toast({
-          title: "📝 Questões Abertas Detectadas",
-          description: `Correção das múltipla escolha concluída! Há ${openQuestions.length} questão(ões) aberta(s) que podem ser corrigidas manualmente.`,
-          duration: 6000,
-        });
-        
-        setEssayQuestions(openQuestions);
-        setCurrentEssayIndex(0);
-        // NÃO mudar automaticamente para essay-correction, deixar o usuário escolher
-      }
-      
-      const method = ocrResult.method || 'unknown';
-      const confidence = ocrResult.confidence || 0;
-        
-      let methodDescription = '';
-      if (method === 'coordinate_based_autoGrader') {
-        methodDescription = `✅ Coordenadas precisas (${Math.round(confidence * 100)}%)`;
-      } else if (method === 'edge_function_analysis') {
-        methodDescription = `🔍 Análise de imagem (${Math.round(confidence * 100)}%)`;
-      } else if (method === 'simulation_fallback') {
-        methodDescription = `⚠️ Simulação - sem coordenadas (${Math.round(confidence * 100)}%)`;
-      } else {
-        methodDescription = `🔍 Método: ${method} (${Math.round(confidence * 100)}%)`;
-      }
-      
-      // Toast específico baseado no que foi processado
-      if (openQuestions.length > 0) {
-        toast({
-          title: "✅ Múltipla Escolha Corrigida!",
-          description: `Nota parcial: ${score}/${totalPoints} (${closedQuestionsResult.percentage}%) - ${methodDescription}. ${openQuestions.length} questão(ões) aberta(s) podem ser corrigidas.`,
-          duration: 8000,
-        });
-      } else {
-        toast({
-          title: "✅ Correção Concluída!",
-          description: `Nota final: ${score}/${totalPoints} (${closedQuestionsResult.percentage}%) - ${methodDescription}`,
-          duration: 6000,
-        });
-      }
+      toast({
+        title: "✅ Correção Instantânea Concluída!",
+        description: `Nota: ${correctionData.score}/${correctionData.maxScore} (${correctionData.percentage}%) - Coordenadas HTML (${confidence}%)`,
+        duration: 6000,
+      });
 
     } catch (error) {
       console.error('Erro no processamento:', error);

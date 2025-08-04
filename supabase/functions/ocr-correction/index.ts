@@ -37,13 +37,13 @@ serve(async (req) => {
 });
 
 // Função principal para processar correção baseada em coordenadas HTML
-async function processCoordinateBasedCorrection(supabase: any, { fileName, mode, examInfo }: any) {
+async function processCoordinateBasedCorrection(supabase: any, { fileName, mode, examInfo, student_exam_id }: any) {
   try {
     console.log('🎯 Iniciando correção baseada em coordenadas HTML');
-    console.log('📋 Dados do examInfo:', JSON.stringify(examInfo, null, 2));
+    console.log('📋 Dados recebidos - student_exam_id:', student_exam_id);
     
-    if (!fileName || !examInfo) {
-      throw new Error('Parâmetros obrigatórios: fileName, examInfo');
+    if (!fileName) {
+      throw new Error('Parâmetro obrigatório: fileName');
     }
 
     // Baixar a imagem escaneada
@@ -58,44 +58,50 @@ async function processCoordinateBasedCorrection(supabase: any, { fileName, mode,
     const imageBytes = new Uint8Array(await imageData.arrayBuffer());
     console.log(`📷 Imagem carregada: ${imageBytes.length} bytes`);
 
-    // Buscar student_exam_id a partir dos dados do QR code
-    let studentExamId = examInfo.student_exam_id || examInfo.studentExamId;
+    let studentExam = null;
     
-    // Se não tiver student_exam_id, tentar extrair do qrData
-    if (!studentExamId && examInfo.qrData) {
-      try {
-        const qrInfo = JSON.parse(examInfo.qrData);
-        studentExamId = qrInfo.student_exams_id || qrInfo.studentExamId;
-      } catch (error) {
-        console.warn('⚠️ Erro ao fazer parse do qrData:', error);
+    // Buscar student_exam usando o ID fornecido ou examInfo
+    if (student_exam_id) {
+      console.log('🔍 Buscando student_exam por ID direto:', student_exam_id);
+      const { data, error } = await supabase
+        .from('student_exams')
+        .select('*')
+        .eq('id', student_exam_id)
+        .single();
+      
+      if (error) {
+        console.error('❌ Erro ao buscar student_exam por ID:', error);
+        throw new Error('Dados do exame do aluno não encontrados');
       }
+      
+      studentExam = data;
+      console.log('✅ Student exam encontrado via ID direto');
+    } else if (examInfo?.examId && examInfo?.studentId) {
+      console.log('🔍 Buscando student_exam por examId/studentId:', examInfo.examId, examInfo.studentId);
+      const { data, error } = await supabase
+        .from('student_exams')
+        .select('*')
+        .eq('exam_id', examInfo.examId)
+        .eq('student_id', examInfo.studentId)
+        .single();
+      
+      if (error) {
+        console.error('❌ Erro ao buscar student_exam por examId/studentId:', error);
+        throw new Error('ID da prova do aluno não encontrado. Verifique o QR code.');
+      }
+      
+      studentExam = data;
+      console.log('✅ Student exam encontrado via examId/studentId');
+    } else {
+      throw new Error('Necessário student_exam_id ou examInfo com examId/studentId');
     }
 
-    if (!studentExamId) {
-      console.error('❌ student_exam_id não encontrado nos dados:', { examInfo });
-      throw new Error('ID da prova do aluno não encontrado. Verifique o QR code.');
-    }
-
-    console.log('🔍 Buscando student_exam com ID:', studentExamId);
-
-    // Buscar dados HTML do student_exam
-    const { data: studentExam, error: studentExamError } = await supabase
-      .from('student_exams')
-      .select('html_content, bubble_coordinates, answer_key')
-      .eq('id', studentExamId)
-      .maybeSingle(); // Usar maybeSingle para evitar erro se não encontrar
-
-    if (studentExamError) {
-      console.error('❌ Erro ao buscar student_exam:', studentExamError);
-      throw new Error(`Erro ao buscar dados da prova: ${studentExamError.message}`);
-    }
-
-    if (!studentExam) {
-      console.error('❌ Student exam não encontrado para ID:', studentExamId);
-      throw new Error('Prova do aluno não encontrada no banco de dados');
-    }
-
-    console.log('✅ Student exam encontrado');
+    console.log('📋 Student exam dados:', {
+      id: studentExam.id,
+      hasHtml: !!studentExam.html_content,
+      hasCoordinates: !!studentExam.bubble_coordinates,
+      hasAnswerKey: !!studentExam.answer_key
+    });
 
     let bubbleCoordinates = studentExam.bubble_coordinates;
 
@@ -105,10 +111,13 @@ async function processCoordinateBasedCorrection(supabase: any, { fileName, mode,
       bubbleCoordinates = extractBubbleCoordinatesFromHTML(studentExam.html_content);
       
       // Salvar coordenadas extraídas para próximas correções
-      await supabase
-        .from('student_exams')
-        .update({ bubble_coordinates: bubbleCoordinates })
-        .eq('id', examInfo.student_exam_id);
+      if (bubbleCoordinates) {
+        await supabase
+          .from('student_exams')
+          .update({ bubble_coordinates: bubbleCoordinates })
+          .eq('id', studentExam.id);
+        console.log('💾 Coordenadas salvas no banco');
+      }
     }
 
     if (!bubbleCoordinates) {
@@ -116,26 +125,34 @@ async function processCoordinateBasedCorrection(supabase: any, { fileName, mode,
       return await fallbackGenericAnalysis(examInfo);
     }
 
-    // Usar answer_key do student_exam se disponível
-    const answerKey = studentExam.answer_key || examInfo.answerKey;
+    // Usar answer_key do student_exam
+    const answerKey = studentExam.answer_key || {};
+    console.log('🔑 Answer key:', Object.keys(answerKey).length, 'questões');
 
-    // Analisar imagem com 4 configurações diferentes para máxima compatibilidade
-    const results = await analyzeImageWithAdvancedDetection(imageBytes, examInfo, bubbleCoordinates, answerKey);
+    // Analisar imagem com coordenadas
+    const results = await analyzeImageWithCoordinates(imageBytes, bubbleCoordinates, answerKey);
+
+    // Calcular pontuação
+    const { score, maxScore, feedback } = calculateScore(results.detectedAnswers, answerKey);
 
     const response = {
       success: true,
-      detected_answers: results.answers,
-      processing_time: results.processingTime,
-      confidence_scores: results.confidenceScores,
-      detection_method: 'html_based_multi_config',
-      total_questions: Object.keys(bubbleCoordinates).length,
-      metadata: {
-        coordinates_source: studentExam.bubble_coordinates ? 'database' : 'html_extracted',
-        configurations_used: 4,
-        best_config: results.bestConfig,
-        config_results: results.configResults
-      }
+      detectedAnswers: results.detectedAnswers,
+      score,
+      maxScore,
+      percentage: maxScore > 0 ? Math.round((score / maxScore) * 100) : 0,
+      feedback,
+      confidence: results.confidence || 90,
+      method: 'coordinate_based_html',
+      processingTime: results.processingTime,
+      questionsProcessed: Object.keys(results.detectedAnswers).length
     };
+
+    console.log('✅ Correção concluída:', {
+      score: `${score}/${maxScore}`,
+      percentage: `${response.percentage}%`,
+      questões: response.questionsProcessed
+    });
 
     return new Response(
       JSON.stringify(response),
@@ -665,4 +682,69 @@ async function fallbackGenericAnalysis(examInfo: any): Promise<Record<string, st
   
   console.log(`✅ Análise fallback completa: ${Object.keys(detectedAnswers).length}/${questionCount} respostas geradas`);
   return detectedAnswers;
+}
+
+// Função simplificada para analisar imagem com coordenadas
+async function analyzeImageWithCoordinates(imageBytes: Uint8Array, bubbleCoordinates: any, answerKey: any) {
+  const startTime = Date.now();
+  const detectedAnswers: any = {};
+  
+  // Usar as coordenadas das bolhas para detectar respostas
+  if (bubbleCoordinates.bubbles || bubbleCoordinates.questions) {
+    const questions = bubbleCoordinates.bubbles || bubbleCoordinates.questions;
+    
+    for (const [questionKey, questionData] of Object.entries(questions)) {
+      const questionNum = questionKey.replace('q', '');
+      let bestOption = null;
+      let bestScore = 0;
+      
+      // Analisar cada opção
+      for (const [option, coords] of Object.entries((questionData as any).bubbles || {})) {
+        const score = analyzeCircleRegion(imageBytes, (coords as any).x, (coords as any).y, 10);
+        
+        if (score > bestScore && score > 0.5) {
+          bestScore = score;
+          bestOption = option;
+        }
+      }
+      
+      if (bestOption) {
+        detectedAnswers[questionNum] = bestOption;
+      }
+    }
+  }
+  
+  return {
+    detectedAnswers,
+    confidence: 85,
+    processingTime: Date.now() - startTime
+  };
+}
+
+// Calcular pontuação baseada nas respostas detectadas vs gabarito
+function calculateScore(detectedAnswers: any, answerKey: any) {
+  let score = 0;
+  let maxScore = 0;
+  const feedback = [];
+  
+  for (const [questionId, correctAnswer] of Object.entries(answerKey)) {
+    const questionNum = Object.keys(answerKey).indexOf(questionId) + 1;
+    const studentAnswer = detectedAnswers[questionNum.toString()];
+    const isCorrect = studentAnswer === correctAnswer;
+    
+    maxScore += 1;
+    if (isCorrect) score += 1;
+    
+    feedback.push({
+      questionNumber: questionNum.toString(),
+      questionId,
+      studentAnswer: studentAnswer || 'Não detectada',
+      correctAnswer,
+      isCorrect,
+      points: 1,
+      earnedPoints: isCorrect ? 1 : 0
+    });
+  }
+  
+  return { score, maxScore, feedback };
 }
