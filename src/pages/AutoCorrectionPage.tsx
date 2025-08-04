@@ -1161,9 +1161,46 @@ export default function AutoCorrectionPage() {
                           
                           {/* Overlay de coordenadas se disponível */}
                           {showAlignmentOverlay && examInfo?.bubbleCoordinates && (
-                            <div className="absolute inset-0 bg-green-500/10 border-2 border-green-400 rounded">
-                              <p className="absolute bottom-2 left-2 text-xs text-green-600 bg-white/80 px-1 rounded">
-                                Coordenadas ativas
+                            <div className="absolute inset-0">
+                              {/* Mostrar regiões das bolhas */}
+                              {Object.entries(examInfo.bubbleCoordinates).map(([questionId, questionData]: [string, any]) => 
+                                Object.entries(questionData.bubbles || questionData).map(([option, coords]: [string, any]) => {
+                                  // Calcular posição relativa no vídeo
+                                  const videoElement = videoRef.current;
+                                  if (!videoElement) return null;
+                                  
+                                  const videoWidth = videoElement.clientWidth;
+                                  const videoHeight = videoElement.clientHeight;
+                                  
+                                  // Coordenadas vêm em pontos (A4 = 595x842)
+                                  const scaleX = videoWidth / 595;
+                                  const scaleY = videoHeight / 842;
+                                  
+                                  const x = (coords.x || 0) * scaleX;
+                                  const y = (coords.y || 0) * scaleY;
+                                  const size = 12 * Math.min(scaleX, scaleY); // Tamanho da bolha escalado
+                                  
+                                  return (
+                                    <div
+                                      key={`${questionId}-${option}`}
+                                      className="absolute border-2 border-green-400 bg-green-400/20 rounded-full"
+                                      style={{
+                                        left: `${x - size/2}px`,
+                                        top: `${y - size/2}px`,
+                                        width: `${size}px`,
+                                        height: `${size}px`,
+                                      }}
+                                    >
+                                      <span className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs text-green-600 bg-white/80 px-1 rounded">
+                                        {questionId}{option}
+                                      </span>
+                                    </div>
+                                  );
+                                })
+                              ).flat()}
+                              
+                              <p className="absolute bottom-2 left-2 text-xs text-green-600 bg-white/90 px-2 py-1 rounded">
+                                🎯 {Object.keys(examInfo.bubbleCoordinates).length} regiões de resposta mapeadas
                               </p>
                             </div>
                           )}
