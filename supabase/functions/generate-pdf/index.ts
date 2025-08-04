@@ -556,17 +556,32 @@ serve(async (req) => {
                     }
                     
                     // SALVAR HTML DO GABARITO DIRETAMENTE NO BANCO
-                    const { error: updateHtmlError } = await supabase
-                        .from('student_exams')
-                        .update({ 
-                            html_content: answerKeyHtmlContent 
-                        })
-                        .eq('id', realStudentExamId);
+                    console.log(`Tentando salvar HTML para studentExamId: ${realStudentExamId}`);
+                    console.log(`Tamanho do HTML: ${answerKeyHtmlContent.length} caracteres`);
+                    
+                    const { data: updateData, error: updateHtmlError } = await supabase
+                        .rpc('update_html_content', {
+                            student_exam_id: realStudentExamId,
+                            html_data: answerKeyHtmlContent
+                        });
                     
                     if (updateHtmlError) {
                         console.error(`Erro ao salvar HTML do gabarito para ${student.name}:`, updateHtmlError);
+                        
+                        // Fallback: tentar update direto
+                        console.log('Tentando fallback com update direto...');
+                        const { error: fallbackError } = await supabase
+                            .from('student_exams')
+                            .update({ html_content: answerKeyHtmlContent } as any)
+                            .eq('id', realStudentExamId);
+                            
+                        if (fallbackError) {
+                            console.error(`Fallback também falhou:`, fallbackError);
+                        } else {
+                            console.log(`✓ Fallback: HTML salvo com sucesso para ${student.name}`);
+                        }
                     } else {
-                        console.log(`✓ HTML do gabarito salvo no banco para ${student.name}`);
+                        console.log(`✓ HTML do gabarito salvo no banco para ${student.name}:`, updateData);
                     }
                     
                     // OBTER URLs dos arquivos
