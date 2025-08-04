@@ -686,7 +686,7 @@ export default function EditExamPage() {
                         }
                     }
                     
-                    // Baixar gabarito e salvar no banco
+                    // Baixar gabarito (HTML já foi salvo diretamente no banco pela edge function)
                     if (result.answerKeyUrl) {
                         console.log(`Baixando gabarito para ${result.studentName}: ${result.answerKeyUrl}`);
                         
@@ -696,21 +696,7 @@ export default function EditExamPage() {
                             const answerKeyFileName = `GABARITO_${result.studentName.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
                             zip.file(answerKeyFileName, answerKeyBlob);
                             
-                            // Salvar HTML do gabarito no banco de dados
-                            const htmlContent = await answerKeyBlob.text();
-                            console.log(`Tentando salvar HTML para studentExamId: ${result.studentExamId}`);
-                            
-                            const { data: updateData, error: updateError } = await supabase
-                                .from('student_exams')
-                                .update({ html_content: htmlContent } as any)
-                                .eq('id', result.studentExamId)
-                                .select();
-                                
-                            if (updateError) {
-                                console.error(`Erro ao salvar HTML para ${result.studentName}:`, updateError);
-                            } else {
-                                console.log(`✅ HTML salvo com sucesso para ${result.studentName}:`, updateData);
-                            }
+                            console.log(`✅ HTML do gabarito já foi salvo no banco pela edge function para ${result.studentName}`);
                         } else {
                             console.error(`Erro ao baixar gabarito para ${result.studentName}:`, answerKeyResponse.status);
                         }

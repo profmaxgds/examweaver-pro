@@ -555,6 +555,20 @@ serve(async (req) => {
                         throw new Error(`Erro ao salvar gabarito: ${answerKeyUploadError.message}`);
                     }
                     
+                    // SALVAR HTML DO GABARITO DIRETAMENTE NO BANCO
+                    const { error: updateHtmlError } = await supabase
+                        .from('student_exams')
+                        .update({ 
+                            html_content: answerKeyHtmlContent 
+                        })
+                        .eq('id', realStudentExamId);
+                    
+                    if (updateHtmlError) {
+                        console.error(`Erro ao salvar HTML do gabarito para ${student.name}:`, updateHtmlError);
+                    } else {
+                        console.log(`✓ HTML do gabarito salvo no banco para ${student.name}`);
+                    }
+                    
                     // OBTER URLs dos arquivos
                     const { data: examUrlData } = supabase.storage
                         .from('generated-exams')
