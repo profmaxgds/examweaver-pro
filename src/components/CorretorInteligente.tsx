@@ -150,73 +150,142 @@ export function CorretorInteligente() {
     }
   };
 
-  // Função para escaneamento automático contínuo ultra-rápido (baseado no código que funciona)
-  const startAutoScan = () => {
-    if (scanIntervalRef.current) return;
+  // Estratégia 1: Resolução baixa para velocidade máxima
+  const scanVideoForQR_Strategy1 = async (): Promise<string | null> => {
+    if (!videoRef.current || !canvasRef.current) return null;
     
-    console.log('🚀 Iniciando escaneamento ultra-rápido...');
-    scanIntervalRef.current = setInterval(() => {
-      if (videoRef.current && videoRef.current.readyState >= 2) {
-        scanVideoForQR();
-      }
-    }, 50); // 20x por segundo para detecção instantânea
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    
+    if (!context || video.videoWidth === 0 || video.videoHeight === 0) return null;
+    
+    // Resolução ultra baixa para velocidade máxima
+    canvas.width = 160;
+    canvas.height = 120;
+    context.imageSmoothingEnabled = false;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    
+    try {
+      const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+      return code?.data || null;
+    } catch {
+      return null;
+    }
   };
 
-  // Função para ler QR code de vídeo (baseado no código que funciona)
-  const scanVideoForQR = () => {
-    if (!videoRef.current || !canvasRef.current || !isScanning || !streamRef.current || gabaritoData) return;
-
+  // Estratégia 2: Resolução média
+  const scanVideoForQR_Strategy2 = async (): Promise<string | null> => {
+    if (!videoRef.current || !canvasRef.current) return null;
+    
     const video = videoRef.current;
-    const canvas = canvasRef.current;
+    const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
-
-    if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
-
-    // Usar resolução muito pequena para máxima velocidade
-    const scanWidth = 320;
-    const scanHeight = 240;
     
-    canvas.width = scanWidth;
-    canvas.height = scanHeight;
+    if (!context || video.videoWidth === 0 || video.videoHeight === 0) return null;
     
-    // Desenhar com suavização desabilitada para velocidade
-    context.imageSmoothingEnabled = false;
-    context.drawImage(video, 0, 0, scanWidth, scanHeight);
-
-    const imageData = context.getImageData(0, 0, scanWidth, scanHeight);
+    // Resolução média
+    canvas.width = 640;
+    canvas.height = 480;
+    context.imageSmoothingEnabled = true;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
     
-    // Tentar múltiplas configurações para máxima compatibilidade (igual ao código que funciona)
-    const configurations = [
-      { inversionAttempts: "dontInvert" as const },
-      { inversionAttempts: "onlyInvert" as const },
-      { inversionAttempts: "attemptBoth" as const },
-      { inversionAttempts: "invertFirst" as const }
-    ];
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    
+    try {
+      const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
+      return code?.data || null;
+    } catch {
+      return null;
+    }
+  };
 
-    for (const config of configurations) {
-      try {
-        const code = jsQR(imageData.data, imageData.width, imageData.height, config);
-        
-        if (code && code.data && code.data.trim()) {
-          console.log('✅ QR code detectado instantaneamente:', code.data);
-          playBeep();
-          setIsScanning(false);
-          if (scanIntervalRef.current) {
-            clearInterval(scanIntervalRef.current);
-            scanIntervalRef.current = null;
-          }
-          handleQRDetected(code.data);
-          return; // Sair da função após detecção
-        }
-      } catch (error) {
-        // Continuar para próxima configuração
-        continue;
-      }
+  // Estratégia 3: Resolução alta com pré-processamento
+  const scanVideoForQR_Strategy3 = async (): Promise<string | null> => {
+    if (!videoRef.current || !canvasRef.current) return null;
+    
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    
+    if (!context || video.videoWidth === 0 || video.videoHeight === 0) return null;
+    
+    // Resolução alta
+    canvas.width = 1280;
+    canvas.height = 720;
+    context.imageSmoothingEnabled = true;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    let imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    
+    // Pré-processamento: aumentar contraste
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      const enhanced = gray > 128 ? 255 : 0;
+      data[i] = enhanced;
+      data[i + 1] = enhanced;
+      data[i + 2] = enhanced;
     }
     
-    // Atualizar contador de frames
-    setFrameCount(prev => prev + 1);
+    try {
+      const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "onlyInvert" });
+      return code?.data || null;
+    } catch {
+      return null;
+    }
   };
+
+  // Função para escaneamento automático ULTRA-rápido com requestAnimationFrame
+  const startAutoScan = () => {
+    console.log('🚀 Iniciando escaneamento ULTRA-rápido com requestAnimationFrame...');
+    
+    let frameCount = 0;
+    
+    const scanLoop = () => {
+      if (!isScanning || gabaritoData || !videoRef.current) return;
+      
+      frameCount++;
+      if (frameCount % 10 === 0) {
+        console.log(`🔍 Frame ${frameCount} - Escaneando com 3 estratégias...`);
+      }
+      
+      // Executar múltiplas estratégias de detecção simultaneamente
+      Promise.all([
+        scanVideoForQR_Strategy1(), // Resolução baixa, rápida
+        scanVideoForQR_Strategy2(), // Resolução média
+        scanVideoForQR_Strategy3(), // Resolução alta
+      ]).then(results => {
+        const foundQR = results.find(result => result !== null && result.trim().length > 0);
+        if (foundQR && !gabaritoData) {
+          console.log('✅ QR ENCONTRADO!', foundQR);
+          playBeep();
+          setIsScanning(false);
+          handleQRDetected(foundQR);
+          return;
+        }
+        
+        // Continuar escaneamento se ainda estiver ativo
+        if (isScanning && !gabaritoData) {
+          requestAnimationFrame(scanLoop);
+        }
+      }).catch(error => {
+        console.log('Erro nas estratégias:', error);
+        // Continuar mesmo com erro
+        if (isScanning && !gabaritoData) {
+          requestAnimationFrame(scanLoop);
+        }
+      });
+      
+      setFrameCount(frameCount);
+    };
+    
+    // Iniciar o loop
+    requestAnimationFrame(scanLoop);
+  };
+
 
   // Processar QR code detectado
   const handleQRDetected = async (qrData: string) => {
