@@ -161,7 +161,12 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
     
     const coordinates: any = {};
     
-    // Configurações do layout (baseadas no CSS)
+    // === DIMENSÕES DA PÁGINA A4 ===
+    const pageWidthPt = 595; // 210mm em pontos
+    const pageHeightPt = 842; // 297mm em pontos
+    const pageMarginPt = 42.52; // 1.5cm em pontos (body padding)
+    
+    // === CONFIGURAÇÕES DO LAYOUT (baseadas no CSS) ===
     const bubbleSize = 11; // --bubble-size: 11px
     const bubbleMargin = 2.5; // --bubble-margin: 0 2.5px
     const bubbleBorder = 1; // border: 1px solid #000
@@ -170,19 +175,40 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
     const qNumberWidth = 30; // --q-number-width
     const qNumberMarginRight = 6; // --q-number-margin-right
     const rowHeight = 15; // height: 15px por linha
+    const rowMarginBottom = 4; // margin-bottom: 4px
     
-    // Cálculo do espaçamento total à esquerda
-    const totalLeftSpacing = anchorWidth + anchorMarginRight + qNumberWidth + qNumberMarginRight;
+    // === CÁLCULO DOS OFFSETS VERTICAIS ===
+    // Todos os elementos que vêm ANTES da grade de respostas
+    const answerSheetContainerMarginBottom = 25; // margin-bottom: 25px
+    const qrCodeSectionWidth = 140; // flex: 0 0 140px (altura também)
+    const answerGridSectionPadding = 10; // padding: 10px 5px (top padding)
+    const answerGridHeaderHeight = 25; // altura estimada do texto "Marque o gabarito..."
+    const answerGridHeaderMarginBottom = 8; // margin-bottom: 8px
+    const answerOptionsHeaderHeight = 15; // height: 15px do cabeçalho A B C D
+    const answerOptionsHeaderMarginBottom = 4; // margin-bottom: 4px
     
-    // Determinar número de colunas baseado no total de questões
+    // OFFSET Y TOTAL = margem + altura da seção QR + padding + cabeçalhos
+    const totalYOffset = pageMarginPt + qrCodeSectionWidth + answerGridSectionPadding + 
+                        answerGridHeaderHeight + answerGridHeaderMarginBottom + 
+                        answerOptionsHeaderHeight + answerOptionsHeaderMarginBottom;
+    
+    // === CONFIGURAÇÃO DAS COLUNAS ===
     const totalQuestions = questions.length;
     const numCols = totalQuestions <= 6 ? 1 : totalQuestions <= 12 ? 2 : 3;
     const questionsPerColumn = Math.ceil(totalQuestions / numCols);
     
-    // Largura estimada da área do gabarito (baseada no container)
-    const answerGridWidth = 500; // Estimativa baseada no layout
-    const columnWidth = answerGridWidth / numCols;
+    // Largura disponível para as colunas (dentro da answer-grid-section)
+    const answerGridSectionMargin = 5; // padding lateral da seção
+    const availableGridWidth = pageWidthPt - (pageMarginPt * 2) - qrCodeSectionWidth - 8.5 - (answerGridSectionMargin * 2); // 8.5pt = 0.3cm gap
     const columnDividerWidth = 1.5;
+    const totalDividerWidth = (numCols - 1) * columnDividerWidth;
+    const columnWidth = (availableGridWidth - totalDividerWidth) / numCols;
+    
+    // Cálculo do espaçamento total à esquerda
+    const totalLeftSpacing = anchorWidth + anchorMarginRight + qNumberWidth + qNumberMarginRight;
+    
+    // === OFFSET X INICIAL ===
+    const gridStartX = pageMarginPt + qrCodeSectionWidth + 8.5 + answerGridSectionMargin; // início da grade
     
     let currentColumn = 0;
     let questionInColumn = 0;
@@ -196,14 +222,12 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
             questionInColumn = 0;
         }
         
-        // Posição Y da questão (considerando cabeçalho e linha da questão)
-        const headerHeight = 25; // altura do cabeçalho "Marque o gabarito..."
-        const optionsHeaderHeight = 19; // altura do cabeçalho com letras A, B, C...
-        const questionY = headerHeight + optionsHeaderHeight + (questionInColumn * rowHeight);
+        // === CÁLCULO DA POSIÇÃO Y ===
+        const questionY = totalYOffset + (questionInColumn * (rowHeight + rowMarginBottom));
         
-        // Posição X base da coluna
-        const columnBaseX = currentColumn * (columnWidth + columnDividerWidth);
-        const questionBaseX = columnBaseX + totalLeftSpacing;
+        // === CÁLCULO DA POSIÇÃO X ===
+        const columnStartX = gridStartX + (currentColumn * (columnWidth + columnDividerWidth));
+        const questionBaseX = columnStartX + totalLeftSpacing;
         
         // Calcular coordenadas dos bubbles para esta questão
         const questionCoords: any = {
