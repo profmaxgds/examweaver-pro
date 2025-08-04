@@ -686,7 +686,7 @@ export default function EditExamPage() {
                         }
                     }
                     
-                    // Baixar gabarito
+                    // Baixar gabarito e salvar no banco
                     if (result.answerKeyUrl) {
                         console.log(`Baixando gabarito para ${result.studentName}: ${result.answerKeyUrl}`);
                         
@@ -695,6 +695,13 @@ export default function EditExamPage() {
                             const answerKeyBlob = await answerKeyResponse.blob();
                             const answerKeyFileName = `GABARITO_${result.studentName.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
                             zip.file(answerKeyFileName, answerKeyBlob);
+                            
+                            // Salvar HTML do gabarito no banco de dados
+                            const htmlContent = await answerKeyBlob.text();
+                            await supabase
+                                .from('student_exams')
+                                .update({ html_content: htmlContent } as any)
+                                .eq('id', result.studentExamId);
                         } else {
                             console.error(`Erro ao baixar gabarito para ${result.studentName}:`, answerKeyResponse.status);
                         }
@@ -741,11 +748,34 @@ export default function EditExamPage() {
             // GERAÇÃO POR VERSÕES (HTML)
             const zip = new JSZip();
             
+            // Buscar student_exams para versões
+            const { data: versionExams, error: versionError } = await supabase
+                .from('student_exams')
+                .select('id, version_id')
+                .eq('exam_id', examData.id)
+                .not('version_id', 'is', null);
+                
+            if (versionError) {
+                console.error('Erro ao buscar versões:', versionError);
+            }
+            
             for (let version = 1; version <= examData.versions; version++) {
                 const htmlProva = await callGeneratePdfFunction({ examId: examData.id, version: version, includeAnswers: false });
                 const htmlGabarito = await callGeneratePdfFunction({ examId: examData.id, version: version, includeAnswers: true });
+                
                 zip.file(`Versao_${version}_Prova.html`, htmlProva);
                 zip.file(`Versao_${version}_Gabarito.html`, htmlGabarito);
+                
+                // Salvar HTML do gabarito no banco de dados para a versão correspondente
+                if (versionExams) {
+                    const versionExam = versionExams.find(ve => ve.version_id === `version-${version}`);
+                    if (versionExam) {
+                        await supabase
+                            .from('student_exams')
+                            .update({ html_content: htmlGabarito } as any)
+                            .eq('id', versionExam.id);
+                    }
+                }
             }
             
             const zipBlob = await zip.generateAsync({ type: 'blob' });
