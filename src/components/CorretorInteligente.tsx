@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, Play, Square, CheckCircle, XCircle, RotateCcw, ArrowLeft, QrCode, Loader2, Scan } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Camera, CheckCircle, XCircle, RotateCcw, ArrowLeft, QrCode, Loader2, Scan, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,20 +11,12 @@ import { Capacitor } from '@capacitor/core';
 import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 
 interface GabaritoData {
-  exam: {
-    id: string;
-    title: string;
-    subject: string;
-    total_points: number;
-  };
-  student: {
-    name: string;
-    student_id: string;
-    student_exam_id: string;
-  };
+  exam: { id: string; title: string; subject: string; total_points: number };
+  student: { name: string; student_id: string; student_exam_id: string };
   gabarito: Record<string, { correct_option: string | null; type: string }>;
   coordinates: Record<string, { bubbles: Record<string, { x: number; y: number; w: number; h: number }> }>;
   total_questions: number;
+  html_content?: string;
 }
 
 interface CorrecaoResult {
@@ -33,6 +25,7 @@ interface CorrecaoResult {
   marked: string | null;
   is_correct: boolean;
   type: string;
+  confidence?: number;
 }
 
 export function CorretorInteligente() {
@@ -41,89 +34,52 @@ export function CorretorInteligente() {
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const correctionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const [isScanning, setIsScanning] = useState(false);
   const [gabaritoData, setGabaritoData] = useState<GabaritoData | null>(null);
   const [correcaoResults, setCorrecaoResults] = useState<CorrecaoResult[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [score, setScore] = useState<{ correct: number; total: number; percentage: number } | null>(null);
   const [cameraStarted, setCameraStarted] = useState(false);
   const [isNative, setIsNative] = useState(false);
   const [scanMethod, setScanMethod] = useState<'web' | 'native'>('web');
+  const [correctionMode, setCorrectionMode] = useState<'qr' | 'instant'>('qr');
+  const [instantResults, setInstantResults] = useState<Record<string, CorrecaoResult>>({});
 
-  // Detectar se é ambiente nativo e auto-iniciar
   useEffect(() => {
     const native = Capacitor.isNativePlatform();
     setIsNative(native);
+    setScanMethod(native ? 'native' : 'web');
     
-    // Em dispositivos móveis nativos, usar método nativo primeiro
-    if (native) {
-      setScanMethod('native');
-      console.log('📱 Dispositivo nativo detectado, usando Capacitor Camera');
-    } else {
-      setScanMethod('web');
-      console.log('🌐 Navegador web detectado, usando WebRTC');
+    if (!native) {
       startCamera();
     }
     
-    return () => {
-      cleanup();
-    };
+    return () => cleanup();
   }, []);
 
   const cleanup = () => {
-    console.log('🧹 Limpando recursos...');
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
+    [scanIntervalRef, correctionIntervalRef].forEach(ref => {
+      if (ref.current) {
+        clearInterval(ref.current);
+        ref.current = null;
+      }
+    });
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
   };
 
-  // Som de beep melhorado
-  const playBeep = () => {
-    try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.frequency.value = 1200;
-      oscillator.type = 'square';
-      
-      gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
-      
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.2);
-    } catch (error) {
-      console.log('Erro ao reproduzir som:', error);
-    }
-  };
-
-  // Iniciar câmera com fallback robusto (COPIADO DA VERSÃO QUE FUNCIONA)
   const startCamera = async () => {
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Camera API não suportada neste navegador');
-      }
-
-      cleanup(); // Limpar recursos anteriores
-
-      console.log('📱 Iniciando câmera...');
-
-      // Configurações otimizadas para QR code scanning com câmera traseira
+      cleanup();
       const constraints = {
         video: {
           width: { ideal: 1920, min: 640 },
           height: { ideal: 1080, min: 480 },
           frameRate: { ideal: 30, min: 15 },
-          facingMode: 'environment' // Força câmera traseira
+          facingMode: 'environment'
         },
         audio: false
       };
@@ -134,142 +90,176 @@ export function CorretorInteligente() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         
-        // Aguardar o vídeo carregar completamente
         await new Promise<void>((resolve, reject) => {
-          if (!videoRef.current) {
-            reject(new Error('Elemento de vídeo não encontrado'));
-            return;
-          }
-
-          const video = videoRef.current;
+          const video = videoRef.current!;
           
           const handleLoadedData = () => {
-            console.log('✅ Vídeo carregado, resolução:', video.videoWidth, 'x', video.videoHeight);
             setCameraStarted(true);
             setIsScanning(true);
-            
-            // Iniciar escaneamento automático
             setTimeout(() => {
-              startAutoScan();
+              correctionMode === 'qr' ? startAutoScan() : startInstantCorrection();
             }, 500);
-            
             resolve();
-          };
-
-          const handleError = (error: Event) => {
-            console.error('❌ Erro ao carregar vídeo:', error);
-            reject(new Error('Erro ao carregar stream de vídeo'));
           };
 
           if (video.readyState >= 2) {
             handleLoadedData();
           } else {
             video.addEventListener('loadeddata', handleLoadedData, { once: true });
-            video.addEventListener('error', handleError, { once: true });
           }
-
-          // Timeout de segurança
-          setTimeout(() => {
-            video.removeEventListener('loadeddata', handleLoadedData);
-            video.removeEventListener('error', handleError);
-            reject(new Error('Timeout ao inicializar câmera'));
-          }, 10000);
         });
 
         toast({
           title: "📷 Câmera Ativa",
-          description: "Posicione o QR code na área de escaneamento",
+          description: correctionMode === 'qr' ? "Escaneie o QR code" : "Posicione a folha de resposta",
         });
       }
     } catch (error) {
       console.error('❌ Erro ao iniciar câmera:', error);
       toast({
-        title: "❌ Erro na Câmera", 
+        title: "❌ Erro na Câmera",
         description: `Não foi possível acessar a câmera: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
         variant: "destructive"
       });
     }
   };
 
-  // Função para escaneamento automático contínuo ultra-rápido (COPIADO DA VERSÃO QUE FUNCIONA)
   const startAutoScan = () => {
     if (scanIntervalRef.current) return;
-    
-    console.log('🚀 Iniciando escaneamento ultra-rápido...');
     scanIntervalRef.current = setInterval(() => {
-      if (videoRef.current && videoRef.current.readyState >= 2) {
-        scanVideoForQR();
-      }
-    }, 50); // 20x por segundo para detecção instantânea
+      if (videoRef.current?.readyState >= 2) scanVideoForQR();
+    }, 50);
   };
 
-  // Função otimizada para escanear vídeo em busca de QR code (COPIADO DA VERSÃO QUE FUNCIONA)
+  const startInstantCorrection = () => {
+    if (correctionIntervalRef.current) return;
+    correctionIntervalRef.current = setInterval(() => {
+      if (videoRef.current?.readyState >= 2 && gabaritoData) processInstantCorrection();
+    }, 200);
+  };
+
   const scanVideoForQR = () => {
-    if (!videoRef.current || !canvasRef.current || !isScanning || !streamRef.current) return;
+    if (!videoRef.current || !canvasRef.current || !isScanning) return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const context = canvas.getContext('2d');
+    if (!context || video.videoWidth === 0) return;
 
-    if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
-
-    // Usar resolução muito pequena para máxima velocidade
-    const scanWidth = 320;
-    const scanHeight = 240;
-    
-    canvas.width = scanWidth;
-    canvas.height = scanHeight;
-    
-    // Desenhar com suavização desabilitada para velocidade
+    canvas.width = 320;
+    canvas.height = 240;
     context.imageSmoothingEnabled = false;
-    context.drawImage(video, 0, 0, scanWidth, scanHeight);
+    context.drawImage(video, 0, 0, 320, 240);
 
-    const imageData = context.getImageData(0, 0, scanWidth, scanHeight);
+    const imageData = context.getImageData(0, 0, 320, 240);
     
-    // Tentar múltiplas configurações para máxima compatibilidade
-    const configurations = [
+    const configs = [
       { inversionAttempts: "dontInvert" as const },
       { inversionAttempts: "onlyInvert" as const },
       { inversionAttempts: "attemptBoth" as const }
     ];
 
-    for (const config of configurations) {
+    for (const config of configs) {
       try {
         const code = jsQR(imageData.data, imageData.width, imageData.height, config);
-        
-        if (code && code.data && code.data.trim()) {
-          console.log('✅ QR code detectado instantaneamente:', code.data);
-          playBeep();
+        if (code?.data?.trim()) {
           setIsScanning(false);
           if (scanIntervalRef.current) {
             clearInterval(scanIntervalRef.current);
             scanIntervalRef.current = null;
           }
           handleQRDetected(code.data);
-          return; // Sair da função após detecção
+          return;
         }
       } catch (error) {
-        // Continuar para próxima configuração
         continue;
       }
     }
   };
 
-  // Processar QR code detectado
+  const processInstantCorrection = () => {
+    if (!videoRef.current || !canvasRef.current || !gabaritoData) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+    if (!context || video.videoWidth === 0) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0);
+
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    const newResults: Record<string, CorrecaoResult> = {};
+    
+    Object.entries(gabaritoData.coordinates).forEach(([questionKey, questionData]) => {
+      const questionNum = questionKey.replace('q', '');
+      const bubbles = questionData.bubbles;
+      
+      let markedOption = null;
+      let maxDarkness = 0;
+      
+      Object.entries(bubbles).forEach(([option, coords]) => {
+        const darkness = analyzeCircleInImageData(imageData, coords.x, coords.y, coords.w / 2);
+        if (darkness > maxDarkness && darkness > 0.3) {
+          maxDarkness = darkness;
+          markedOption = option;
+        }
+      });
+      
+      if (markedOption) {
+        const correct = gabaritoData.gabarito[questionKey]?.correct_option;
+        newResults[questionNum] = {
+          question: questionNum,
+          correct,
+          marked: markedOption,
+          is_correct: markedOption === correct,
+          type: 'multiple_choice',
+          confidence: maxDarkness
+        };
+      }
+    });
+    
+    setInstantResults(newResults);
+  };
+
+  const analyzeCircleInImageData = (imageData: ImageData, x: number, y: number, radius: number): number => {
+    const { data, width, height } = imageData;
+    if (x < 0 || y < 0 || x >= width || y >= height) return 0;
+    
+    let totalPixels = 0;
+    let darkPixels = 0;
+    
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance <= radius) {
+          const pixelX = Math.floor(x + dx);
+          const pixelY = Math.floor(y + dy);
+          
+          if (pixelX >= 0 && pixelX < width && pixelY >= 0 && pixelY < height) {
+            const index = (pixelY * width + pixelX) * 4;
+            const brightness = (data[index] + data[index + 1] + data[index + 2]) / 3;
+            totalPixels++;
+            if (brightness < 128) darkPixels++;
+          }
+        }
+      }
+    }
+    
+    return totalPixels > 0 ? darkPixels / totalPixels : 0;
+  };
+
   const handleQRDetected = async (qrData: string) => {
     try {
-      console.log('🔍 Processando QR code:', qrData);
-      
-      // Chamar a edge function para processar o gabarito
       const { data, error } = await supabase.functions.invoke('qr-gabarito-reader', {
         body: { qrData }
       });
 
-      if (error) {
-        console.error('❌ Erro ao processar QR:', error);
+      if (error || !data) {
         toast({
           title: "❌ Erro ao processar QR code",
-          description: error.message || 'Erro desconhecido ao processar gabarito',
+          description: error?.message || 'Erro desconhecido',
           variant: "destructive"
         });
         setIsScanning(true);
@@ -277,213 +267,58 @@ export function CorretorInteligente() {
         return;
       }
 
-      if (data) {
-        console.log('✅ Gabarito processado:', data);
-        setGabaritoData(data);
-        toast({
-          title: "✅ QR Code Lido!",
-          description: `Prova: ${data.exam.title} | Aluno: ${data.student.name}`,
-        });
-      }
-    } catch (error) {
-      console.error('❌ Erro geral ao processar QR:', error);
+      setGabaritoData(data);
+      setCorrectionMode('instant');
+      startInstantCorrection();
+      
       toast({
-        title: "❌ Erro",
-        description: 'Erro inesperado ao processar QR code',
-        variant: "destructive"
+        title: "✅ QR Code Lido!",
+        description: `${data.exam.title} - ${data.student.name}`,
       });
+    } catch (error) {
+      console.error('❌ Erro:', error);
       setIsScanning(true);
       startAutoScan();
     }
   };
 
-  // Simular correção (placeholder)
-  const captureAndProcess = async () => {
-    if (!gabaritoData) {
-      toast({
-        title: "❌ Erro",
-        description: "Primeiro escaneie um QR code válido",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setIsProcessing(true);
+  const finalizarCorrecao = () => {
+    const results = Object.values(instantResults);
+    const correctCount = results.filter(r => r.is_correct).length;
     
-    try {
-      await simulateImageProcessing();
-    } catch (error) {
-      console.error('❌ Erro na correção:', error);
-      toast({
-        title: "❌ Erro na correção",
-        description: "Erro ao processar a imagem",
-        variant: "destructive"
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Simulação de processamento de imagem
-  const simulateImageProcessing = async (): Promise<void> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        if (!gabaritoData) {
-          resolve();
-          return;
-        }
-
-        const results: CorrecaoResult[] = [];
-        let correctCount = 0;
-        
-        Object.entries(gabaritoData.gabarito).forEach(([questionNum, questionData]) => {
-          if (questionData.type === 'essay') {
-            results.push({
-              question: questionNum,
-              correct: null,
-              marked: null,
-              is_correct: false,
-              type: 'essay'
-            });
-            return;
-          }
-
-          // Simular resposta marcada aleatoriamente
-          const options = ['A', 'B', 'C', 'D', 'E'];
-          const markedOption = options[Math.floor(Math.random() * options.length)];
-          const isCorrect = markedOption === questionData.correct_option;
-          
-          if (isCorrect) correctCount++;
-
-          results.push({
-            question: questionNum,
-            correct: questionData.correct_option,
-            marked: markedOption,
-            is_correct: isCorrect,
-            type: 'multiple_choice'
-          });
-        });
-
-        setCorrecaoResults(results);
-        setScore({
-          correct: correctCount,
-          total: results.filter(r => r.type === 'multiple_choice').length,
-          percentage: Math.round((correctCount / results.filter(r => r.type === 'multiple_choice').length) * 100)
-        });
-
-        toast({
-          title: "✅ Correção Concluída",
-          description: `${correctCount} acertos de ${results.filter(r => r.type === 'multiple_choice').length} questões`,
-        });
-
-        resolve();
-      }, 3000);
+    setCorrecaoResults(results);
+    setScore({
+      correct: correctCount,
+      total: results.length,
+      percentage: results.length > 0 ? Math.round((correctCount / results.length) * 100) : 0
     });
-  };
 
-  // Usar Capacitor Camera para dispositivos nativos
-  const scanWithNativeCamera = async () => {
-    try {
-      setIsScanning(true);
-      console.log('📱 Iniciando scanner nativo...');
-      
-      const image = await CapacitorCamera.getPhoto({
-        quality: 90,
-        allowEditing: false,
-        resultType: CameraResultType.DataUrl,
-        source: CameraSource.Camera,
-        saveToGallery: false,
-        promptLabelHeader: 'Scanner QR Code',
-        promptLabelPhoto: 'Tirar Foto',
-        promptLabelPicture: 'Escolher da Galeria'
-      });
-
-      if (image.dataUrl) {
-        await processImageForQR(image.dataUrl);
-      }
-    } catch (error) {
-      console.error('❌ Erro no scanner nativo:', error);
-      toast({
-        title: "❌ Erro na Câmera",
-        description: "Não foi possível acessar a câmera nativa",
-        variant: "destructive"
-      });
-      setIsScanning(false);
+    if (correctionIntervalRef.current) {
+      clearInterval(correctionIntervalRef.current);
+      correctionIntervalRef.current = null;
     }
-  };
 
-  // Processar imagem capturada em busca de QR code
-  const processImageForQR = async (dataUrl: string) => {
-    try {
-      console.log('🔍 Processando imagem para QR code...');
-      
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        
-        if (!context) return;
-        
-        canvas.width = img.width;
-        canvas.height = img.height;
-        context.drawImage(img, 0, 0);
-        
-        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-        
-        // Tentar múltiplas configurações
-        const configurations = [
-          { inversionAttempts: "dontInvert" as const },
-          { inversionAttempts: "onlyInvert" as const },
-          { inversionAttempts: "attemptBoth" as const }
-        ];
-
-        for (const config of configurations) {
-          try {
-            const code = jsQR(imageData.data, imageData.width, imageData.height, config);
-            
-            if (code && code.data && code.data.trim()) {
-              console.log('✅ QR code encontrado na imagem:', code.data);
-              playBeep();
-              setIsScanning(false);
-              handleQRDetected(code.data);
-              return;
-            }
-          } catch (error) {
-            continue;
-          }
-        }
-        
-        // Se não encontrou QR code
-        console.log('❌ Nenhum QR code encontrado na imagem');
-        toast({
-          title: "❌ QR Code não encontrado",
-          description: "Tente novamente posicionando melhor o QR code",
-          variant: "destructive"
-        });
-        setIsScanning(false);
-      };
-      
-      img.src = dataUrl;
-    } catch (error) {
-      console.error('❌ Erro ao processar imagem:', error);
-      setIsScanning(false);
-    }
+    toast({
+      title: "✅ Correção Finalizada",
+      description: `${correctCount}/${results.length} acertos (${Math.round((correctCount / results.length) * 100)}%)`,
+    });
   };
 
   const reset = () => {
     setGabaritoData(null);
     setCorrecaoResults([]);
     setScore(null);
-    setIsProcessing(false);
+    setInstantResults({});
+    setCorrectionMode('qr');
+    cleanup();
+    
     if (scanMethod === 'web') {
       setIsScanning(true);
       startAutoScan();
-    } else {
-      setIsScanning(false);
     }
   };
 
-  const drawGuideMask = () => {
+  const drawOverlay = () => {
     if (!overlayCanvasRef.current || !videoRef.current) return;
 
     const canvas = overlayCanvasRef.current;
@@ -493,80 +328,69 @@ export function CorretorInteligente() {
 
     canvas.width = video.clientWidth;
     canvas.height = video.clientHeight;
-
     context.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Área de escaneamento QR
-    const qrSize = Math.min(canvas.width, canvas.height) * 0.6;
-    const qrX = (canvas.width - qrSize) / 2;
-    const qrY = (canvas.height - qrSize) / 2;
+    if (correctionMode === 'instant' && gabaritoData) {
+      // Overlay da folha de resposta
+      const scaleX = canvas.width / 800;
+      const scaleY = canvas.height / 600;
 
-    // Máscara escura
-    context.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    context.fillRect(0, 0, canvas.width, canvas.height);
+      Object.entries(gabaritoData.coordinates).forEach(([questionKey, questionData]) => {
+        const questionNum = questionKey.replace('q', '');
+        const instantResult = instantResults[questionNum];
 
-    // Área clara para QR
-    context.globalCompositeOperation = 'destination-out';
-    context.fillRect(qrX, qrY, qrSize, qrSize);
-    context.globalCompositeOperation = 'source-over';
+        Object.entries(questionData.bubbles).forEach(([option, coords]) => {
+          const x = coords.x * scaleX;
+          const y = coords.y * scaleY;
+          const radius = Math.max(coords.w, coords.h) * Math.min(scaleX, scaleY) / 2;
 
-    // Bordas do QR (animadas)
-    const cornerSize = 40;
-    const time = Date.now() / 1000;
-    const pulseOpacity = 0.5 + 0.3 * Math.sin(time * 3);
-    
-    context.strokeStyle = `rgba(0, 255, 0, ${pulseOpacity})`;
-    context.lineWidth = 4;
-    context.lineCap = 'round';
+          context.beginPath();
+          context.arc(x, y, radius, 0, 2 * Math.PI);
+          
+          if (instantResult?.marked === option) {
+            context.strokeStyle = instantResult.is_correct ? '#22c55e' : '#ef4444';
+            context.fillStyle = instantResult.is_correct ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+            context.fill();
+          } else {
+            context.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+          }
+          
+          context.lineWidth = 2;
+          context.stroke();
+        });
+      });
 
-    // Cantos superiores
-    context.beginPath();
-    context.moveTo(qrX, qrY + cornerSize);
-    context.lineTo(qrX, qrY);
-    context.lineTo(qrX + cornerSize, qrY);
-    context.stroke();
-
-    context.beginPath();
-    context.moveTo(qrX + qrSize - cornerSize, qrY);
-    context.lineTo(qrX + qrSize, qrY);
-    context.lineTo(qrX + qrSize, qrY + cornerSize);
-    context.stroke();
-
-    // Cantos inferiores
-    context.beginPath();
-    context.moveTo(qrX, qrY + qrSize - cornerSize);
-    context.lineTo(qrX, qrY + qrSize);
-    context.lineTo(qrX + cornerSize, qrY + qrSize);
-    context.stroke();
-
-    context.beginPath();
-    context.moveTo(qrX + qrSize - cornerSize, qrY + qrSize);
-    context.lineTo(qrX + qrSize, qrY + qrSize);
-    context.lineTo(qrX + qrSize, qrY + qrSize - cornerSize);
-    context.stroke();
-
-    // Texto
-    context.fillStyle = 'white';
-    context.font = 'bold 18px Arial';
-    context.textAlign = 'center';
-    context.fillText('Posicione o QR code aqui', canvas.width / 2, qrY - 20);
+      // Estatísticas em tempo real
+      const resultCount = Object.keys(instantResults).length;
+      const correctCount = Object.values(instantResults).filter(r => r.is_correct).length;
+      
+      context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      context.fillRect(10, 10, 300, 80);
+      
+      context.fillStyle = 'white';
+      context.font = 'bold 16px Arial';
+      context.textAlign = 'left';
+      context.fillText(`Questões: ${resultCount}`, 20, 35);
+      context.fillText(`Acertos: ${correctCount}`, 20, 55);
+      context.fillText(`Percentual: ${resultCount > 0 ? Math.round((correctCount / resultCount) * 100) : 0}%`, 20, 75);
+    }
   };
 
-  // Redesenhar guia quando necessário
   useEffect(() => {
-    if (cameraStarted && isScanning) {
-      const interval = setInterval(drawGuideMask, 100);
+    if (cameraStarted) {
+      const interval = setInterval(drawOverlay, 100);
       return () => clearInterval(interval);
     }
-  }, [cameraStarted, isScanning]);
+  }, [cameraStarted, correctionMode, gabaritoData, instantResults]);
 
   return (
     <div className="space-y-6">
-      {/* Header com botão Home */}
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold">Corretor Inteligente</h2>
-          <p className="text-muted-foreground">Escaneie o QR code da prova para iniciar a correção</p>
+          <p className="text-muted-foreground">
+            {correctionMode === 'qr' ? "Escaneie o QR code da prova" : "Posicione a folha para correção instantânea"}
+          </p>
         </div>
         <Link to="/">
           <Button variant="outline" className="flex items-center gap-2">
@@ -576,217 +400,77 @@ export function CorretorInteligente() {
         </Link>
       </div>
 
-      {/* Área da câmera */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <QrCode className="w-5 h-5" />
-            Scanner QR Code
-            {isScanning && (
-              <Badge variant="secondary" className="animate-pulse">
-                Escaneando...
-              </Badge>
-            )}
+            {correctionMode === 'qr' ? <QrCode className="w-5 h-5" /> : <Target className="w-5 h-5" />}
+            {correctionMode === 'qr' ? 'Scanner QR Code' : 'Correção Instantânea'}
+            {isScanning && <Badge variant="secondary" className="animate-pulse">Processando...</Badge>}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {scanMethod === 'native' ? (
-            // Interface para scanner nativo
-            <div className="space-y-4">
-              <div className="relative aspect-video bg-gradient-to-br from-primary/20 to-secondary/20 rounded-lg overflow-hidden flex items-center justify-center">
-                <div className="text-center space-y-4">
-                  <div className="w-24 h-24 mx-auto rounded-full bg-primary/20 flex items-center justify-center">
-                    <Scan className="w-12 h-12 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold mb-2">Scanner Inteligente</h3>
-                    <p className="text-muted-foreground text-sm">
-                      Toque no botão abaixo para abrir a câmera traseira e escanear o QR code da prova
-                    </p>
-                  </div>
+          <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+            <canvas ref={overlayCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
+            <canvas ref={canvasRef} className="hidden" />
+            
+            {!cameraStarted && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                <div className="text-center text-white">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
+                  <p>Iniciando câmera...</p>
                 </div>
               </div>
-              
-              <div className="flex justify-center">
-                <Button
-                  onClick={scanWithNativeCamera}
-                  disabled={isScanning}
-                  size="lg"
-                  className="flex items-center gap-2"
-                >
-                  {isScanning ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Processando...
-                    </>
-                  ) : (
-                    <>
-                      <Camera className="w-5 h-5" />
-                      Escanear QR Code
-                    </>
-                  )}
-                </Button>
-              </div>
-              
-              <div className="text-center">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setScanMethod('web');
-                    startCamera();
-                  }}
-                >
-                  Usar câmera web instead
-                </Button>
-              </div>
-            </div>
-          ) : (
-            // Interface para câmera web
-            <div className="space-y-4">
-              <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover"
-                />
-                <canvas
-                  ref={overlayCanvasRef}
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                />
-                <canvas
-                  ref={canvasRef}
-                  className="hidden"
-                />
-                
-                {!cameraStarted && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                    <div className="text-center text-white">
-                      <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-                      <p>Iniciando câmera...</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              <div className="text-center">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setScanMethod('native');
-                  }}
-                >
-                  Usar scanner nativo instead
-                </Button>
-              </div>
+            )}
+          </div>
+          
+          {correctionMode === 'instant' && gabaritoData && (
+            <div className="flex justify-center space-x-4">
+              <Button onClick={finalizarCorrecao} disabled={Object.keys(instantResults).length === 0}>
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Finalizar Correção
+              </Button>
+              <Button variant="outline" onClick={reset}>
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Novo QR Code
+              </Button>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Informações do gabarito */}
       {gabaritoData && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-500" />
-              Gabarito Carregado
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <h4 className="font-semibold">Prova</h4>
-                <p className="text-muted-foreground">{gabaritoData.exam.title}</p>
-                <p className="text-sm text-muted-foreground">{gabaritoData.exam.subject}</p>
-              </div>
-              <div>
-                <h4 className="font-semibold">Aluno</h4>
-                <p className="text-muted-foreground">{gabaritoData.student.name}</p>
-                <p className="text-sm text-muted-foreground">ID: {gabaritoData.student.student_id}</p>
-              </div>
-              <div>
-                <h4 className="font-semibold">Questões</h4>
-                <p className="text-muted-foreground">{gabaritoData.total_questions} questões</p>
-                <p className="text-sm text-muted-foreground">{gabaritoData.exam.total_points} pontos</p>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button 
-                onClick={captureAndProcess}
-                disabled={isProcessing}
-                className="flex items-center gap-2"
-              >
-                {isProcessing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Camera className="w-4 h-4" />
-                )}
-                {isProcessing ? 'Processando...' : 'Capturar e Corrigir'}
-              </Button>
-              <Button variant="outline" onClick={reset}>
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Reiniciar
-              </Button>
+          <CardHeader><CardTitle>Informações da Prova</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <div><p className="text-sm text-muted-foreground">Prova</p><p className="font-medium">{gabaritoData.exam.title}</p></div>
+              <div><p className="text-sm text-muted-foreground">Aluno</p><p className="font-medium">{gabaritoData.student.name}</p></div>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Resultados da correção */}
-      {score && correcaoResults.length > 0 && (
+      {(correcaoResults.length > 0 || score) && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-500" />
-              Resultado da Correção
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted rounded-lg">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">{score.correct}</div>
-                <div className="text-sm text-muted-foreground">Acertos</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold">{score.total}</div>
-                <div className="text-sm text-muted-foreground">Total</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{score.percentage}%</div>
-                <div className="text-sm text-muted-foreground">Aproveitamento</div>
-              </div>
-            </div>
-
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {correcaoResults.filter(r => r.type === 'multiple_choice').map((result) => (
-                <div key={result.question} className="flex items-center justify-between p-2 border rounded">
-                  <span className="font-medium">Questão {result.question}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">
-                      Gabarito: <span className="font-bold">{result.correct}</span>
-                    </span>
-                    <span className="text-sm">
-                      Marcou: <span className="font-bold">{result.marked}</span>
-                    </span>
-                    {result.is_correct ? (
-                      <CheckCircle className="w-4 h-4 text-green-500" />
-                    ) : (
-                      <XCircle className="w-4 h-4 text-red-500" />
-                    )}
-                  </div>
+          <CardHeader><CardTitle>Resultado da Correção</CardTitle></CardHeader>
+          <CardContent>
+            {score && (
+              <div className="p-4 bg-muted rounded-lg mb-4">
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div><p className="text-2xl font-bold text-green-500">{score.correct}</p><p className="text-sm">Acertos</p></div>
+                  <div><p className="text-2xl font-bold text-red-500">{score.total - score.correct}</p><p className="text-sm">Erros</p></div>
+                  <div><p className="text-2xl font-bold text-blue-500">{score.percentage}%</p><p className="text-sm">Porcentagem</p></div>
                 </div>
-              ))}
+              </div>
+            )}
+            
+            <div className="flex justify-center">
+              <Button onClick={reset}>
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Nova Correção
+              </Button>
             </div>
-
-            <Button variant="outline" onClick={reset} className="w-full">
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Nova Correção
-            </Button>
           </CardContent>
         </Card>
       )}

@@ -19,6 +19,8 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    console.log('📨 Dados recebidos:', JSON.stringify(requestData, null, 2));
+    
     // Novo formato baseado em coordenadas (inspirado no autoGrader)
     return await processCoordinateBasedCorrection(supabase, requestData);
 
@@ -38,7 +40,12 @@ serve(async (req) => {
 async function processCoordinateBasedCorrection(supabase: any, { fileName, mode, examInfo }: any) {
   try {
     console.log('🎯 Iniciando correção baseada em coordenadas HTML');
+    console.log('📋 Dados do examInfo:', JSON.stringify(examInfo, null, 2));
     
+    if (!fileName || !examInfo) {
+      throw new Error('Parâmetros obrigatórios: fileName, examInfo');
+    }
+
     // Baixar a imagem escaneada
     const { data: imageData, error: downloadError } = await supabase.storage
       .from('correction-scans')
@@ -51,17 +58,44 @@ async function processCoordinateBasedCorrection(supabase: any, { fileName, mode,
     const imageBytes = new Uint8Array(await imageData.arrayBuffer());
     console.log(`📷 Imagem carregada: ${imageBytes.length} bytes`);
 
+    // Buscar student_exam_id a partir dos dados do QR code
+    let studentExamId = examInfo.student_exam_id || examInfo.studentExamId;
+    
+    // Se não tiver student_exam_id, tentar extrair do qrData
+    if (!studentExamId && examInfo.qrData) {
+      try {
+        const qrInfo = JSON.parse(examInfo.qrData);
+        studentExamId = qrInfo.student_exams_id || qrInfo.studentExamId;
+      } catch (error) {
+        console.warn('⚠️ Erro ao fazer parse do qrData:', error);
+      }
+    }
+
+    if (!studentExamId) {
+      console.error('❌ student_exam_id não encontrado nos dados:', { examInfo });
+      throw new Error('ID da prova do aluno não encontrado. Verifique o QR code.');
+    }
+
+    console.log('🔍 Buscando student_exam com ID:', studentExamId);
+
     // Buscar dados HTML do student_exam
     const { data: studentExam, error: studentExamError } = await supabase
       .from('student_exams')
       .select('html_content, bubble_coordinates, answer_key')
-      .eq('id', examInfo.student_exam_id)
-      .single();
+      .eq('id', studentExamId)
+      .maybeSingle(); // Usar maybeSingle para evitar erro se não encontrar
 
-    if (studentExamError || !studentExam) {
+    if (studentExamError) {
       console.error('❌ Erro ao buscar student_exam:', studentExamError);
-      throw new Error('Prova do aluno não encontrada');
+      throw new Error(`Erro ao buscar dados da prova: ${studentExamError.message}`);
     }
+
+    if (!studentExam) {
+      console.error('❌ Student exam não encontrado para ID:', studentExamId);
+      throw new Error('Prova do aluno não encontrada no banco de dados');
+    }
+
+    console.log('✅ Student exam encontrado');
 
     let bubbleCoordinates = studentExam.bubble_coordinates;
 
