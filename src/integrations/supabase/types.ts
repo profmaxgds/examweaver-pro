@@ -590,6 +590,7 @@ export type Database = {
           bubble_coordinates: Json | null
           created_at: string
           exam_id: string
+          html_content: string | null
           id: string
           shuffled_options_map: Json
           shuffled_question_ids: string[]
@@ -602,6 +603,7 @@ export type Database = {
           bubble_coordinates?: Json | null
           created_at?: string
           exam_id: string
+          html_content?: string | null
           id?: string
           shuffled_options_map: Json
           shuffled_question_ids: string[]
@@ -614,6 +616,7 @@ export type Database = {
           bubble_coordinates?: Json | null
           created_at?: string
           exam_id?: string
+          html_content?: string | null
           id?: string
           shuffled_options_map?: Json
           shuffled_question_ids?: string[]

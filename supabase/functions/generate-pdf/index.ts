@@ -492,6 +492,7 @@ serve(async (req) => {
                             }, {}),
                             answer_key: answerKey,
                             bubble_coordinates: bubbleCoordinates,
+                            html_content: examHtml,
                             version_id: null // Para alunos, version_id deve ser null
                         })
                         .select('id')
