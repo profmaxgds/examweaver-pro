@@ -268,10 +268,24 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
         questionInColumn++;
     });
     
+    // Calcular dimensões totais da página
+    const pageWidth = 595; // largura padrão A4 em pontos (210mm)
+    const pageHeight = 842; // altura padrão A4 em pontos (297mm)
+    
+    const result = {
+        page_dimensions: {
+            width: pageWidth,
+            height: pageHeight,
+            unit: 'pt' // pontos typográficos
+        },
+        questions: coordinates
+    };
+    
     console.log(`Coordenadas calculadas para ${questions.length} questões`);
+    console.log('Dimensões da página:', result.page_dimensions);
     console.log('Exemplo primeira questão:', coordinates.q1);
     
-    return coordinates;
+    return result;
 }
 
 // Função para gerar apenas HTML (sem APIs externas problemáticas)
