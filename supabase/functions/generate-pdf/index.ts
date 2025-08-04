@@ -155,10 +155,123 @@ async function fetchBatchExamData(supabase: SupabaseClient, examId: string) {
     }
 }
 
-// Função simplificada - coordenadas já estão calculadas no banco
-function getBubbleCoordinatesFromDB(studentExamData: any) {
-    console.log('Usando coordenadas pré-calculadas do banco de dados...');
-    return studentExamData.bubble_coordinates || {};
+// Função para calcular coordenadas precisas dos bubbles
+function calculateBubbleCoordinates(questions: any[], exam: any) {
+    console.log('Calculando coordenadas dos bubbles...');
+    
+    const coordinates: any = {};
+    
+    // Configurações do layout (baseadas no CSS)
+    const bubbleSize = 11; // --bubble-size: 11px
+    const bubbleMargin = 2.5; // --bubble-margin: 0 2.5px
+    const bubbleBorder = 1; // border: 1px solid #000
+    const anchorWidth = 11; // --anchor-width
+    const anchorMarginRight = 7; // --anchor-margin-right
+    const qNumberWidth = 30; // --q-number-width
+    const qNumberMarginRight = 6; // --q-number-margin-right
+    const rowHeight = 15; // height: 15px por linha
+    
+    // Cálculo do espaçamento total à esquerda
+    const totalLeftSpacing = anchorWidth + anchorMarginRight + qNumberWidth + qNumberMarginRight;
+    
+    // Determinar número de colunas baseado no total de questões
+    const totalQuestions = questions.length;
+    const numCols = totalQuestions <= 6 ? 1 : totalQuestions <= 12 ? 2 : 3;
+    const questionsPerColumn = Math.ceil(totalQuestions / numCols);
+    
+    // Largura estimada da área do gabarito (baseada no container)
+    const answerGridWidth = 500; // Estimativa baseada no layout
+    const columnWidth = answerGridWidth / numCols;
+    const columnDividerWidth = 1.5;
+    
+    let currentColumn = 0;
+    let questionInColumn = 0;
+    
+    questions.forEach((question, questionIndex) => {
+        const questionNumber = questionIndex + 1;
+        
+        // Determinar qual coluna esta questão está
+        if (questionInColumn >= questionsPerColumn && currentColumn < numCols - 1) {
+            currentColumn++;
+            questionInColumn = 0;
+        }
+        
+        // Posição Y da questão (considerando cabeçalho e linha da questão)
+        const headerHeight = 25; // altura do cabeçalho "Marque o gabarito..."
+        const optionsHeaderHeight = 19; // altura do cabeçalho com letras A, B, C...
+        const questionY = headerHeight + optionsHeaderHeight + (questionInColumn * rowHeight);
+        
+        // Posição X base da coluna
+        const columnBaseX = currentColumn * (columnWidth + columnDividerWidth);
+        const questionBaseX = columnBaseX + totalLeftSpacing;
+        
+        // Calcular coordenadas dos bubbles para esta questão
+        const questionCoords: any = {
+            bubbles: {},
+            correct: null
+        };
+        
+        if (question.type === 'essay') {
+            // Questões dissertativas não têm bubbles
+            questionCoords.type = 'essay';
+        } else {
+            // Determinar número de opções
+            let numOptions = 5; // padrão
+            if (question.type === 'true_false') {
+                numOptions = 2;
+            } else if (question.options && Array.isArray(question.options)) {
+                numOptions = question.options.length;
+            }
+            
+            // Calcular coordenadas de cada bubble
+            for (let optionIndex = 0; optionIndex < numOptions; optionIndex++) {
+                const optionLetter = String.fromCharCode(65 + optionIndex); // A, B, C...
+                
+                // Posição X do bubble (considerando margens)
+                const bubbleX = questionBaseX + (optionIndex * (bubbleSize + (bubbleMargin * 2)));
+                
+                // Coordenadas completas: x, y, width, height (incluindo borda)
+                const bubbleCoords = {
+                    x: bubbleX - bubbleBorder,
+                    y: questionY - bubbleBorder,
+                    w: bubbleSize + (bubbleBorder * 2),
+                    h: bubbleSize + (bubbleBorder * 2)
+                };
+                
+                questionCoords.bubbles[optionLetter] = bubbleCoords;
+                
+                // Verificar se é a resposta correta
+                let isCorrect = false;
+                if (question.type === 'multiple_choice') {
+                    const correctOption = question.options?.find((opt: any) => 
+                        Array.isArray(question.correct_answer) 
+                            ? question.correct_answer.includes(opt.id) 
+                            : opt.id === question.correct_answer
+                    );
+                    isCorrect = correctOption && optionIndex < question.options.length && 
+                               question.options[optionIndex].id === correctOption.id;
+                } else if (question.type === 'true_false') {
+                    isCorrect = (optionIndex === 0 && question.correct_answer === true) || 
+                               (optionIndex === 1 && question.correct_answer === false);
+                }
+                
+                if (isCorrect) {
+                    questionCoords.correct = {
+                        option: optionLetter,
+                        coordinates: bubbleCoords
+                    };
+                }
+            }
+        }
+        
+        coordinates[`q${questionNumber}`] = questionCoords;
+        questionInColumn++;
+    });
+    
+    console.log(`Coordenadas calculadas para ${questions.length} questões`);
+    console.log('Exemplo primeira questão:', coordinates.q1);
+    
+    return coordinates;
 }
 
 // Função para gerar apenas HTML (sem APIs externas problemáticas)
@@ -251,8 +364,8 @@ serve(async (req) => {
                         qrId: null // Será preenchido após inserção no banco
                     };
                     
-                    // USAR COORDENADAS PRÉ-CALCULADAS DO BANCO
-                    const bubbleCoordinates = getBubbleCoordinatesFromDB({ bubble_coordinates: {} }); // Por enquanto vazio, mas virá do banco
+                    // CALCULAR COORDENADAS DOS BUBBLES
+                    const bubbleCoordinates = calculateBubbleCoordinates(studentQuestions, exam);
                     
                     // Criar gabarito (answer key)
                     const answerKey: any = {};
