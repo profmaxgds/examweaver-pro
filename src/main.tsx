@@ -6,8 +6,6 @@ import { AuthProvider } from './hooks/useAuth'
 
 createRoot(document.getElementById("root")!).render(
   <AuthProvider>
-    <ThemeProvider>
-      <App />
-    </ThemeProvider>
+    <App />
   </AuthProvider>
 );
