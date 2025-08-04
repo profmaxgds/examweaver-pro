@@ -82,10 +82,6 @@ export default function AutoCorrectionPage() {
   const [autoDetectGrading, setAutoDetectGrading] = useState(false);
   const [detectedAnswerSheet, setDetectedAnswerSheet] = useState(false);
   const [showAlignmentOverlay, setShowAlignmentOverlay] = useState(false);
-  const [realtimeMode, setRealtimeMode] = useState(false);
-  const [currentStudentExam, setCurrentStudentExam] = useState<any>(null);
-  const [detectedAnswers, setDetectedAnswers] = useState<{[key: string]: string}>({});
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -252,18 +248,8 @@ export default function AutoCorrectionPage() {
           }, 500);
         }
         
-        // Se está no modo realtime (como GradePen), ativar análise contínua
-        if (realtimeMode && currentStudentExam) {
-          setShowAlignmentOverlay(true);
-          console.log('🎯 Modo realtime ativado - análise contínua');
-          toast({
-            title: "🎯 Modo Realtime",
-            description: "Posicione a folha sobre os pontos verdes para análise instantânea",
-            duration: 4000,
-          });
-        }
         // Se está no modo photo e já tem examInfo, ativar overlay de alinhamento
-        else if (scanMode === 'photo' && examInfo?.bubbleCoordinates) {
+        if (scanMode === 'photo' && examInfo?.bubbleCoordinates) {
           setShowAlignmentOverlay(true);
           console.log('🎯 Overlay de alinhamento ativado - coordenadas disponíveis');
           toast({
@@ -286,7 +272,7 @@ export default function AutoCorrectionPage() {
     };
 
     playVideo();
-  }, [useCamera, cameraStream, scanMode, realtimeMode, currentStudentExam]);
+  }, [useCamera, cameraStream, scanMode]);
 
   // Som de bip melhorado
   const playBeep = () => {
@@ -309,143 +295,6 @@ export default function AutoCorrectionPage() {
     } catch (error) {
       console.log('Erro ao reproduzir som:', error);
     }
-  };
-
-  // Análise realtime para detecção de respostas marcadas
-  const analyzeCurrentFrame = async () => {
-    if (!videoRef.current || !canvasRef.current || !currentStudentExam || isAnalyzing) return;
-
-    setIsAnalyzing(true);
-    
-    try {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-
-      if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
-
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      context.drawImage(video, 0, 0);
-
-      // Converter para blob para análise
-      canvas.toBlob(async (blob) => {
-        if (!blob) return;
-
-        const file = new File([blob], 'realtime_frame.jpg', { type: 'image/jpeg' });
-        
-        // Upload temporário para análise
-        const fileName = `${user?.id}/realtime_${Date.now()}.jpg`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('correction-scans')
-          .upload(fileName, file);
-
-        if (uploadError) return;
-
-        // Análise com edge function
-        const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('ocr-correction', {
-          body: {
-            fileName: fileName,
-            mode: 'coordinate_based',
-            student_exam_id: currentStudentExam.id,
-            realtime: true
-          }
-        });
-
-        if (!ocrError && ocrResult?.detectedAnswers) {
-          setDetectedAnswers(ocrResult.detectedAnswers);
-        }
-
-        // Limpar arquivo temporário
-        await supabase.storage
-          .from('correction-scans')
-          .remove([fileName]);
-
-      }, 'image/jpeg', 0.8);
-
-    } catch (error) {
-      console.error('Erro na análise realtime:', error);
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  // Confirmar correção realtime
-  const confirmRealtimeCorrection = async () => {
-    if (!currentStudentExam || !detectedAnswers) return;
-
-    try {
-      // Calcular pontuação
-      const answerKey = currentStudentExam.answer_key || {};
-      let correctCount = 0;
-      const feedback: any[] = [];
-
-      Object.entries(detectedAnswers).forEach(([questionId, answer]) => {
-        const correctAnswer = answerKey[questionId];
-        const isCorrect = answer === correctAnswer;
-        if (isCorrect) correctCount++;
-        
-        feedback.push({
-          questionNumber: questionId,
-          studentAnswer: answer,
-          correctAnswer: correctAnswer,
-          isCorrect: isCorrect
-        });
-      });
-
-      const maxScore = Object.keys(answerKey).length;
-      const percentage = Math.round((correctCount / maxScore) * 100);
-
-      const correctionResult: CorrectionResult = {
-        examId: currentStudentExam.exam_id,
-        studentId: currentStudentExam.student_id,
-        studentName: 'Aluno',
-        answers: detectedAnswers,
-        score: correctCount,
-        maxScore: maxScore,
-        percentage: percentage,
-        correctAnswers: answerKey,
-        feedback: feedback,
-        hasOpenQuestions: essayQuestions.length > 0,
-        openQuestions: essayQuestions
-      };
-
-      setCorrectionResult(correctionResult);
-      setStep('corrected');
-      stopCamera();
-
-      toast({
-        title: "✅ Correção Confirmada!",
-        description: `Nota: ${correctCount}/${maxScore} (${percentage}%)`,
-        duration: 6000,
-      });
-
-      // Alertar sobre questões abertas se houver
-      if (essayQuestions.length > 0) {
-        toast({
-          title: "⚠️ Questões Abertas Detectadas",
-          description: `Esta prova contém ${essayQuestions.length} questão(ões) aberta(s) que precisam ser corrigidas manualmente.`,
-          duration: 8000,
-        });
-      }
-
-    } catch (error) {
-      console.error('Erro ao confirmar correção:', error);
-      toast({
-        title: "Erro",
-        description: "Erro ao processar correção",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // Reiniciar detecção
-  const resetDetection = () => {
-    setDetectedAnswers({});
-    toast({
-      title: "Detecção reiniciada",
-      description: "Posicione novamente a folha de respostas",
-    });
   };
 
   // Iniciar câmera para QR ou foto (otimizado para mobile)
@@ -768,15 +617,17 @@ export default function AutoCorrectionPage() {
       console.log('🎯 Bubble coordinates:', studentExam.bubble_coordinates);
       
       if (hasCoordinates && hasAnswerKey) {
-        // Modo realtime como GradePen - mostrar grade sobreposta
-        setCurrentStudentExam(studentExam);
-        setRealtimeMode(true);
-        setStep('capture-answers');
+        setStep('capture-answers'); // Ir direto para captura de respostas
+        stopCamera();
+        
+        // Automaticamente iniciar captura com coordenadas após 1 segundo
+        setTimeout(() => {
+          startCamera('photo');
+        }, 1000);
         
         toast({
-          title: "🎯 Modo Realtime Ativado",
-          description: "Posicione a folha sobre a grade para correção instantânea",
-          duration: 4000,
+          title: "🎯 Coordenadas Ativas",
+          description: "Posicione a folha de respostas alinhada para captura precisa",
         });
       } else {
         // Sem coordenadas ou gabarito, ir para modo de análise básica
@@ -1323,7 +1174,7 @@ export default function AutoCorrectionPage() {
                           </div>
                         </div>
                       ) : (
-                        // Guias para captura de folha de resposta ou modo realtime
+                        // Guias para captura de folha de resposta
                         <div className="absolute inset-0 pointer-events-none">
                           {/* Bordas dos cantos para alinhamento */}
                           <div className="absolute top-4 left-4 w-6 h-6 border-t-4 border-l-4 border-green-400"></div>
@@ -1331,11 +1182,11 @@ export default function AutoCorrectionPage() {
                           <div className="absolute bottom-4 left-4 w-6 h-6 border-b-4 border-l-4 border-green-400"></div>
                           <div className="absolute bottom-4 right-4 w-6 h-6 border-b-4 border-r-4 border-green-400"></div>
                           
-                          {/* Overlay de coordenadas - modo realtime ou captura */}
-                          {showAlignmentOverlay && (examInfo?.bubbleCoordinates || currentStudentExam?.bubble_coordinates) && (
+                          {/* Overlay de coordenadas se disponível */}
+                          {showAlignmentOverlay && examInfo?.bubbleCoordinates && (
                             <div className="absolute inset-0">
                               {/* Mostrar regiões das bolhas */}
-                              {Object.entries(examInfo?.bubbleCoordinates || currentStudentExam?.bubble_coordinates || {}).map(([questionId, questionData]: [string, any]) => 
+                              {Object.entries(examInfo.bubbleCoordinates).map(([questionId, questionData]: [string, any]) => 
                                 Object.entries(questionData.bubbles || questionData).map(([option, coords]: [string, any]) => {
                                   // Calcular posição relativa no vídeo
                                   const videoElement = videoRef.current;
@@ -1352,20 +1203,10 @@ export default function AutoCorrectionPage() {
                                   const y = (coords.y || 0) * scaleY;
                                   const size = 12 * Math.min(scaleX, scaleY); // Tamanho da bolha escalado
                                   
-                                  // Verificar se esta resposta foi detectada
-                                  const isDetected = detectedAnswers[questionId] === option;
-                                  const isCorrect = currentStudentExam?.answer_key?.[questionId] === option;
-                                  
                                   return (
                                     <div
                                       key={`${questionId}-${option}`}
-                                      className={`absolute rounded-full border-2 ${
-                                        isDetected 
-                                          ? isCorrect 
-                                            ? 'border-green-500 bg-green-500/40' 
-                                            : 'border-red-500 bg-red-500/40'
-                                          : 'border-green-400 bg-green-400/20'
-                                      }`}
+                                      className="absolute border-2 border-green-400 bg-green-400/20 rounded-full"
                                       style={{
                                         left: `${x - size/2}px`,
                                         top: `${y - size/2}px`,
@@ -1376,33 +1217,19 @@ export default function AutoCorrectionPage() {
                                       <span className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs text-green-600 bg-white/80 px-1 rounded">
                                         {questionId}{option}
                                       </span>
-                                      
-                                      {/* Mostrar checkmark se detectado */}
-                                      {isDetected && (
-                                        <div className="absolute inset-0 flex items-center justify-center">
-                                          <CheckCircle className={`w-3 h-3 ${isCorrect ? 'text-green-600' : 'text-red-600'}`} />
-                                        </div>
-                                      )}
                                     </div>
                                   );
                                 })
                               ).flat()}
                               
-                              <div className="absolute bottom-2 left-2 right-2 bg-black/80 text-white p-2 rounded text-xs">
-                                {realtimeMode ? (
-                                  <div>
-                                    <p>🎯 Modo Realtime - {Object.keys(currentStudentExam?.bubble_coordinates || {}).length} questões</p>
-                                    <p>✓ Detectadas: {Object.keys(detectedAnswers).length}</p>
-                                  </div>
-                                ) : (
-                                  <p>🎯 {Object.keys(examInfo?.bubbleCoordinates || {}).length} regiões de resposta mapeadas</p>
-                                )}
-                              </div>
+                              <p className="absolute bottom-2 left-2 text-xs text-green-600 bg-white/90 px-2 py-1 rounded">
+                                🎯 {Object.keys(examInfo.bubbleCoordinates).length} regiões de resposta mapeadas
+                              </p>
                             </div>
                           )}
                           
-                          <p className="absolute bottom-16 left-0 right-0 text-xs text-green-600 text-center bg-black/50 text-white py-1">
-                            {realtimeMode ? 'Posicione as linhas vermelhas sobre os retângulos pretos' : 'Alinhe a folha de respostas'}
+                          <p className="absolute bottom-12 left-0 right-0 text-xs text-green-600 text-center bg-black/50 text-white py-1">
+                            Alinhe a folha de respostas
                           </p>
                         </div>
                       )}
@@ -1416,47 +1243,7 @@ export default function AutoCorrectionPage() {
 
                     {/* Botões de controle da câmera */}
                     <div className="flex justify-center space-x-4">
-                      {realtimeMode ? (
-                        // Botões do modo realtime (como GradePen)
-                        <>
-                          <Button
-                            onClick={analyzeCurrentFrame}
-                            disabled={isAnalyzing}
-                            className="bg-blue-600 hover:bg-blue-700 text-white"
-                            size="lg"
-                          >
-                            {isAnalyzing ? (
-                              <>
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                Analisando...
-                              </>
-                            ) : (
-                              <>
-                                <ScanLine className="w-4 h-4 mr-2" />
-                                Detectar Respostas
-                              </>
-                            )}
-                          </Button>
-                          
-                          <Button
-                            onClick={confirmRealtimeCorrection}
-                            disabled={Object.keys(detectedAnswers).length === 0}
-                            className="bg-green-600 hover:bg-green-700 text-white"
-                            size="lg"
-                          >
-                            <CheckCircle className="w-4 h-4 mr-2" />
-                            Confirmar
-                          </Button>
-                          
-                          <Button
-                            onClick={resetDetection}
-                            variant="outline"
-                            size="lg"
-                          >
-                            Reiniciar
-                          </Button>
-                        </>
-                      ) : scanMode === 'photo' ? (
+                      {scanMode === 'photo' && (
                         <Button
                           onClick={capturePhoto}
                           className="bg-green-600 hover:bg-green-700 text-white"
@@ -1465,7 +1252,7 @@ export default function AutoCorrectionPage() {
                           <Camera className="w-4 h-4 mr-2" />
                           Capturar
                         </Button>
-                      ) : null}
+                      )}
                       
                       <Button
                         onClick={resetToStart}
