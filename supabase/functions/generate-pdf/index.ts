@@ -14,6 +14,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Tipos para o array results
+interface ResultSuccess {
+  studentId: string;
+  studentName: string;
+  studentExamId: string;
+  examUrl: string;
+  answerKeyUrl: string;
+  success: true;
+}
+
+interface ResultError {
+  studentId: string;
+  studentName: string;
+  error: string;
+  success: false;
+}
+
+type Result = ResultSuccess | ResultError;
+
 // NOVA FUNÇÃO para buscar os dados de uma prova já preparada
 async function fetchPreparedExamData(supabase: SupabaseClient, studentExamId: string) {
     const { data, error } = await supabase
@@ -95,7 +114,7 @@ async function fetchBatchExamData(supabase: SupabaseClient, examId: string) {
                 .single();
             
             if (!headerError && headerData) {
-                exam.exam_headers = headerData; // Usar exam_headers como esperado no layout
+                exam.exam_headers = headerData;
                 console.log('Cabeçalho encontrado:', headerData.name);
             }
         }
@@ -168,15 +187,15 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
     const bodyPaddingPt = 42.52; // 1.5cm (body padding)
     
     // === CONFIGURAÇÕES DO LAYOUT (exatas do CSS) ===
-    const bubbleSize = 11; // --bubble-size: 11px
-    const bubbleMargin = 2.5; // --bubble-margin: 0 2.5px
+    const bubbleSize = 14; // --bubble-size: 14px
+    const bubbleMargin = 6; // --bubble-margin: 0 6px
     const bubbleBorder = 1; // border: 1px solid #000
-    const anchorWidth = 11; // --anchor-width
-    const anchorMarginRight = 7; // --anchor-margin-right
+    const anchorWidth = 14; // --anchor-size: 14px
+    const anchorMarginRight = 5; // --anchor-margin: 0 5px
     const qNumberWidth = 30; // --q-number-width
-    const qNumberMarginRight = 6; // --q-number-margin-right
-    const rowHeight = 15; // height: 15px por linha
-    const rowMarginBottom = 4; // margin-bottom: 4px
+    const qNumberMarginRight = 10; // --q-number-margin-right
+    const rowHeight = 15; // height: 15px por linha (estimado)
+    const rowMarginBottom = 8; // margin-bottom: 8px
     
     // === CÁLCULO EXATO DOS OFFSETS VERTICAIS (baseado no CSS real) ===
     let yOffset = bodyPaddingPt; // body { padding: 1.5cm; }
@@ -185,8 +204,8 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
     const customHeaderFontSize = 11; // font-size: 11pt
     const customHeaderLineHeight = 1.5; // line-height: 1.5
     const customHeaderPaddingBottom = 10; // padding-bottom: 10px
-    const customHeaderMarginBottom = 25; // margin-bottom: 25px
-    const customHeaderBorderBottom = 2; // border-bottom: 2px solid #000
+    const customHeaderMarginBottom = 15; // margin-bottom: 15px
+    const customHeaderBorderBottom = 1; // border-bottom: 1px solid #000 (ajustado para a versão original)
     
     // Altura real do custom-header baseada no conteúdo
     // 5 linhas de texto (instituição, professor, disciplina, curso, aluno) + 1 linha de detalhes
@@ -199,7 +218,7 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
     if (exam?.instructions) {
         const instructionsFontSize = 10; // font-size: 10pt
         const instructionsPadding = 20; // padding: 10px (top+bottom)
-        const instructionsMarginBottom = 25; // margin-bottom: 25px
+        const instructionsMarginBottom = 15; // margin-bottom: 15px
         const instructionsBorder = 2; // border: 1px solid (top+bottom)
         
         // Estimar altura baseada no comprimento do texto
@@ -210,12 +229,12 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
     }
     
     // 3. ANSWER-SHEET-CONTAINER componentes (CSS exato)
-    const answerSheetMarginBottom = 25; // margin-bottom: 25px
-    const answerGridPaddingTop = 10; // padding: 10px 5px (top)
-    const answerGridHeaderFontSize = 9; // font-size: 9pt
-    const answerGridHeaderMarginBottom = 8; // margin-bottom: 8px
-    const answerOptionsHeaderHeight = 15; // height: 15px
-    const answerOptionsHeaderMarginBottom = 4; // margin-bottom: 4px
+    const answerSheetMarginBottom = 15; // margin-bottom: 15px
+    const answerGridPaddingTop = 14; // padding: var(--anchor-size) 0 (14px)
+    const answerGridHeaderFontSize = 12; // font-size: 12pt
+    const answerGridHeaderMarginBottom = 10; // margin-bottom: 10px
+    const answerOptionsHeaderHeight = 15; // height: 15px (estimado)
+    const answerOptionsHeaderMarginBottom = 8; // margin-bottom: 8px
     
     // Altura do cabeçalho da grade (uma linha de texto)
     const answerGridHeaderHeight = answerGridHeaderFontSize * 1.4; // line-height estimado
@@ -233,23 +252,23 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
     let xOffset = bodyPaddingPt; // body { padding: 1.5cm; } - margem esquerda
     
     // Largura da seção QR Code
-    const qrCodeSectionWidth = 140; // flex: 0 0 140px
+    const qrCodeSectionWidth = 120; // flex: 0 0 120px
     xOffset += qrCodeSectionWidth;
     
     // Gap entre QR e grid
-    const gapBetweenQrAndGrid = 8.5; // gap: 0.3cm convertido para pontos
+    const gapBetweenQrAndGrid = 20; // gap: 20px
     xOffset += gapBetweenQrAndGrid;
     
     // Padding da answer-grid-section
-    const answerGridPaddingLeft = 5; // padding: 10px 5px (left)
+    const answerGridPaddingLeft = 0; // padding: var(--anchor-size) 0 (left é 0)
     xOffset += answerGridPaddingLeft;
     
     // Largura disponível para as colunas
-    const answerGridPaddingRight = 5; // padding: 10px 5px (right)
+    const answerGridPaddingRight = 0; // padding: var(--anchor-size) 0 (right é 0)
     const remainingWidth = pageWidthPt - xOffset - bodyPaddingPt - answerGridPaddingRight;
     
     // Configuração dos divisores de coluna
-    const columnDividerWidth = 1.5; // width: 1.5px
+    const columnDividerWidth = 1.5; // width: 1.5px (estimado)
     const columnDividerMarginLeft = 10; // margin: 0 10px
     const columnDividerMarginRight = 10; // margin: 0 10px
     const columnDividerTotalWidth = columnDividerWidth + columnDividerMarginLeft + columnDividerMarginRight;
@@ -414,7 +433,7 @@ serve(async (req) => {
                 throw new Error('Nenhum aluno encontrado na turma');
             }
             
-            const results = [];
+            const results: Result[] = []; // Tipagem explícita do array
             console.log(`Processando ${students.length} alunos...`);
             
             // Processar cada aluno - SEM PUPPETEER por enquanto
@@ -444,13 +463,15 @@ serve(async (req) => {
                     
                     // Criar info do aluno para o HTML
                     const studentInfo = {
-                        name: student.name,
-                        id: student.student_id || 'N/A', // Matrícula para exibição
-                        studentUUID: student.id, // UUID real para QR code
+                        name: student.name || 'N/A',
+                        id: student.student_id || 'N/A',
+                        studentUUID: student.id,
                         course: student.course || 'N/A',
                         class: student.class?.name || 'N/A',
-                        qrId: null // Será preenchido após inserção no banco
+                        qrId: null
                     };
+                    
+                    console.log('Dados do studentInfo:', studentInfo); // Log para debug
                     
                     // CALCULAR COORDENADAS DOS BUBBLES
                     const bubbleCoordinates = calculateBubbleCoordinates(studentQuestions, exam);
@@ -493,7 +514,7 @@ serve(async (req) => {
                             }, {}),
                             answer_key: answerKey,
                             bubble_coordinates: bubbleCoordinates,
-                            version_id: null // Para alunos, version_id deve ser null
+                            version_id: null
                         })
                         .select('id')
                         .single();
@@ -617,7 +638,7 @@ serve(async (req) => {
                         examUrl: examUrlData.publicUrl,
                         answerKeyUrl: answerKeyUrlData.publicUrl,
                         success: true
-                    });
+                    } as ResultSuccess);
                     
                 } catch (studentError) {
                     console.error(`Erro ao processar aluno ${student.name}:`, studentError);
@@ -626,7 +647,7 @@ serve(async (req) => {
                         studentName: student.name,
                         error: studentError.message,
                         success: false
-                    });
+                    } as ResultError);
                 }
             }
             
@@ -670,12 +691,14 @@ serve(async (req) => {
         
         const studentInfo = {
             name: preparedExamData.student?.name || 'N/A',
-            id: preparedExamData.student?.student_id || 'N/A', // Matrícula para exibição
-            studentUUID: preparedExamData.student?.id, // UUID real para QR code
+            id: preparedExamData.student?.student_id || 'N/A',
+            studentUUID: preparedExamData.student?.id,
             course: preparedExamData.student?.course || 'N/A',
             class: preparedExamData.student?.class?.name || 'N/A',
-            qrId: studentExamId // Usar o studentExamId real que foi passado como parâmetro
+            qrId: studentExamId
         };
+        
+        console.log('Dados do studentInfo:', studentInfo); // Log para debug
         
         if (generatePDF) {
             const { htmlBytes, pdfBytes } = await generatePDFFromHTML(
@@ -720,9 +743,20 @@ serve(async (req) => {
             }));
         }
         
+        const studentInfo = {
+            name: 'N/A', // Placeholder para geração por versão
+            id: 'N/A',
+            studentUUID: `version-${version}`,
+            course: 'N/A',
+            class: 'N/A',
+            qrId: null
+        };
+        
+        console.log('Dados do studentInfo (versão):', studentInfo); // Log para debug
+        
         if (generatePDF) {
             const { htmlBytes, pdfBytes } = await generatePDFFromHTML(
-                generateExamHTML(exam, processedQuestions, version, includeAnswers),
+                generateExamHTML(exam, processedQuestions, version, includeAnswers, studentInfo),
                 `Versao_${version}`
             );
             
@@ -740,7 +774,7 @@ serve(async (req) => {
             });
         }
         
-        html = generateExamHTML(exam, processedQuestions, version, includeAnswers);
+        html = generateExamHTML(exam, processedQuestions, version, includeAnswers, studentInfo);
         examTitle = exam.title;
 
     } else {
