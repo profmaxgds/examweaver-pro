@@ -153,17 +153,17 @@ async function processCoordinateBasedCorrection(supabase: any, { fileName, mode,
   }
 }
 
-// Extrair coordenadas dos bubbles do HTML salvo
+// Extrair coordenadas dos bubbles do HTML salvo com múltiplos padrões
 function extractBubbleCoordinatesFromHTML(htmlContent: string) {
   try {
     console.log('🔍 Extraindo coordenadas dos bubbles do HTML...');
     const coordinates: any = {};
     
-    // Regex para encontrar bubbles com suas coordenadas no style
-    const bubbleRegex = /<div[^>]*class="[^"]*bubble[^"]*"[^>]*data-question="(\d+)"[^>]*data-option="([A-E])"[^>]*style="[^"]*left:\s*(\d+(?:\.\d+)?)px[^"]*top:\s*(\d+(?:\.\d+)?)px[^"]*width:\s*(\d+(?:\.\d+)?)px[^"]*height:\s*(\d+(?:\.\d+)?)px[^"]*"[^>]*>/g;
+    // Padrão 1: Bubbles com style inline completo
+    const bubbleRegex1 = /<div[^>]*class="[^"]*bubble[^"]*"[^>]*data-question="(\d+)"[^>]*data-option="([A-E])"[^>]*style="[^"]*left:\s*(\d+(?:\.\d+)?)px[^"]*top:\s*(\d+(?:\.\d+)?)px[^"]*width:\s*(\d+(?:\.\d+)?)px[^"]*height:\s*(\d+(?:\.\d+)?)px[^"]*"[^>]*>/g;
     
     let match;
-    while ((match = bubbleRegex.exec(htmlContent)) !== null) {
+    while ((match = bubbleRegex1.exec(htmlContent)) !== null) {
       const questionNum = parseInt(match[1]);
       const option = match[2];
       const x = parseFloat(match[3]);
@@ -178,10 +178,50 @@ function extractBubbleCoordinatesFromHTML(htmlContent: string) {
       coordinates[`q${questionNum}`].bubbles[option] = { x, y, w, h };
     }
     
-    // Fallback: usar regex mais simples se o primeiro não encontrar nada
+    // Padrão 2: Bubbles com transform ou diferentes formatos
     if (Object.keys(coordinates).length === 0) {
+      console.log('📐 Tentando padrão alternativo de extração...');
+      
+      const bubbleRegex2 = /<div[^>]*data-question="(\d+)"[^>]*data-option="([A-E])"[^>]*class="[^"]*bubble[^"]*"[^>]*style="[^"]*(?:left|transform)[^"]*"[^>]*>/g;
+      
+      while ((match = bubbleRegex2.exec(htmlContent)) !== null) {
+        const questionNum = parseInt(match[1]);
+        const option = match[2];
+        
+        // Extrair coordenadas do style usando regex mais flexível
+        const elementHTML = match[0];
+        const leftMatch = elementHTML.match(/left:\s*(\d+(?:\.\d+)?)px/);
+        const topMatch = elementHTML.match(/top:\s*(\d+(?:\.\d+)?)px/);
+        const widthMatch = elementHTML.match(/width:\s*(\d+(?:\.\d+)?)px/);
+        const heightMatch = elementHTML.match(/height:\s*(\d+(?:\.\d+)?)px/);
+        
+        if (leftMatch && topMatch) {
+          const x = parseFloat(leftMatch[1]);
+          const y = parseFloat(topMatch[1]);
+          const w = widthMatch ? parseFloat(widthMatch[1]) : 13;
+          const h = heightMatch ? parseFloat(heightMatch[1]) : 13;
+          
+          if (!coordinates[`q${questionNum}`]) {
+            coordinates[`q${questionNum}`] = { bubbles: {} };
+          }
+          
+          coordinates[`q${questionNum}`].bubbles[option] = { x, y, w, h };
+        }
+      }
+    }
+    
+    // Padrão 3: Fallback com cálculo baseado na estrutura padrão
+    if (Object.keys(coordinates).length === 0) {
+      console.log('📐 Usando cálculo de posições baseado na estrutura padrão...');
+      
       const simpleBubbleRegex = /<div[^>]*data-question="(\d+)"[^>]*data-option="([A-E])"[^>]*>/g;
-      let baseX = 249, baseY = 227;
+      
+      // Analisar layout do HTML para determinar posições base
+      const layoutInfo = analyzeHTMLLayout(htmlContent);
+      let baseX = layoutInfo.baseX || 249;
+      let baseY = layoutInfo.baseY || 227;
+      const spacingX = layoutInfo.spacingX || 16;
+      const spacingY = layoutInfo.spacingY || 19;
       
       while ((match = simpleBubbleRegex.exec(htmlContent)) !== null) {
         const questionNum = parseInt(match[1]);
@@ -192,8 +232,8 @@ function extractBubbleCoordinatesFromHTML(htmlContent: string) {
         }
         
         // Calcular posição baseada na estrutura padrão
-        const x = baseX + (option.charCodeAt(0) - 65) * 16;
-        const y = baseY + (questionNum - 1) * 19;
+        const x = baseX + (option.charCodeAt(0) - 65) * spacingX;
+        const y = baseY + (questionNum - 1) * spacingY;
         
         coordinates[`q${questionNum}`].bubbles[option] = {
           x, y, w: 13, h: 13
@@ -201,13 +241,106 @@ function extractBubbleCoordinatesFromHTML(htmlContent: string) {
       }
     }
     
+    // Adicionar pontos de calibração para alinhamento
+    const calibrationPoints = generateCalibrationPoints(htmlContent, coordinates);
+    
     console.log(`✅ Extraídas coordenadas para ${Object.keys(coordinates).length} questões`);
-    return coordinates;
+    console.log(`🎯 Adicionados ${Object.keys(calibrationPoints).length} pontos de calibração`);
+    
+    return {
+      bubbles: coordinates,
+      calibration: calibrationPoints,
+      total_questions: Object.keys(coordinates).length
+    };
     
   } catch (error) {
     console.error('❌ Erro ao extrair coordenadas do HTML:', error);
     return null;
   }
+}
+
+// Analisar layout do HTML para determinar posições e espaçamentos
+function analyzeHTMLLayout(htmlContent: string) {
+  const layoutInfo: any = {
+    baseX: 249,
+    baseY: 227,
+    spacingX: 16,
+    spacingY: 19
+  };
+  
+  // Tentar extrair informações de layout do CSS ou estrutura HTML
+  const cssMatch = htmlContent.match(/<style[^>]*>(.*?)<\/style>/s);
+  if (cssMatch) {
+    const css = cssMatch[1];
+    
+    // Procurar por classes de bubble e suas propriedades
+    const bubbleClassMatch = css.match(/\.bubble\s*{[^}]*}/);
+    if (bubbleClassMatch) {
+      const bubbleCSS = bubbleClassMatch[0];
+      
+      const widthMatch = bubbleCSS.match(/width:\s*(\d+)px/);
+      const heightMatch = bubbleCSS.match(/height:\s*(\d+)px/);
+      
+      if (widthMatch) layoutInfo.bubbleWidth = parseInt(widthMatch[1]);
+      if (heightMatch) layoutInfo.bubbleHeight = parseInt(heightMatch[1]);
+    }
+    
+    // Procurar por informações de espaçamento
+    const spacingMatch = css.match(/margin[^:]*:\s*(\d+)px/);
+    if (spacingMatch) {
+      layoutInfo.spacingY = parseInt(spacingMatch[1]);
+    }
+  }
+  
+  // Analisar estrutura de questões para inferir espaçamento
+  const questionMatches = htmlContent.match(/<div[^>]*class="[^"]*question[^"]*"/g);
+  if (questionMatches && questionMatches.length > 1) {
+    // Se temos múltiplas questões, tentar calcular espaçamento baseado na estrutura
+    layoutInfo.spacingY = Math.max(19, Math.floor(500 / questionMatches.length));
+  }
+  
+  return layoutInfo;
+}
+
+// Gerar pontos de calibração baseados na estrutura do HTML
+function generateCalibrationPoints(htmlContent: string, coordinates: any) {
+  const calibrationPoints: any = {};
+  
+  // Determinar bounds das questões para posicionar pontos de calibração
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  
+  Object.values(coordinates).forEach((questionData: any) => {
+    Object.values(questionData.bubbles).forEach((bubble: any) => {
+      minX = Math.min(minX, bubble.x);
+      maxX = Math.max(maxX, bubble.x + bubble.w);
+      minY = Math.min(minY, bubble.y);
+      maxY = Math.max(maxY, bubble.y + bubble.h);
+    });
+  });
+  
+  // Se não conseguimos extrair bounds, usar valores padrão
+  if (minX === Infinity) {
+    minX = 50; maxX = 750;
+    minY = 50; maxY = 550;
+  }
+  
+  // Posicionar pontos de calibração nas extremidades com margem
+  const margin = 30;
+  calibrationPoints.top_left = { x: minX - margin, y: minY - margin, type: 'calibration' };
+  calibrationPoints.top_right = { x: maxX + margin, y: minY - margin, type: 'calibration' };
+  calibrationPoints.bottom_left = { x: minX - margin, y: maxY + margin, type: 'calibration' };
+  calibrationPoints.bottom_right = { x: maxX + margin, y: maxY + margin, type: 'calibration' };
+  
+  // Adicionar pontos de referência no meio para melhor alinhamento
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  
+  calibrationPoints.center = { x: centerX, y: centerY, type: 'center_reference' };
+  calibrationPoints.top_center = { x: centerX, y: minY - margin, type: 'edge_reference' };
+  calibrationPoints.bottom_center = { x: centerX, y: maxY + margin, type: 'edge_reference' };
+  
+  return calibrationPoints;
 }
 
 // Análise avançada com 4 configurações diferentes para máxima compatibilidade
