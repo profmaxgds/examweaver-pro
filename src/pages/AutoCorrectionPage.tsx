@@ -783,7 +783,7 @@ export default function AutoCorrectionPage() {
       // 3. Buscar student_exam com dados completos
       const { data: studentExam, error: studentExamError } = await supabase
         .from('student_exams')
-        .select('*, exams!inner(title, subject, institutions)')
+        .select('*, exams!inner(title, subject, institutions, question_ids)')
         .eq('exam_id', qrData.examId)
         .eq('student_id', qrData.studentId)
         .single();
@@ -793,6 +793,18 @@ export default function AutoCorrectionPage() {
       }
 
       console.log('✅ Student exam encontrado:', studentExam.id);
+
+      // 3.5. Buscar questões para verificar se há questões abertas
+      const { data: questionsData, error: questionsError } = await supabase
+        .from('questions')
+        .select('*')
+        .in('id', studentExam.exams.question_ids);
+
+      const essayQuestionsFound = questionsData?.filter(q => q.type === 'essay') || [];
+      console.log('Questões abertas encontradas:', essayQuestionsFound);
+
+      // Definir questões abertas no estado
+      setEssayQuestions(essayQuestionsFound);
 
       // 4. Upload da imagem
       const fileName = `${user.id}/correction_${Date.now()}_${selectedFile.name}`;
@@ -846,7 +858,9 @@ export default function AutoCorrectionPage() {
         correctAnswers: Object.fromEntries(
           Object.entries(studentExam.answer_key || {}).map(([k, v]) => [k, String(v)])
         ),
-        feedback: ocrResult.feedback || []
+        feedback: ocrResult.feedback || [],
+        hasOpenQuestions: essayQuestionsFound.length > 0,
+        openQuestions: essayQuestionsFound
       };
 
       setCorrectionResult(correctionData);
@@ -860,6 +874,15 @@ export default function AutoCorrectionPage() {
         description: `Nota: ${correctionData.score}/${correctionData.maxScore} (${correctionData.percentage}%) - Coordenadas HTML (${confidence}%)`,
         duration: 6000,
       });
+
+      // 8. Alertar sobre questões abertas se houver
+      if (essayQuestionsFound.length > 0) {
+        toast({
+          title: "⚠️ Questões Abertas Detectadas",
+          description: `Esta prova contém ${essayQuestionsFound.length} questão(ões) aberta(s) que precisam ser corrigidas manualmente.`,
+          duration: 8000,
+        });
+      }
 
     } catch (error) {
       console.error('Erro no processamento:', error);
