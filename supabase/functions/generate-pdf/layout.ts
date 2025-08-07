@@ -194,7 +194,7 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
 
         .answer-sheet-container { 
             font-family: var(--font-mono);
-            margin: 15px 0; 
+            margin: 80px 0 80px 0; /* Increased spacing: 30px top and bottom */
             display: flex; 
             flex-direction: column; 
             align-items: center; 

@@ -229,7 +229,8 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
     }
     
     // 3. ANSWER-SHEET-CONTAINER componentes (CSS exato)
-    const answerSheetMarginBottom = 15; // margin-bottom: 15px
+    const answerSheetMarginTop = 30; // margin: 30px 0 30px 0 (updated)
+    const answerSheetMarginBottom = 30; // margin: 30px 0 30px 0 (updated)
     const answerGridPaddingTop = 14; // padding: var(--anchor-size) 0 (14px)
     const answerGridHeaderFontSize = 12; // font-size: 12pt
     const answerGridHeaderMarginBottom = 10; // margin-bottom: 10px
@@ -240,7 +241,7 @@ function calculateBubbleCoordinates(questions: any[], exam: any) {
     const answerGridHeaderHeight = answerGridHeaderFontSize * 1.4; // line-height estimado
     
     // Somar tudo até o início das linhas de questões
-    yOffset += answerGridPaddingTop + answerGridHeaderHeight + answerGridHeaderMarginBottom + 
+    yOffset += answerSheetMarginTop + answerGridPaddingTop + answerGridHeaderHeight + answerGridHeaderMarginBottom + 
               answerOptionsHeaderHeight + answerOptionsHeaderMarginBottom;
     
     // === CONFIGURAÇÃO DAS COLUNAS ===
@@ -401,7 +402,6 @@ async function generatePDFFromHTML(htmlContent: string, studentName: string): Pr
     }
 }
 
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -545,7 +545,7 @@ serve(async (req) => {
                     const answerKeyEncoder = new TextEncoder();
                     const answerKeyHtmlBytes = answerKeyEncoder.encode(answerKeyHtmlContent);
                     
-                    // SALVAR PROVA NO STORAGE
+                    // SALVAR HTML DA PROVA NO STORAGE
                     const examFileName = `PROVA_${student.name.replace(/[^a-zA-Z0-9]/g, '_')}_${student.student_id || student.id}.html`;
                     const examFilePath = `${examId}/provas/${examFileName}`;
                     
@@ -577,7 +577,7 @@ serve(async (req) => {
                         throw new Error(`Erro ao salvar gabarito: ${answerKeyUploadError.message}`);
                     }
                     
-                    // SALVAR HTML DA PROVA NA NOVA TABELA exam_generated_files
+                    // SALVAR HTML DA PROVA NA TABELA exam_generated_files
                     const { error: saveExamError } = await supabase
                         .from('exam_generated_files')
                         .upsert({
@@ -598,7 +598,7 @@ serve(async (req) => {
                         console.log(`✓ HTML da prova salvo para ${student.name}`);
                     }
 
-                    // SALVAR HTML DO GABARITO NA NOVA TABELA exam_generated_files
+                    // SALVAR HTML DO GABARITO NA TABELA exam_generated_files
                     const { error: saveAnswerKeyError } = await supabase
                         .from('exam_generated_files')
                         .upsert({
@@ -617,6 +617,18 @@ serve(async (req) => {
                         console.error(`Erro ao salvar HTML do gabarito para ${student.name}:`, saveAnswerKeyError);
                     } else {
                         console.log(`✓ HTML do gabarito salvo para ${student.name}`);
+                    }
+
+                    // ATUALIZAR student_exams COM html_content (gabarito)
+                    const { error: updateStudentExamError } = await supabase
+                        .from('student_exams')
+                        .update({ html_content: answerKeyHtmlContent })
+                        .eq('id', realStudentExamId);
+                    
+                    if (updateStudentExamError) {
+                        console.error(`Erro ao salvar html_content para student_exam ${realStudentExamId}:`, updateStudentExamError);
+                    } else {
+                        console.log(`✓ html_content salvo no student_exams para ${student.name}`);
                     }
                     
                     // OBTER URLs dos arquivos
@@ -780,7 +792,6 @@ serve(async (req) => {
     } else {
         throw new Error("Parâmetros inválidos. Forneça 'studentExamId', 'examId' ou 'generateAll=true'.");
     }
-
 
     return new Response(JSON.stringify({ html, examTitle, version }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
