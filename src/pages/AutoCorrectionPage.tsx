@@ -88,6 +88,7 @@ export default function AutoCorrectionPage() {
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       setCameraStream(stream);
+      setIsScanning(true);
       
       toast.success('📷 Câmera ativa! Posicione o QR code da prova');
 
@@ -109,6 +110,7 @@ export default function AutoCorrectionPage() {
       }
       
       toast.error(errorMessage);
+      setIsScanning(false);
     }
   };
 
