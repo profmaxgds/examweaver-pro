@@ -70,22 +70,64 @@ export const LiveCorrector = ({
   // Iniciar câmera
   const startCamera = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      console.log('🎥 Iniciando câmera...');
+      
+      // Verificar se a API está disponível
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('API de câmera não suportada neste navegador');
+      }
+
+      const constraints = {
         video: { 
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: 'environment'
-        }
-      });
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
+          facingMode: 'environment', // Câmera traseira
+          frameRate: { ideal: 30 }
+        },
+        audio: false
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('✅ Stream obtido:', stream);
       
       streamRef.current = stream;
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        console.log('🎬 Stream definido no elemento de vídeo');
+        
+        // Aguardar o vídeo carregar e reproduzir
+        videoRef.current.onloadedmetadata = () => {
+          console.log('📺 Metadados carregados');
+          if (videoRef.current) {
+            videoRef.current.play()
+              .then(() => {
+                console.log('▶️ Vídeo reproduzindo');
+                setIsActive(true);
+              })
+              .catch(err => {
+                console.error('❌ Erro ao reproduzir vídeo:', err);
+              });
+          }
+        };
       }
-      setIsActive(true);
     } catch (error) {
-      console.error('Erro ao acessar câmera:', error);
+      console.error('❌ Erro ao acessar câmera:', error);
+      
+      let errorMessage = 'Erro ao acessar a câmera';
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          errorMessage = 'Permissão negada. Clique no ícone de câmera na barra do navegador e permita o acesso.';
+        } else if (error.name === 'NotFoundError') {
+          errorMessage = 'Nenhuma câmera encontrada no dispositivo.';
+        } else if (error.name === 'NotSupportedError') {
+          errorMessage = 'Câmera não suportada neste navegador.';
+        } else if (error.name === 'NotReadableError') {
+          errorMessage = 'Câmera está sendo usada por outro aplicativo.';
+        }
+      }
+      
+      alert(errorMessage);
     }
   }, []);
 
@@ -361,13 +403,18 @@ export const LiveCorrector = ({
         <CardContent>
           {!isActive ? (
             <div className="text-center py-8">
-              <Button onClick={startCamera} className="mb-4">
-                <Camera className="w-4 h-4 mr-2" />
-                Iniciar Câmera
-              </Button>
-              <p className="text-muted-foreground">
-                Clique para iniciar a correção automática
-              </p>
+              <div className="space-y-4">
+                <Button onClick={startCamera} className="mb-4">
+                  <Camera className="w-4 h-4 mr-2" />
+                  Iniciar Câmera
+                </Button>
+                <p className="text-muted-foreground">
+                  Clique para iniciar a correção automática
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  💡 Certifique-se de permitir o acesso à câmera quando solicitado
+                </p>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -379,6 +426,12 @@ export const LiveCorrector = ({
                   autoPlay
                   playsInline
                   muted
+                  controls={false}
+                  style={{
+                    transform: 'scaleX(-1)', // Espelhar horizontalmente para melhor UX
+                    maxHeight: '400px',
+                    objectFit: 'cover'
+                  }}
                 />
                 <canvas
                   ref={canvasRef}
