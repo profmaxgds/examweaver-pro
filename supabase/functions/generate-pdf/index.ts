@@ -1,8 +1,12 @@
 // supabase/functions/generate-pdf/index.ts
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.203.0/http/server.ts";
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.38/deno-dom-wasm.ts";
+
+// Add this for TypeScript to recognize the Deno global object
+// @ts-ignore
+declare const Deno: any;
 
 // Módulos que você já usa (assumindo que estão na mesma pasta)
 import { fetchExamData as fetchVersionExamData } from './data-fetcher.ts';
@@ -443,7 +447,11 @@ serve(async (req) => {
                 try {
                     // Gerar HTML específico para o aluno
                     const originalOrderMap = new Map(exam.question_ids.map((id: string, index: number) => [id, index]));
-                    let studentQuestions = [...questions].sort((a, b) => (originalOrderMap.get(a.id) ?? Infinity) - (originalOrderMap.get(b.id) ?? Infinity));
+                    let studentQuestions = [...questions].sort((a, b) => {
+                        const aIndex = Number(originalOrderMap.get(a.id));
+                        const bIndex = Number(originalOrderMap.get(b.id));
+                        return (isNaN(aIndex) ? Infinity : aIndex) - (isNaN(bIndex) ? Infinity : bIndex);
+                    });
                     
                     // Usar o ID do aluno como seed para embaralhamento
                     const studentSeed = parseInt(student.id.slice(-8), 16);
@@ -468,7 +476,7 @@ serve(async (req) => {
                         studentUUID: student.id,
                         course: student.course || 'N/A',
                         class: student.class?.name || 'N/A',
-                        qrId: null
+                        qrId: undefined
                     };
                     
                     console.log('Dados do studentInfo:', studentInfo); // Log para debug
@@ -741,7 +749,11 @@ serve(async (req) => {
         const { exam, questions } = await fetchVersionExamData(supabase, examId);
 
         const originalOrderMap = new Map(exam.question_ids.map((id: string, index: number) => [id, index]));
-        let processedQuestions = [...questions].sort((a, b) => (originalOrderMap.get(a.id) ?? Infinity) - (originalOrderMap.get(b.id) ?? Infinity));
+        let processedQuestions = [...questions].sort((a, b) => {
+            const aIndex = Number(originalOrderMap.get(a.id));
+            const bIndex = Number(originalOrderMap.get(b.id));
+            return (isNaN(aIndex) ? Infinity : aIndex) - (isNaN(bIndex) ? Infinity : bIndex);
+        });
 
         if (exam.shuffle_questions) { // Embaralha para todas as versões
             processedQuestions = shuffleArray(processedQuestions, version);
@@ -761,7 +773,7 @@ serve(async (req) => {
             studentUUID: `version-${version}`,
             course: 'N/A',
             class: 'N/A',
-            qrId: null
+            qrId: undefined
         };
         
         console.log('Dados do studentInfo (versão):', studentInfo); // Log para debug
