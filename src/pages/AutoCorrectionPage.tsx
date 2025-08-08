@@ -277,10 +277,29 @@ export default function AutoCorrectionPage() {
       if (videoRef.current && videoRef.current.readyState >= 2) {
         scanVideoForQR();
       }
-    }, 100); // 10x por segundo
+    }, 100); // 100ms = detecção mais rápida
   };
 
-  // Escanear vídeo em busca de QR
+  // Som de beep quando QR é detectado
+  const playBeep = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.frequency.value = 1200;
+      oscillator.type = 'square';
+      gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.2);
+    } catch (error) {
+      console.log('Erro ao reproduzir som:', error);
+    }
+  };
+
+  // Escanear vídeo em busca de QR - versão robusta
   const scanVideoForQR = () => {
     if (!videoRef.current || !canvasRef.current || !isScanning || !cameraStream) return;
 
@@ -290,28 +309,30 @@ export default function AutoCorrectionPage() {
 
     if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
 
+    // Resolução otimizada para melhor performance e detecção
     const scanWidth = 320;
     const scanHeight = 240;
     
     canvas.width = scanWidth;
     canvas.height = scanHeight;
-    
-    context.imageSmoothingEnabled = false;
     context.drawImage(video, 0, 0, scanWidth, scanHeight);
 
     const imageData = context.getImageData(0, 0, scanWidth, scanHeight);
     
+    // Configurações robustas de detecção - igual ao QRCodeScanner
     const configurations = [
       { inversionAttempts: "dontInvert" as const },
       { inversionAttempts: "onlyInvert" as const },
-      { inversionAttempts: "attemptBoth" as const }
+      { inversionAttempts: "attemptBoth" as const },
+      { inversionAttempts: "invertFirst" as const },
     ];
 
     for (const config of configurations) {
       try {
         const code = jsQR(imageData.data, imageData.width, imageData.height, config);
         if (code && code.data && code.data.trim()) {
-          console.log('✅ QR code detectado!', code.data);
+          console.log('✅ QR code detectado:', code.data);
+          playBeep(); // Som de confirmação
           processQRCodeData(code.data);
           return;
         }
