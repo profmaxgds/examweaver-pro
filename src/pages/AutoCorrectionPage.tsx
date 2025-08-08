@@ -5,12 +5,11 @@ import { Input } from '@/components/ui/input';
 import { LayoutExtractor } from '@/components/autocorrection/LayoutExtractor';
 import { LiveCorrector } from '@/components/autocorrection/LiveCorrector';
 import { AnswerEditor } from '@/components/autocorrection/AnswerEditor';
+import { QRCodeScanner } from '@/components/autocorrection/QRCodeScanner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { Camera, QrCode, Upload, FileImage, ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
-import jsQR from 'jsqr';
-import heic2any from 'heic2any';
 
 interface QRCodeData {
   examId: string;
@@ -57,17 +56,8 @@ export default function AutoCorrectionPage() {
   const [screenshots, setScreenshots] = useState<{ feedback: string; original: string } | null>(null);
   
   // Estados da câmera e QR
-  const [useCamera, setUseCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cleanup ao desmontar
   useEffect(() => {
@@ -75,141 +65,11 @@ export default function AutoCorrectionPage() {
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
       }
-      if (scanIntervalRef.current) {
-        clearInterval(scanIntervalRef.current);
-      }
     };
   }, [cameraStream]);
 
-  // Configurar stream no vídeo
-  useEffect(() => {
-    if (!useCamera || !cameraStream || !videoRef.current) return;
-
-    const playVideo = async () => {
-      if (!videoRef.current) return;
-      
-      try {
-        console.log('🎥 Configurando stream no vídeo...');
-        videoRef.current.srcObject = cameraStream;
-        
-        videoRef.current.onloadedmetadata = () => {
-          if (videoRef.current) {
-            videoRef.current.play()
-              .then(() => {
-                console.log('▶️ Vídeo reproduzindo - iniciando scan de QR');
-                setTimeout(() => {
-                  startAutoScan();
-                }, 500);
-              })
-              .catch(err => {
-                console.error('❌ Erro ao reproduzir vídeo:', err);
-              });
-          }
-        };
-      } catch (error) {
-        console.error('❌ Erro ao configurar vídeo:', error);
-      }
-    };
-
-    playVideo();
-  }, [useCamera, cameraStream]);
-
-  // Converter HEIC para JPEG
-  const convertHeicToJpeg = async (file: File): Promise<File> => {
-    if (file.type === 'image/heic' || file.name.toLowerCase().endsWith('.heic')) {
-      try {
-        const convertedBlob = await heic2any({
-          blob: file,
-          toType: "image/jpeg",
-          quality: 0.8
-        }) as Blob;
-
-        return new File([convertedBlob], file.name.replace(/\.heic$/i, '.jpg'), {
-          type: 'image/jpeg'
-        });
-      } catch (error) {
-        console.error('Erro ao converter HEIC:', error);
-        throw new Error('Erro ao converter arquivo HEIC. Tente um formato diferente.');
-      }
-    }
-    return file;
-  };
-
-  // Ler QR code de arquivo
-  const readQRCodeFromFile = async (file: File): Promise<string | null> => {
-    try {
-      const processedFile = await convertHeicToJpeg(file);
-      
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            
-            if (!context) {
-              resolve(null);
-              return;
-            }
-
-            const maxSize = 1200;
-            let { width, height } = img;
-            
-            if (width > height) {
-              if (width > maxSize) {
-                height = (height * maxSize) / width;
-                width = maxSize;
-              }
-            } else {
-              if (height > maxSize) {
-                width = (width * maxSize) / height;
-                height = maxSize;
-              }
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            context.drawImage(img, 0, 0, width, height);
-            
-            const imageData = context.getImageData(0, 0, width, height);
-            
-            const configurations = [
-              { inversionAttempts: "dontInvert" as const },
-              { inversionAttempts: "onlyInvert" as const },
-              { inversionAttempts: "attemptBoth" as const },
-              { inversionAttempts: "invertFirst" as const }
-            ];
-
-            for (const config of configurations) {
-              try {
-                const code = jsQR(imageData.data, imageData.width, imageData.height, config);
-                if (code && code.data && code.data.trim()) {
-                  console.log('✅ QR code encontrado:', code.data);
-                  resolve(code.data);
-                  return;
-                }
-              } catch (error) {
-                continue;
-              }
-            }
-            
-            resolve(null);
-          };
-          img.onerror = () => resolve(null);
-          img.src = e.target?.result as string;
-        };
-        reader.onerror = () => resolve(null);
-        reader.readAsDataURL(processedFile);
-      });
-    } catch (error) {
-      console.error('Erro ao processar arquivo:', error);
-      return null;
-    }
-  };
-
   // Iniciar câmera
-  const startCamera = async () => {
+  const startCamera = async (mode: 'qr') => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera API não suportada neste navegador');
@@ -228,8 +88,6 @@ export default function AutoCorrectionPage() {
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       setCameraStream(stream);
-      setUseCamera(true);
-      setIsScanning(true);
       
       toast.success('📷 Câmera ativa! Posicione o QR code da prova');
 
@@ -257,98 +115,15 @@ export default function AutoCorrectionPage() {
   // Parar câmera
   const stopCamera = () => {
     setIsScanning(false);
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
-    }
-    setUseCamera(false);
-  };
-
-  // Iniciar scan automático
-  const startAutoScan = () => {
-    if (scanIntervalRef.current) return;
-    
-    console.log('🚀 Iniciando escaneamento automático...');
-    scanIntervalRef.current = setInterval(() => {
-      if (videoRef.current && videoRef.current.readyState >= 2) {
-        scanVideoForQR();
-      }
-    }, 100); // 100ms = detecção mais rápida
-  };
-
-  // Som de beep quando QR é detectado
-  const playBeep = () => {
-    try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      oscillator.frequency.value = 1200;
-      oscillator.type = 'square';
-      gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.2);
-    } catch (error) {
-      console.log('Erro ao reproduzir som:', error);
-    }
-  };
-
-  // Escanear vídeo em busca de QR - versão robusta
-  const scanVideoForQR = () => {
-    if (!videoRef.current || !canvasRef.current || !isScanning || !cameraStream) return;
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-
-    if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
-
-    // Resolução otimizada para melhor performance e detecção
-    const scanWidth = 320;
-    const scanHeight = 240;
-    
-    canvas.width = scanWidth;
-    canvas.height = scanHeight;
-    context.drawImage(video, 0, 0, scanWidth, scanHeight);
-
-    const imageData = context.getImageData(0, 0, scanWidth, scanHeight);
-    
-    // Configurações robustas de detecção - igual ao QRCodeScanner
-    const configurations = [
-      { inversionAttempts: "dontInvert" as const },
-      { inversionAttempts: "onlyInvert" as const },
-      { inversionAttempts: "attemptBoth" as const },
-      { inversionAttempts: "invertFirst" as const },
-    ];
-
-    for (const config of configurations) {
-      try {
-        const code = jsQR(imageData.data, imageData.width, imageData.height, config);
-        if (code && code.data && code.data.trim()) {
-          console.log('✅ QR code detectado:', code.data);
-          playBeep(); // Som de confirmação
-          processQRCodeData(code.data);
-          return;
-        }
-      } catch (error) {
-        continue;
-      }
     }
   };
 
   // Processar dados do QR code
   const processQRCodeData = async (qrData: string) => {
     setIsScanning(false);
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
 
     try {
       console.log('🔍 Processando dados do QR:', qrData);
@@ -412,29 +187,9 @@ export default function AutoCorrectionPage() {
     }
   };
 
-  // Processar arquivo selecionado
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setSelectedFile(file);
-    setIsProcessing(true);
-
-    try {
-      const previewUrl = URL.createObjectURL(file);
-      setPreviewImage(previewUrl);
-
-      const qrCodeText = await readQRCodeFromFile(file);
-      if (qrCodeText) {
-        await processQRCodeData(qrCodeText);
-      } else {
-        toast.error('QR code não encontrado na imagem');
-      }
-    } catch (error) {
-      toast.error('Erro ao processar arquivo');
-    } finally {
-      setIsProcessing(false);
-    }
+  // Callback do QRCodeScanner
+  const handleQRDetected = async (examData: any) => {
+    await processQRCodeData(JSON.stringify(examData));
   };
 
   // Iniciar extração de layout
@@ -496,8 +251,6 @@ export default function AutoCorrectionPage() {
     setLayoutData(null);
     setCorrectionResults(null);
     setScreenshots(null);
-    setSelectedFile(null);
-    setPreviewImage(null);
     stopCamera();
   };
 
@@ -544,93 +297,16 @@ export default function AutoCorrectionPage() {
 
       {/* Etapa 1: Scan de QR Code */}
       {step === 'qr-scan' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <QrCode className="w-5 h-5" />
-              Detectar QR Code da Prova
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {!useCamera ? (
-              <div className="space-y-4">
-                <div className="text-center">
-                  <p className="text-muted-foreground mb-4">
-                    Escaneie o QR code da prova para iniciar a correção automática
-                  </p>
-                  
-                  <div className="flex gap-4 justify-center mb-6">
-                    <Button onClick={startCamera} className="flex items-center gap-2">
-                      <Camera className="w-4 h-4" />
-                      Usar Câmera
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center gap-2"
-                    >
-                      <Upload className="w-4 h-4" />
-                      Enviar Imagem
-                    </Button>
-                  </div>
-                  
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*,.heic"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-                </div>
-
-                {selectedFile && previewImage && (
-                  <div className="mt-4">
-                    <h4 className="font-medium mb-2">Imagem selecionada:</h4>
-                    <img 
-                      src={previewImage} 
-                      alt="Preview" 
-                      className="max-w-md mx-auto border rounded"
-                    />
-                    {isProcessing && (
-                      <div className="flex items-center justify-center mt-2">
-                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        Processando QR code...
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="relative">
-                  <video
-                    ref={videoRef}
-                    className="w-full max-w-md mx-auto border rounded-lg"
-                    autoPlay
-                    playsInline
-                    muted
-                    style={{ objectFit: 'cover' }}
-                  />
-                  <canvas ref={canvasRef} className="hidden" />
-                  
-                  {isScanning && (
-                    <div className="absolute bottom-2 left-2 right-2">
-                      <div className="bg-black/70 text-white p-2 rounded text-sm text-center">
-                        📱 Posicione o QR code da prova no centro da tela
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex justify-center">
-                  <Button variant="outline" onClick={stopCamera}>
-                    Parar Câmera
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <div className="max-w-2xl mx-auto">
+          <QRCodeScanner
+            onQRDetected={handleQRDetected}
+            startCamera={startCamera}
+            stopCamera={stopCamera}
+            isScanning={isScanning}
+            setIsScanning={setIsScanning}
+            cameraStream={cameraStream}
+          />
+        </div>
       )}
 
       {/* Etapa 2: QR Detectado */}
