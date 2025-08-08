@@ -82,7 +82,19 @@ export default function AutoCorrectionPage() {
 
       if (studentExams && studentExams[0]?.html_content) {
         setExamHtml(studentExams[0].html_content);
-        setCorrectAnswers(studentExams[0].answer_key || {});
+        // Safely handle Json type from Supabase
+        const answerKey = studentExams[0].answer_key;
+        if (answerKey && typeof answerKey === 'object' && !Array.isArray(answerKey)) {
+          const typedAnswers: Record<string, string> = {};
+          Object.entries(answerKey).forEach(([key, value]) => {
+            if (typeof value === 'string') {
+              typedAnswers[key] = value;
+            }
+          });
+          setCorrectAnswers(typedAnswers);
+        } else {
+          setCorrectAnswers({});
+        }
       } else {
         // Se não tem HTML, buscar as questões e montar gabarito
         const { data: questions } = await supabase
@@ -92,7 +104,17 @@ export default function AutoCorrectionPage() {
 
         const answers: Record<string, string> = {};
         questions?.forEach((q, index) => {
-          answers[`Q${index + 1}`] = q.correct_answer;
+          // Safely handle Json type from correct_answer
+          const correctAnswer = q.correct_answer;
+          if (typeof correctAnswer === 'string') {
+            answers[`Q${index + 1}`] = correctAnswer;
+          } else if (correctAnswer && typeof correctAnswer === 'object' && !Array.isArray(correctAnswer)) {
+            // If correct_answer is an object, try to extract the answer
+            const answerValue = (correctAnswer as any).answer || (correctAnswer as any).value || '';
+            if (typeof answerValue === 'string') {
+              answers[`Q${index + 1}`] = answerValue;
+            }
+          }
         });
         setCorrectAnswers(answers);
       }
