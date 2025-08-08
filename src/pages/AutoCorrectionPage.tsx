@@ -588,7 +588,7 @@ export default function AutoCorrectionPage() {
                     autoPlay
                     playsInline
                     muted
-                    style={{ transform: 'scaleX(-1)' }}
+                    style={{ objectFit: 'cover' }}
                   />
                   <canvas ref={canvasRef} className="hidden" />
                   

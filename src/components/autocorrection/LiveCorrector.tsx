@@ -428,7 +428,6 @@ export const LiveCorrector = ({
                   muted
                   controls={false}
                   style={{
-                    transform: 'scaleX(-1)', // Espelhar horizontalmente para melhor UX
                     maxHeight: '400px',
                     objectFit: 'cover'
                   }}

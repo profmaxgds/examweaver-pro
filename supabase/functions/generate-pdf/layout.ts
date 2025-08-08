@@ -71,8 +71,18 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         data: JSON.stringify({
             examId: exam.id,
             studentId: studentInfo?.id || 'version-' + version,
+            studentName: studentInfo?.name || 'Estudante',
             version: version,
-            studentExamId: studentInfo?.qrId || null
+            studentExamId: studentInfo?.qrId || null,
+            examTitle: exam.title,
+            subject: exam.subject,
+            totalQuestions: totalQuestions,
+            totalPoints: exam.total_points,
+            institution: exam.institution || header?.institution,
+            professor: exam.professor_name || header?.content?.professor,
+            examDate: exam.exam_date,
+            course: studentInfo?.course,
+            class: studentInfo?.class
         }),
         version: version,
         studentId: studentInfo?.id || version.toString()
