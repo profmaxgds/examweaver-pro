@@ -91,8 +91,7 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
             --bubble-size: 14px;
             --bubble-margin: 0 6px;
             --bubble-border: 1px solid #000;
-            --anchor-size: 20px;
-            --anchor-thickness: 5px;
+            --anchor-size: 14px;
             --anchor-margin: 0 5px;
             --q-number-width: 30px;
             --q-number-margin-right: 10px;
@@ -280,23 +279,17 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
             position: absolute; 
             width: var(--anchor-size); 
             height: var(--anchor-size); 
+            background-color: #000; 
+            box-shadow: 0 0 0 5px #fff, 0 0 0 7px #000;
+            border-radius: 50%;
         }
-        .anchor-top-left::before, .anchor-top-right::before, .anchor-bottom-left::before, .anchor-bottom-right::before { 
-            content: ''; 
-            position: absolute; 
-            width: 100%; 
-            height: 100%; 
-            box-sizing: border-box; 
-            border: var(--anchor-thickness) solid black; 
-        }
+
+        
         .anchor-top-left { top: -15px; left: -15px; }
-        .anchor-top-left::before { border-right: none; border-bottom: none; }
         .anchor-top-right { top: -15px; right: -15px; }
-        .anchor-top-right::before { border-left: none; border-bottom: none; }
         .anchor-bottom-left { bottom: -15px; left: -15px; }
-        .anchor-bottom-left::before { border-top: none; border-right: none; }
         .anchor-bottom-right { bottom: -15px; right: -15px; }
-        .anchor-bottom-right::before { border-top: none; border-left: none; }
+
         .instructions { 
             margin-bottom: 15px; 
             text-align: justify; 
@@ -420,7 +413,7 @@ export function generateExamHTML(exam: ExamData, questions: Question[], version:
         
         @media print { 
             body { -webkit-print-color-adjust: exact; }
-            .anchor-top-left::before, .anchor-top-right::before, .anchor-bottom-left::before, .anchor-bottom-right::before, .correct-answer-highlight { 
+            .anchor-top-left, .anchor-top-right, .anchor-bottom-left, .anchor-bottom-right, .correct-answer-highlight { 
                 -webkit-print-color-adjust: exact !important; 
                 color-adjust: exact !important; 
             }
