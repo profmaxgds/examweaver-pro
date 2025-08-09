@@ -13,6 +13,9 @@ import heic2any from 'heic2any';
 import { EssayQuestionCorrection } from '@/components/EssayQuestionCorrection';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { preprocessImage } from '@/utils/imagePreprocessing';
+import { LayoutExtractor } from '@/components/autocorrection/LayoutExtractor';
+import { LiveCorrector } from '@/components/autocorrection/LiveCorrector';
+import { AnswerEditor } from '@/components/autocorrection/AnswerEditor';
 
 interface QRCodeData {
   examId: string;
@@ -29,10 +32,11 @@ interface ExamInfo {
   studentName: string;
   answerKey: Record<string, string>;
   version?: number;
-  bubbleCoordinates?: any; // Coordenadas das bolhas para overlay visual
-  examHeader?: any; // Header/cabeçalho da prova com layout
-  examLayout?: string; // Layout da prova (single_column, double_column, etc.)
-  bubbleCoordinatesSearch?: { examId: string; studentId: string }; // Para buscar coordenadas no edge function
+  bubbleCoordinates?: any;
+  examHeader?: any;
+  examLayout?: string;
+  bubbleCoordinatesSearch?: { examId: string; studentId: string };
+  htmlContent?: string;
 }
 
 interface CorrectionResult {
@@ -62,7 +66,7 @@ export default function AutoCorrectionPage() {
   const { toast } = useToast();
   
   // Estados principais
-  const [step, setStep] = useState<'upload' | 'qr-scan' | 'photo-capture' | 'qr-detected' | 'scan-marks' | 'corrected' | 'need-answer-sheet' | 'essay-correction' | 'capture-answers'>('upload');
+  const [step, setStep] = useState<'upload' | 'qr-scan' | 'photo-capture' | 'qr-detected' | 'scan-marks' | 'corrected' | 'need-answer-sheet' | 'essay-correction' | 'capture-answers' | 'layout-extract' | 'live-correction' | 'edit-answers'>('upload');
   const [processedImage, setProcessedImage] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -72,6 +76,11 @@ export default function AutoCorrectionPage() {
   const [essayQuestions, setEssayQuestions] = useState<any[]>([]);
   const [currentEssayIndex, setCurrentEssayIndex] = useState(0);
   const [essayScores, setEssayScores] = useState<Record<string, { score: number; feedback: string }>>({});
+  
+  // Estados específicos para visão computacional
+  const [layoutData, setLayoutData] = useState<any>(null);
+  const [visionResults, setVisionResults] = useState<any>(null);
+  const [screenshots, setScreenshots] = useState<{ feedback: string; original: string } | null>(null);
   
   // Estados da câmera
   const [useCamera, setUseCamera] = useState(false);
@@ -129,7 +138,6 @@ export default function AutoCorrectionPage() {
   // Função para ler QR code de arquivo ultra-robusta
   const readQRCodeFromFile = async (file: File): Promise<string | null> => {
     try {
-      // Converter HEIC se necessário
       const processedFile = await convertHeicToJpeg(file);
       
       return new Promise((resolve, reject) => {
@@ -145,7 +153,6 @@ export default function AutoCorrectionPage() {
               return;
             }
 
-            // Usar resolução alta para arquivo
             const maxSize = 1200;
             let { width, height } = img;
             
@@ -167,7 +174,6 @@ export default function AutoCorrectionPage() {
             
             const imageData = context.getImageData(0, 0, width, height);
             
-            // Tentar múltiplas configurações agressivamente
             const configurations = [
               { inversionAttempts: "dontInvert" as const },
               { inversionAttempts: "onlyInvert" as const },
@@ -188,7 +194,6 @@ export default function AutoCorrectionPage() {
               }
             }
 
-            // Tentar com diferentes escalas se não encontrou
             for (const scale of [0.5, 1.5, 2.0]) {
               const scaledWidth = Math.floor(width * scale);
               const scaledHeight = Math.floor(height * scale);
@@ -241,14 +246,12 @@ export default function AutoCorrectionPage() {
         await videoRef.current.play();
         console.log('Vídeo iniciado com sucesso');
         
-        // Se está no modo QR, começar escaneamento de QR
         if (scanMode === 'qr') {
           setTimeout(() => {
             startAutoScan();
           }, 500);
         }
         
-        // Se está no modo photo e já tem examInfo, ativar overlay de alinhamento
         if (scanMode === 'photo' && examInfo?.bubbleCoordinates) {
           setShowAlignmentOverlay(true);
           console.log('🎯 Overlay de alinhamento ativado - coordenadas disponíveis');
@@ -258,7 +261,6 @@ export default function AutoCorrectionPage() {
             duration: 4000,
           });
         } else if (scanMode === 'photo') {
-          // NÃO fazer detecção automática - apenas mostrar interface para captura manual
           console.log('📷 Modo captura manual ativo');
           toast({
             title: "📷 Modo Manual",
@@ -272,7 +274,7 @@ export default function AutoCorrectionPage() {
     };
 
     playVideo();
-  }, [useCamera, cameraStream, scanMode]);
+  }, [useCamera, cameraStream, scanMode, examInfo]);
 
   // Som de bip melhorado
   const playBeep = () => {
@@ -307,11 +309,10 @@ export default function AutoCorrectionPage() {
 
       console.log(`📷 Acessando câmera mobile para ${mode === 'qr' ? 'QR Code' : 'captura de foto'}...`);
       
-      // Configurações otimizadas para dispositivos móveis
       const constraints = {
         video: {
-          facingMode: mode === 'qr' ? 'environment' : 'environment', // Câmera traseira para melhor qualidade
-          width: { ideal: 1920, max: 1920 }, // Resolução alta para melhor detecção
+          facingMode: mode === 'qr' ? 'environment' : 'environment',
+          width: { ideal: 1920, max: 1920 },
           height: { ideal: 1080, max: 1080 },
           frameRate: { ideal: 30, max: 30 }
         }
@@ -389,23 +390,17 @@ export default function AutoCorrectionPage() {
           const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
           setSelectedFile(file);
           
-          // Aplicar preprocessamento para preview (COMENTADO TEMPORARIAMENTE)
           try {
-            // const processedPreviewUrl = await preprocessImage(file);
-            // setPreviewImage(processedPreviewUrl);
-            // Usando preview normal por enquanto
             const previewUrl = URL.createObjectURL(blob);
             setPreviewImage(previewUrl);
           } catch (error) {
             console.error('Erro no preprocessamento:', error);
-            // Fallback para preview normal
             const previewUrl = URL.createObjectURL(blob);
             setPreviewImage(previewUrl);
           }
           
           stopCamera();
           
-          // Se ainda não temos examInfo, tentar detectar QR code na imagem capturada
           if (!examInfo) {
             try {
               console.log('🔍 Tentando detectar QR code na imagem capturada...');
@@ -420,7 +415,6 @@ export default function AutoCorrectionPage() {
             }
           }
           
-          // Se já temos examInfo (QR detectado), vamos para estado "pronto para corrigir"
           if (examInfo) {
             setStep('qr-detected');
             toast({
@@ -447,7 +441,7 @@ export default function AutoCorrectionPage() {
       if (videoRef.current && videoRef.current.readyState >= 2) {
         scanVideoForQR();
       }
-    }, 50); // 20x por segundo para detecção instantânea
+    }, 50);
   };
 
   // Função otimizada para escanear vídeo em busca de QR code
@@ -460,20 +454,17 @@ export default function AutoCorrectionPage() {
 
     if (!context || video.videoWidth === 0 || video.videoHeight === 0) return;
 
-    // Usar resolução muito pequena para máxima velocidade
     const scanWidth = 320;
     const scanHeight = 240;
     
     canvas.width = scanWidth;
     canvas.height = scanHeight;
     
-    // Desenhar com suavização desabilitada para velocidade
     context.imageSmoothingEnabled = false;
     context.drawImage(video, 0, 0, scanWidth, scanHeight);
 
     const imageData = context.getImageData(0, 0, scanWidth, scanHeight);
     
-    // Tentar múltiplas configurações para máxima compatibilidade
     const configurations = [
       { inversionAttempts: "dontInvert" as const },
       { inversionAttempts: "onlyInvert" as const },
@@ -493,10 +484,9 @@ export default function AutoCorrectionPage() {
             scanIntervalRef.current = null;
           }
           processQRCodeData(code.data);
-          return; // Sair da função após detecção
+          return;
         }
       } catch (error) {
-        // Continuar para próxima configuração
         continue;
       }
     }
@@ -507,7 +497,6 @@ export default function AutoCorrectionPage() {
     try {
       console.log('Texto do QR Code:', qrCodeText);
       
-      // Extrair dados do QR code
       const qrData = extractQRCodeData(qrCodeText);
       if (!qrData) {
         throw new Error('QR Code inválido. Verifique se é um QR code de prova válido.');
@@ -515,7 +504,6 @@ export default function AutoCorrectionPage() {
 
       console.log('Dados extraídos do QR:', qrData);
 
-      // Buscar dados da prova
       const { data: examData, error: examError } = await supabase
         .from('exams')
         .select('*')
@@ -530,9 +518,7 @@ export default function AutoCorrectionPage() {
       let studentExam;
       let studentData;
 
-      // Verificar se temos studentExamId no QR code (prova individual)
       if (qrData.studentExamId) {
-        // Buscar direto pelo student_exam ID
         const { data: examInstance, error: examInstanceError } = await supabase
           .from('student_exams')
           .select(`
@@ -550,7 +536,6 @@ export default function AutoCorrectionPage() {
         studentExam = examInstance;
         studentData = examInstance.students;
       } else {
-        // Para provas por versão, buscar gabarito da versão
         const versionStudentId = typeof qrData.studentId === 'string' && qrData.studentId.startsWith('version-') 
           ? qrData.studentId 
           : `version-${qrData.version}`;
@@ -571,7 +556,6 @@ export default function AutoCorrectionPage() {
         studentData = { name: `Versão ${qrData.version}`, student_id: versionStudentId };
       }
 
-      // Buscar questões do exame para verificar se há questões abertas
       const { data: questionsData, error: questionsError } = await supabase
         .from('questions')
         .select('*')
@@ -581,11 +565,7 @@ export default function AutoCorrectionPage() {
         console.error('Erro ao buscar questões:', questionsError);
       }
 
-      console.log('Questões encontradas:', questionsData);
-      console.log('Question IDs from exam:', examData.question_ids);
-
       const essayQuestionsFound = questionsData?.filter(q => q.type === 'essay') || [];
-      console.log('Questões abertas encontradas:', essayQuestionsFound);
 
       const examInfo: ExamInfo = {
         examId: qrData.examId,
@@ -595,18 +575,18 @@ export default function AutoCorrectionPage() {
         answerKey: studentExam.answer_key as Record<string, string>,
         version: qrData.version || 1,
         bubbleCoordinates: studentExam.bubble_coordinates,
-        examHeader: null, // Removido já que não temos relação com exam_headers
+        examHeader: null,
         examLayout: examData.layout || 'single_column',
         bubbleCoordinatesSearch: {
           examId: qrData.examId,
           studentId: typeof studentExam.student_id === 'string' ? studentExam.student_id : studentExam.student_id
-        }
+        },
+        htmlContent: studentExam.html_content
       };
 
       setExamInfo(examInfo);
       setEssayQuestions(essayQuestionsFound);
       
-      // Verificar se temos coordenadas no banco e se o gabarito está completo
       const hasCoordinates = studentExam.bubble_coordinates && 
                            Object.keys(studentExam.bubble_coordinates).length > 0;
       const hasAnswerKey = examInfo.answerKey && 
@@ -614,13 +594,12 @@ export default function AutoCorrectionPage() {
       
       console.log('📊 Coordenadas disponíveis:', hasCoordinates);
       console.log('📋 Gabarito disponível:', hasAnswerKey);
-      console.log('🎯 Bubble coordinates:', studentExam.bubble_coordinates);
+      console.log('📄 HTML Content disponível:', !!studentExam.html_content);
       
       if (hasCoordinates && hasAnswerKey) {
-        setStep('capture-answers'); // Ir direto para captura de respostas
+        setStep('capture-answers');
         stopCamera();
         
-        // Automaticamente iniciar captura com coordenadas após 1 segundo
         setTimeout(() => {
           startCamera('photo');
         }, 1000);
@@ -629,8 +608,15 @@ export default function AutoCorrectionPage() {
           title: "🎯 Coordenadas Ativas",
           description: "Posicione a folha de respostas alinhada para captura precisa",
         });
+      } else if (studentExam.html_content) {
+        setStep('layout-extract');
+        stopCamera();
+        
+        toast({
+          title: "🔍 Modo Visão Computacional",
+          description: "Extraindo layout do HTML para correção automática",
+        });
       } else {
-        // Sem coordenadas ou gabarito, ir para modo de análise básica
         setStep('photo-capture');
         stopCamera();
         
@@ -644,7 +630,6 @@ export default function AutoCorrectionPage() {
         });
       }
       
-      // Alertar sobre questões abertas se houver
       if (essayQuestionsFound.length > 0) {
         toast({
           title: "⚠️ Questões Abertas Detectadas",
@@ -659,8 +644,8 @@ export default function AutoCorrectionPage() {
 
     } catch (error) {
       console.error('Erro ao processar QR Code:', error);
-      setIsScanning(true); // Continuar escaneando em caso de erro
-      startAutoScan(); // Reiniciar escaneamento
+      setIsScanning(true);
+      startAutoScan();
       toast({
         title: "Erro",
         description: error instanceof Error ? error.message : 'Erro desconhecido ao processar QR Code',
@@ -676,7 +661,6 @@ export default function AutoCorrectionPage() {
     try {
       console.log('Texto do QR Code:', qrCodeText);
       
-      // Primeiro, tentar parsear como JSON (novo formato)
       const data = JSON.parse(qrCodeText);
       if (data.examId && (data.studentId || data.studentExamId)) {
         return {
@@ -687,9 +671,7 @@ export default function AutoCorrectionPage() {
         };
       }
       
-      // Se não for JSON válido, tentar o formato antigo
     } catch {
-      // Formato antigo: examId:valor,version:valor ou examId=valor&studentId=valor
       const patterns = [
         /examId:([^,]+),version:(\d+)/,
         /examId=([^&]+)&studentId=([^&]+)/,
@@ -699,9 +681,9 @@ export default function AutoCorrectionPage() {
       for (const pattern of patterns) {
         const match = qrCodeText.match(pattern);
         if (match) {
-          if (pattern === patterns[2]) { // studentExamId format
+          if (pattern === patterns[2]) {
             return {
-              examId: 'unknown', // Will need to fetch from studentExamId
+              examId: 'unknown',
               studentId: match[1],
               version: 1
             };
@@ -720,6 +702,58 @@ export default function AutoCorrectionPage() {
     return null;
   };
 
+  // Handlers para fluxo de visão computacional
+  const handleLayoutExtracted = (layout: any) => {
+    setLayoutData(layout);
+    setStep('live-correction');
+    toast({
+      title: "Layout extraído!",
+      description: "Iniciando correção ao vivo com visão computacional",
+    });
+  };
+
+  const handleVisionCorrectionComplete = (results: any, screenshots: { feedback: string; original: string }) => {
+    setVisionResults(results);
+    setScreenshots(screenshots);
+    setStep('edit-answers');
+    toast({
+      title: "Correção completa!",
+      description: "Revise os resultados e edite se necessário",
+    });
+  };
+
+  const handleAnswerEditorSave = (editedResults: any) => {
+    const correctionData: CorrectionResult = {
+      examId: examInfo!.examId,
+      studentId: examInfo!.studentId,
+      studentName: examInfo!.studentName,
+      answers: Object.fromEntries(
+        Object.entries(editedResults).map(([qId, result]: [string, any]) => [qId, result.detectedAnswer])
+      ),
+      score: Object.values(editedResults).filter((r: any) => r.status === 'CORRETA').length,
+      maxScore: Object.keys(editedResults).length,
+      percentage: Math.round((Object.values(editedResults).filter((r: any) => r.status === 'CORRETA').length / Object.keys(editedResults).length) * 100),
+      correctAnswers: Object.fromEntries(
+        Object.entries(editedResults).map(([qId, result]: [string, any]) => [qId, result.correctAnswer])
+      ),
+      feedback: Object.entries(editedResults).map(([qId, result]: [string, any]) => ({
+        questionNumber: qId.replace('Q', ''),
+        studentAnswer: result.detectedAnswer,
+        correctAnswer: result.correctAnswer,
+        isCorrect: result.status === 'CORRETA'
+      })),
+      hasOpenQuestions: essayQuestions.length > 0,
+      openQuestions: essayQuestions
+    };
+
+    setCorrectionResult(correctionData);
+    setStep('corrected');
+  };
+
+  const handleAnswerEditorCancel = () => {
+    resetToStart();
+  };
+
   // Função para resetar processo
   const resetToStart = () => {
     setStep('upload');
@@ -734,6 +768,9 @@ export default function AutoCorrectionPage() {
     setDetectedAnswerSheet(false);
     setAutoDetectGrading(false);
     setShowAlignmentOverlay(false);
+    setLayoutData(null);
+    setVisionResults(null);
+    setScreenshots(null);
     
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
@@ -750,7 +787,32 @@ export default function AutoCorrectionPage() {
     }
   };
 
-  // Etapa 2: Processar marcações e fazer correção (APENAS questões fechadas)
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const convertedFile = await convertHeicToJpeg(file);
+      setSelectedFile(convertedFile);
+      
+      const previewUrl = URL.createObjectURL(convertedFile);
+      setPreviewImage(previewUrl);
+      
+      toast({
+        title: "Arquivo carregado!",
+        description: "Clique em 'Processar Correção' para começar.",
+      });
+      
+    } catch (error) {
+      console.error('Erro ao processar arquivo:', error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : 'Erro ao processar arquivo',
+        variant: "destructive",
+      });
+    }
+  };
+
   const processCorrection = async () => {
     if (!selectedFile || !user) {
       toast({
@@ -765,283 +827,27 @@ export default function AutoCorrectionPage() {
     setStep('scan-marks');
 
     try {
-      // 1. Detectar QR code para obter informações da prova
       toast({
         title: "🔍 Processando...",
-        description: "Detectando QR code e iniciando correção instantânea",
+        description: "Detectando QR code e iniciando correção",
       });
 
       const qrCodeText = await readQRCodeFromFile(selectedFile);
       if (!qrCodeText) {
-        throw new Error('QR Code não encontrado na imagem. Certifique-se de que a imagem contém o QR code da prova.');
+        throw new Error('QR Code não encontrado na imagem.');
       }
 
-      // 2. Processar dados do QR code
-      const qrData: QRCodeData = JSON.parse(qrCodeText);
-      console.log('📋 Dados do QR extraídos:', qrData);
-
-      // 3. Buscar student_exam com dados completos
-      const { data: studentExam, error: studentExamError } = await supabase
-        .from('student_exams')
-        .select('*, exams!inner(title, subject, institutions, question_ids)')
-        .eq('exam_id', qrData.examId)
-        .eq('student_id', qrData.studentId)
-        .single();
-
-      if (studentExamError || !studentExam) {
-        throw new Error('Dados da prova não encontrados. Verifique se a prova foi preparada corretamente.');
-      }
-
-      console.log('✅ Student exam encontrado:', studentExam.id);
-
-      // 3.5. Buscar questões para verificar se há questões abertas
-      const { data: questionsData, error: questionsError } = await supabase
-        .from('questions')
-        .select('*')
-        .in('id', studentExam.exams.question_ids);
-
-      const essayQuestionsFound = questionsData?.filter(q => q.type === 'essay') || [];
-      console.log('Questões abertas encontradas:', essayQuestionsFound);
-
-      // Definir questões abertas no estado
-      setEssayQuestions(essayQuestionsFound);
-
-      // 4. Upload da imagem
-      const fileName = `${user.id}/correction_${Date.now()}_${selectedFile.name}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('correction-scans')
-        .upload(fileName, selectedFile);
-
-      if (uploadError) {
-        throw new Error(`Erro no upload: ${uploadError.message}`);
-      }
-
-      // 5. Chamar edge function com student_exam_id para correção instantânea
-      toast({
-        title: "🎯 Corrigindo...",
-        description: "Analisando respostas com coordenadas HTML precisas",
-      });
-
-      const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('ocr-correction', {
-        body: {
-          fileName: fileName,
-          mode: 'coordinate_based',
-          student_exam_id: studentExam.id, // Passar student_exam_id diretamente
-          examInfo: {
-            examId: qrData.examId,
-            studentId: qrData.studentId,
-            examTitle: studentExam.exams?.title || 'Prova',
-            studentName: qrData.studentName || 'Aluno',
-            answerKey: studentExam.answer_key,
-            bubbleCoordinates: studentExam.bubble_coordinates,
-            htmlContent: studentExam.html_content
-          }
-        }
-      });
-
-      if (ocrError) {
-        console.error('❌ Erro na edge function:', ocrError);
-        throw new Error(`Erro na correção: ${ocrError.message}`);
-      }
-
-      console.log('✅ Resultado da correção instantânea:', ocrResult);
-
-      // 6. Processar resultado e exibir
-      const correctionData: CorrectionResult = {
-        examId: qrData.examId,
-        studentId: qrData.studentId,
-        studentName: qrData.studentName || 'Aluno',
-        answers: ocrResult.detectedAnswers || {},
-        score: ocrResult.score || 0,
-        maxScore: ocrResult.maxScore || 0,
-        percentage: Math.round(((ocrResult.score || 0) / (ocrResult.maxScore || 1)) * 100),
-        correctAnswers: Object.fromEntries(
-          Object.entries(studentExam.answer_key || {}).map(([k, v]) => [k, String(v)])
-        ),
-        feedback: ocrResult.feedback || [],
-        hasOpenQuestions: essayQuestionsFound.length > 0,
-        openQuestions: essayQuestionsFound
-      };
-
-      setCorrectionResult(correctionData);
-      setStep('corrected');
-
-      // 7. Toast de sucesso
-      const confidence = ocrResult.confidence || 100;
+      await processQRCodeData(qrCodeText);
       
-      toast({
-        title: "✅ Correção Instantânea Concluída!",
-        description: `Nota: ${correctionData.score}/${correctionData.maxScore} (${correctionData.percentage}%) - Coordenadas HTML (${confidence}%)`,
-        duration: 6000,
-      });
-
-      // 8. Alertar sobre questões abertas se houver
-      if (essayQuestionsFound.length > 0) {
-        toast({
-          title: "⚠️ Questões Abertas Detectadas",
-          description: `Esta prova contém ${essayQuestionsFound.length} questão(ões) aberta(s) que precisam ser corrigidas manualmente.`,
-          duration: 8000,
-        });
-      }
-
     } catch (error) {
       console.error('Erro no processamento:', error);
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : 'Erro desconhecido no processamento',
+        description: error instanceof Error ? error.message : 'Erro no processamento',
         variant: "destructive",
       });
     } finally {
       setIsProcessing(false);
-    }
-  };
-
-  // Funções para correção de questões abertas
-  const handleEssayScore = (questionId: string, score: number, feedback: string, extractedText?: string) => {
-    setEssayScores(prev => ({
-      ...prev,
-      [questionId]: { score, feedback, extractedText }
-    }));
-    
-    // Ir para próxima questão aberta
-    if (currentEssayIndex < essayQuestions.length - 1) {
-      setCurrentEssayIndex(prev => prev + 1);
-    } else {
-      // Todas as questões abertas corrigidas, finalizar
-      finalizeCorrectionWithEssays();
-    }
-  };
-
-  const skipEssayQuestion = () => {
-    // Ir para próxima questão aberta sem pontuação
-    if (currentEssayIndex < essayQuestions.length - 1) {
-      setCurrentEssayIndex(prev => prev + 1);
-    } else {
-      // Finalizar mesmo sem corrigir todas
-      finalizeCorrectionWithEssays();
-    }
-  };
-
-  const finalizeCorrectionWithEssays = () => {
-    if (!correctionResult) return;
-    
-    // Calcular pontuação total incluindo questões abertas
-    let totalEssayScore = 0;
-    let totalEssayMaxScore = 0;
-    
-    for (const question of essayQuestions) {
-      totalEssayMaxScore += question.points;
-      if (essayScores[question.id]) {
-        totalEssayScore += essayScores[question.id].score;
-      }
-    }
-    
-    const finalScore = correctionResult.score + totalEssayScore;
-    const finalMaxScore = correctionResult.maxScore + totalEssayMaxScore;
-    const finalPercentage = (finalScore / finalMaxScore) * 100;
-    
-    // Atualizar resultado final
-    setCorrectionResult(prev => prev ? {
-      ...prev,
-      score: finalScore,
-      maxScore: finalMaxScore,
-      percentage: finalPercentage,
-      // Adicionar scores das questões abertas aos dados
-      essayScores
-    } as any : null);
-    
-    setStep('corrected');
-    
-    toast({
-      title: "Correção finalizada!",
-      description: `Pontuação final: ${finalScore}/${finalMaxScore} (${finalPercentage.toFixed(1)}%)`,
-    });
-  };
-
-  const saveCorrection = async (result?: CorrectionResult) => {
-    const resultToSave = result || correctionResult;
-    if (!resultToSave || !user) return;
-
-    setIsSaving(true);
-
-    try {
-      // Preparar dados incluindo questões abertas
-      const correctionData = {
-        exam_id: resultToSave.examId,
-        student_id: null, // Deixar null pois não temos UUID do estudante
-        student_identification: resultToSave.studentId, // Usar o ID textual aqui
-        student_name: resultToSave.studentName,
-        answers: {
-          ...resultToSave.answers,
-          essay_scores: essayScores // Incluir pontuações das questões abertas
-        },
-        score: resultToSave.score,
-        max_score: resultToSave.maxScore,
-        percentage: resultToSave.percentage,
-        auto_corrected: !resultToSave.hasOpenQuestions, // Se tem questões abertas, não é totalmente automático
-        author_id: user.id,
-        image_url: selectedFile ? `correction_${Date.now()}_${selectedFile.name}` : null
-      };
-
-      const { error } = await supabase
-        .from('exam_corrections')
-        .insert(correctionData);
-
-      if (error) {
-        throw error;
-      }
-
-      toast({
-        title: "Sucesso!",
-        description: "Correção salva no banco de dados.",
-      });
-
-      // Limpar estado
-      setCorrectionResult(null);
-      setSelectedFile(null);
-      setEssayScores({});
-      setEssayQuestions([]);
-      setCurrentEssayIndex(0);
-      
-    } catch (error) {
-      console.error('Erro ao salvar:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível salvar a correção.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const convertedFile = await convertHeicToJpeg(file);
-      setSelectedFile(convertedFile);
-      
-      // Criar preview da imagem
-      const previewUrl = URL.createObjectURL(convertedFile);
-      setPreviewImage(previewUrl);
-      
-      toast({
-        title: "Arquivo carregado!",
-        description: "Processando automaticamente...",
-      });
-      
-      // Processar correção diretamente
-      await processCorrection();
-      
-    } catch (error) {
-      console.error('Erro ao processar arquivo:', error);
-      toast({
-        title: "Erro",
-        description: error instanceof Error ? error.message : 'Erro ao processar arquivo',
-        variant: "destructive",
-      });
     }
   };
 
@@ -1077,7 +883,6 @@ export default function AutoCorrectionPage() {
               <div className="text-center space-y-4">
                 {!useCamera ? (
                   <div className="grid grid-cols-1 gap-4">
-                    {/* Botão para escanear QR code - otimizado para mobile */}
                     <Card className="p-6 border-2 border-dashed border-blue-300 hover:border-blue-500 transition-colors cursor-pointer touch-manipulation"
                           onClick={() => startCamera('qr')}>
                       <div className="text-center space-y-4">
@@ -1092,7 +897,6 @@ export default function AutoCorrectionPage() {
                       </div>
                     </Card>
 
-                    {/* Botão para capturar resposta - otimizado para mobile */}
                     <Card className="p-6 border-2 border-dashed border-green-300 hover:border-green-500 transition-colors cursor-pointer touch-manipulation"
                           onClick={() => startCamera('photo')}>
                       <div className="text-center space-y-4">
@@ -1107,7 +911,6 @@ export default function AutoCorrectionPage() {
                       </div>
                     </Card>
                     
-                    {/* Botão para upload de arquivo */}
                     <Card className="p-4 border-2 border-dashed border-purple-300 hover:border-purple-500 transition-colors cursor-pointer touch-manipulation"
                           onClick={() => fileInputRef.current?.click()}>
                       <div className="text-center space-y-3">
@@ -1123,7 +926,6 @@ export default function AutoCorrectionPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {/* Cabeçalho da câmera com informações */}
                     <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
@@ -1147,7 +949,6 @@ export default function AutoCorrectionPage() {
                       </div>
                     </div>
 
-                    {/* Container do vídeo otimizado para mobile */}
                     <div className="relative w-full max-w-sm mx-auto">
                       <video
                         ref={videoRef}
@@ -1159,9 +960,7 @@ export default function AutoCorrectionPage() {
                         style={{ aspectRatio: '4/3' }}
                       />
                       
-                      {/* Guias visuais para captura */}
                       {scanMode === 'qr' ? (
-                        // Guia para QR Code - quadrado menor no centro
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <div className="relative">
                             <div className="w-32 h-32 border-4 border-blue-500 rounded-lg bg-blue-500/10 animate-pulse">
@@ -1174,59 +973,11 @@ export default function AutoCorrectionPage() {
                           </div>
                         </div>
                       ) : (
-                        // Guias para captura de folha de resposta
                         <div className="absolute inset-0 pointer-events-none">
-                          {/* Bordas dos cantos para alinhamento */}
                           <div className="absolute top-4 left-4 w-6 h-6 border-t-4 border-l-4 border-green-400"></div>
                           <div className="absolute top-4 right-4 w-6 h-6 border-t-4 border-r-4 border-green-400"></div>
                           <div className="absolute bottom-4 left-4 w-6 h-6 border-b-4 border-l-4 border-green-400"></div>
                           <div className="absolute bottom-4 right-4 w-6 h-6 border-b-4 border-r-4 border-green-400"></div>
-                          
-                          {/* Overlay de coordenadas se disponível */}
-                          {showAlignmentOverlay && examInfo?.bubbleCoordinates && (
-                            <div className="absolute inset-0">
-                              {/* Mostrar regiões das bolhas */}
-                              {Object.entries(examInfo.bubbleCoordinates).map(([questionId, questionData]: [string, any]) => 
-                                Object.entries(questionData.bubbles || questionData).map(([option, coords]: [string, any]) => {
-                                  // Calcular posição relativa no vídeo
-                                  const videoElement = videoRef.current;
-                                  if (!videoElement) return null;
-                                  
-                                  const videoWidth = videoElement.clientWidth;
-                                  const videoHeight = videoElement.clientHeight;
-                                  
-                                  // Coordenadas vêm em pontos (A4 = 595x842)
-                                  const scaleX = videoWidth / 595;
-                                  const scaleY = videoHeight / 842;
-                                  
-                                  const x = (coords.x || 0) * scaleX;
-                                  const y = (coords.y || 0) * scaleY;
-                                  const size = 12 * Math.min(scaleX, scaleY); // Tamanho da bolha escalado
-                                  
-                                  return (
-                                    <div
-                                      key={`${questionId}-${option}`}
-                                      className="absolute border-2 border-green-400 bg-green-400/20 rounded-full"
-                                      style={{
-                                        left: `${x - size/2}px`,
-                                        top: `${y - size/2}px`,
-                                        width: `${size}px`,
-                                        height: `${size}px`,
-                                      }}
-                                    >
-                                      <span className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs text-green-600 bg-white/80 px-1 rounded">
-                                        {questionId}{option}
-                                      </span>
-                                    </div>
-                                  );
-                                })
-                              ).flat()}
-                              
-                              <p className="absolute bottom-2 left-2 text-xs text-green-600 bg-white/90 px-2 py-1 rounded">
-                                🎯 {Object.keys(examInfo.bubbleCoordinates).length} regiões de resposta mapeadas
-                              </p>
-                            </div>
-                          )}
                           
                           <p className="absolute bottom-12 left-0 right-0 text-xs text-green-600 text-center bg-black/50 text-white py-1">
                             Alinhe a folha de respostas
@@ -1234,14 +985,9 @@ export default function AutoCorrectionPage() {
                         </div>
                       )}
                       
-                      {/* Canvas oculto para processamento */}
-                      <canvas
-                        ref={canvasRef}
-                        className="hidden"
-                      />
+                      <canvas ref={canvasRef} className="hidden" />
                     </div>
 
-                    {/* Botões de controle da câmera */}
                     <div className="flex justify-center space-x-4">
                       {scanMode === 'photo' && (
                         <Button
@@ -1262,7 +1008,6 @@ export default function AutoCorrectionPage() {
                       </Button>
                     </div>
 
-                    {/* Status do escaneamento */}
                     {isScanning && scanMode === 'qr' && (
                       <div className="text-center">
                         <div className="inline-flex items-center space-x-2 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-4 py-2 rounded-lg">
@@ -1275,7 +1020,6 @@ export default function AutoCorrectionPage() {
                 )}
               </div>
 
-              {/* Input oculto para upload de arquivo */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1284,7 +1028,6 @@ export default function AutoCorrectionPage() {
                 className="hidden"
               />
 
-              {/* Preview da imagem selecionada */}
               {previewImage && !useCamera && (
                 <div className="space-y-4">
                   <div className="relative">
@@ -1309,7 +1052,6 @@ export default function AutoCorrectionPage() {
                 </div>
               )}
 
-              {/* Loading durante processamento */}
               {isProcessing && (
                 <div className="text-center space-y-4">
                   <div className="flex justify-center">
@@ -1322,6 +1064,34 @@ export default function AutoCorrectionPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Etapa: Extração de Layout (Visão Computacional) */}
+          {step === 'layout-extract' && examInfo?.htmlContent && (
+            <LayoutExtractor 
+              htmlContent={examInfo.htmlContent} 
+              onLayoutExtracted={handleLayoutExtracted}
+            />
+          )}
+
+          {/* Etapa: Correção ao Vivo (Visão Computacional) */}
+          {step === 'live-correction' && layoutData && examInfo && (
+            <LiveCorrector
+              layoutData={layoutData}
+              correctAnswers={examInfo.answerKey}
+              onCorrectionComplete={handleVisionCorrectionComplete}
+            />
+          )}
+
+          {/* Etapa: Editor de Respostas (Visão Computacional) */}
+          {step === 'edit-answers' && visionResults && screenshots && (
+            <AnswerEditor
+              results={visionResults}
+              screenshots={screenshots}
+              availableOptions={['A', 'B', 'C', 'D', 'E']}
+              onSave={handleAnswerEditorSave}
+              onCancel={handleAnswerEditorCancel}
+            />
+          )}
 
           {/* Resultado da correção */}
           {correctionResult && step === 'corrected' && (
@@ -1357,7 +1127,6 @@ export default function AutoCorrectionPage() {
                   </div>
                 </div>
 
-                {/* Informações do estudante */}
                 <div className="grid md:grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
                   <div>
                     <h4 className="font-medium text-sm text-muted-foreground">Prova</h4>
@@ -1369,101 +1138,11 @@ export default function AutoCorrectionPage() {
                   </div>
                 </div>
 
-                {/* Feedback detalhado */}
-                {correctionResult.feedback && correctionResult.feedback.length > 0 && (
-                  <div className="space-y-3">
-                    <h4 className="font-medium">Feedback Detalhado</h4>
-                    <div className="max-h-60 overflow-y-auto space-y-2">
-                      {correctionResult.feedback.map((item, index) => (
-                        <div 
-                          key={index}
-                          className={`p-3 rounded-lg border ${
-                            item.isCorrect 
-                              ? 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800' 
-                              : 'bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">
-                              Questão {item.questionNumber}
-                            </span>
-                            <Badge 
-                              variant={item.isCorrect ? "default" : "destructive"}
-                              className="text-xs"
-                            >
-                              {item.isCorrect ? "Correta" : "Incorreta"}
-                            </Badge>
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            <p>Resposta: <span className="font-medium">{item.studentAnswer}</span></p>
-                            <p>Gabarito: <span className="font-medium">{item.correctAnswer}</span></p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Alerta sobre questões abertas */}
-                {correctionResult.hasOpenQuestions && essayQuestions.length > 0 && (
-                  <Alert>
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      Esta prova contém {essayQuestions.length} questão(ões) aberta(s) que precisam ser corrigidas manualmente.
-                      Clique em "Corrigir Questões Abertas" para continuar.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Botões de ação */}
-                <div className="flex flex-wrap gap-3 justify-center">
-                  {correctionResult.hasOpenQuestions && essayQuestions.length > 0 && (
-                    <Button 
-                      onClick={() => setStep('essay-correction')}
-                      className="bg-amber-600 hover:bg-amber-700"
-                    >
-                      <PenTool className="w-4 h-4 mr-2" />
-                      Corrigir Questões Abertas ({essayQuestions.length})
-                    </Button>
-                  )}
-                  
-                  <Button 
-                    onClick={() => saveCorrection()}
-                    disabled={isSaving}
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    {isSaving ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Save className="w-4 h-4 mr-2" />
-                    )}
-                    Salvar Correção
-                  </Button>
-                  
+                <div className="flex gap-3 justify-center">
                   <Button variant="outline" onClick={resetToStart}>
                     Nova Correção
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Tela de correção de questões abertas */}
-          {step === 'essay-correction' && essayQuestions.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <PenTool className="w-5 h-5" />
-                    Correção de Questões Abertas
-                  </div>
-                  <Badge variant="outline">
-                    {currentEssayIndex + 1} de {essayQuestions.length}
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p>Correção de questões abertas em desenvolvimento.</p>
               </CardContent>
             </Card>
           )}
